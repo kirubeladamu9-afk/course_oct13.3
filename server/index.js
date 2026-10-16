@@ -3420,9 +3420,182 @@ app.get('/api/admin/overview', requireAdmin, async (request, response) => {
     LIMIT 5
   `
 
+  const paidRevenue = await sql`
+    WITH months AS (
+      SELECT generate_series(
+        date_trunc('month', CURRENT_DATE) - INTERVAL '24 months',
+        date_trunc('month', CURRENT_DATE) - INTERVAL '1 month',
+        INTERVAL '1 month'
+      )::DATE AS month
+    ), paid_payments AS (
+      SELECT payments.currency,
+             date_trunc('month', payments.paid_at)::DATE AS month,
+             payments.amount
+      FROM payments
+      WHERE payments.status = 'paid'
+        AND payments.paid_at IS NOT NULL
+        AND (
+          ${classId}::BIGINT IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM enrollments
+            WHERE enrollments.payment_id = payments.id
+              AND enrollments.class_id = ${classId}
+              AND enrollments.class_status = 'enrolled'
+          )
+        )
+        AND payments.paid_at >= date_trunc('month', CURRENT_DATE) - INTERVAL '24 months'
+        AND payments.paid_at < date_trunc('month', CURRENT_DATE)
+    ), currencies AS (
+      SELECT DISTINCT currency FROM paid_payments
+    ), monthly AS (
+      SELECT currencies.currency,
+             months.month,
+             COALESCE(SUM(paid_payments.amount) FILTER (WHERE paid_payments.month = months.month), 0)::FLOAT AS value
+      FROM currencies
+      CROSS JOIN months
+      LEFT JOIN paid_payments
+        ON paid_payments.currency = currencies.currency
+       AND paid_payments.month = months.month
+      GROUP BY currencies.currency, months.month
+    )
+    SELECT to_char(monthly.month, 'YYYY-MM') AS "monthKey",
+           to_char(monthly.month, 'Mon YYYY') AS label,
+           monthly.currency,
+           monthly.value,
+           monthly.month >= date_trunc('month', CURRENT_DATE) - INTERVAL '12 months' AS "isCurrent",
+           COALESCE(SUM(monthly.value) FILTER (WHERE monthly.month >= date_trunc('month', CURRENT_DATE) - INTERVAL '12 months') OVER (PARTITION BY monthly.currency), 0)::FLOAT AS "currentTotal",
+           COALESCE(SUM(monthly.value) FILTER (WHERE monthly.month < date_trunc('month', CURRENT_DATE) - INTERVAL '12 months') OVER (PARTITION BY monthly.currency), 0)::FLOAT AS "previousTotal"
+    FROM monthly
+    ORDER BY monthly.month, monthly.currency
+  `
+  const paidRevenueByMonth = paidRevenue
+    .filter((row) => row.isCurrent)
+    .map(({ monthKey, label, currency, value }) => ({ monthKey, label, currency, value }))
+  const paidRevenueComparison = [...new Map(paidRevenue.map((row) => [row.currency, {
+    currency: row.currency,
+    currentTotal: row.currentTotal,
+    previousTotal: row.previousTotal,
+  }])).values()]
+
+  const lessonCompletionsByMonth = await sql`
+    WITH months AS (
+      SELECT generate_series(
+        date_trunc('month', CURRENT_DATE) - INTERVAL '12 months',
+        date_trunc('month', CURRENT_DATE) - INTERVAL '1 month',
+        INTERVAL '1 month'
+      )::DATE AS month
+    ), completions AS (
+      SELECT date_trunc('month', progress.completed_at)::DATE AS month, COUNT(*)::INTEGER AS value
+      FROM student_lesson_progress AS progress
+      INNER JOIN enrollments ON enrollments.id = progress.enrollment_id
+      INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+      WHERE progress.completed_at IS NOT NULL
+        AND (enrollments.class_id IS NULL OR enrollments.class_status IS DISTINCT FROM 'waitlisted')
+        AND (${classId}::BIGINT IS NULL OR enrollments.class_id = ${classId})
+        AND progress.completed_at >= date_trunc('month', CURRENT_DATE) - INTERVAL '12 months'
+        AND progress.completed_at < date_trunc('month', CURRENT_DATE)
+      GROUP BY 1
+    )
+    SELECT to_char(months.month, 'YYYY-MM') AS "monthKey",
+           to_char(months.month, 'Mon YYYY') AS label,
+           COALESCE(completions.value, 0)::INTEGER AS value
+    FROM months
+    LEFT JOIN completions ON completions.month = months.month
+    ORDER BY months.month
+  `
+  const quizPerformanceByMonth = await sql`
+    WITH months AS (
+      SELECT generate_series(
+        date_trunc('month', CURRENT_DATE) - INTERVAL '12 months',
+        date_trunc('month', CURRENT_DATE) - INTERVAL '1 month',
+        INTERVAL '1 month'
+      )::DATE AS month
+    ), quiz_stats AS (
+      SELECT date_trunc('month', quiz_attempts.submitted_at)::DATE AS month,
+             AVG(quiz_attempts.score)::FLOAT AS "averageScore",
+             COUNT(*)::INTEGER AS attempts
+      FROM quiz_attempts
+      INNER JOIN enrollments ON enrollments.id = quiz_attempts.enrollment_id
+      INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+      WHERE quiz_attempts.submitted_at IS NOT NULL
+        AND (enrollments.class_id IS NULL OR enrollments.class_status IS DISTINCT FROM 'waitlisted')
+        AND (${classId}::BIGINT IS NULL OR enrollments.class_id = ${classId})
+        AND quiz_attempts.submitted_at >= date_trunc('month', CURRENT_DATE) - INTERVAL '12 months'
+        AND quiz_attempts.submitted_at < date_trunc('month', CURRENT_DATE)
+      GROUP BY 1
+    )
+    SELECT to_char(months.month, 'YYYY-MM') AS "monthKey",
+           to_char(months.month, 'Mon YYYY') AS label,
+           quiz_stats."averageScore",
+           COALESCE(quiz_stats.attempts, 0)::INTEGER AS attempts
+    FROM months
+    LEFT JOIN quiz_stats ON quiz_stats.month = months.month
+    ORDER BY months.month
+  `
+  const courseEnrollments = classId === null ? await sql`
+    SELECT courses.title AS label,
+           COUNT(DISTINCT enrollments.student_id)::INTEGER AS learners,
+           COUNT(*)::INTEGER AS "enrollmentRecords"
+    FROM enrollments
+    INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+    INNER JOIN courses ON courses.id = enrollments.course_id
+    WHERE enrollments.class_id IS NULL
+      AND enrollments.course_id IS NOT NULL
+    GROUP BY courses.id, courses.title
+    ORDER BY learners DESC, courses.title
+    LIMIT 8
+  ` : []
+  const classEnrollments = await sql`
+    SELECT classes.title AS label,
+           COUNT(DISTINCT enrollments.student_id)::INTEGER AS learners,
+           COUNT(*)::INTEGER AS "enrollmentRecords"
+    FROM enrollments
+    INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+    INNER JOIN classes ON classes.id = enrollments.class_id
+    WHERE enrollments.class_id IS NOT NULL
+      AND enrollments.class_status = 'enrolled'
+      AND (${classId}::BIGINT IS NULL OR enrollments.class_id = ${classId})
+    GROUP BY classes.id, classes.title
+    ORDER BY learners DESC, classes.title
+    LIMIT 8
+  `
+  const [courseSummary] = classId === null ? await sql`
+    SELECT COUNT(DISTINCT enrollments.student_id)::INTEGER AS learners,
+           COUNT(*)::INTEGER AS "enrollmentRecords"
+    FROM enrollments
+    INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+    WHERE enrollments.class_id IS NULL
+      AND enrollments.course_id IS NOT NULL
+  ` : [{ learners: 0, enrollmentRecords: 0 }]
+  const [classSummary] = await sql`
+    SELECT COUNT(DISTINCT enrollments.student_id)::INTEGER AS learners,
+           COUNT(*)::INTEGER AS "enrollmentRecords"
+    FROM enrollments
+    INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+    WHERE enrollments.class_id IS NOT NULL
+      AND enrollments.class_status = 'enrolled'
+      AND (${classId}::BIGINT IS NULL OR enrollments.class_id = ${classId})
+  `
+  const enrollmentSummary = { courses: courseSummary, classes: classSummary }
+
   const weakAreas = await getAdminWeakAreas(classId)
 
-  response.json({ ...totals, revenueByMonth, enrollmentsByCategory, revenueByCategory, topCourses, weakAreas })
+  response.json({
+    ...totals,
+    revenueByMonth,
+    enrollmentsByCategory,
+    revenueByCategory,
+    topCourses,
+    paidRevenueByMonth,
+    paidRevenueComparison,
+    lessonCompletionsByMonth,
+    quizPerformanceByMonth,
+    courseEnrollments,
+    classEnrollments,
+    enrollmentSummary,
+    weakAreas,
+  })
 })
 
 app.get('/api/admin/courses', requireAdminOrTutor, async (_request, response) => {
