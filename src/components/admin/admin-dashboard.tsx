@@ -706,148 +706,165 @@ const LessonDetailsPanel: FC<{ lessonPanel: LessonPanelState; updateLessonDraft:
   </Paper>
 }
 
-const DashboardCharts: FC<Pick<AdminDashboardOverview, 'totalRevenue' | 'activeStudents' | 'revenueByMonth' | 'enrollmentsByCategory' | 'revenueByCategory'>> = ({ totalRevenue, activeStudents, revenueByMonth, enrollmentsByCategory, revenueByCategory }) => {
-  const theme = useTheme()
-  const isNarrow = useMediaQuery(theme.breakpoints.down('sm'))
-  const formatCurrency = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value)
-  const formatAxisCurrency = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }).format(value)
-  const formatCount = (value: number) => new Intl.NumberFormat('en-US').format(value)
-  const niceStep = (value: number) => {
-    if (value <= 0) return 1
-    const magnitude = 10 ** Math.floor(Math.log10(value))
-    const normalized = value / magnitude
-    return (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude
-  }
-  const categoryColor = (label: string, index: number) => {
-    const name = label.toLowerCase()
-    if (name.includes('development')) return theme.palette.primary.main
-    if (name.includes('design')) return theme.palette.warning.main
-    return [theme.palette.info.main, theme.palette.secondary.main, theme.palette.success.dark, theme.palette.error.light][index % 4]
-  }
+type DashboardMetricPoint = { label: string; value: number | null; tooltip: string }
 
-  const revenueWidth = isNarrow ? 380 : 900
-  const revenueHeight = isNarrow ? 250 : 280
-  const revenueMargins = isNarrow ? { top: 24, right: 14, bottom: 40, left: 54 } : { top: 26, right: 20, bottom: 42, left: 78 }
+const DashboardMetricChart: FC<{ title: string; points: DashboardMetricPoint[]; color: string; dashed?: boolean; formatter: (value: number) => string; emptyMessage: string; maxValue?: number; hasData?: boolean }> = ({ title, points, color, dashed = false, formatter, emptyMessage, maxValue, hasData }) => {
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const isNarrow = useMediaQuery(theme.breakpoints.down('lg'))
+  const width = isMobile ? 360 : isNarrow ? 560 : 700
+  const height = 192
+  const margins = { top: 14, right: 12, bottom: 34, left: 52 }
+  const plotWidth = width - margins.left - margins.right
+  const plotHeight = height - margins.top - margins.bottom
+  const observedMax = Math.max(0, ...points.map((point) => point.value ?? 0))
+  const axisMax = maxValue ?? Math.max(1, Math.ceil(observedMax / 4) * 4)
+  const ticks = Array.from({ length: 5 }, (_, index) => axisMax - (axisMax * index) / 4)
+  const coordinates = points.map((point, index) => point.value === null ? null : ({
+    x: margins.left + (points.length < 2 ? plotWidth / 2 : (plotWidth * index) / (points.length - 1)),
+    y: margins.top + plotHeight * (1 - point.value / axisMax),
+  }))
+  const segments: string[] = []
+  let segment: string[] = []
+  coordinates.forEach((coordinate) => {
+    if (!coordinate) {
+      if (segment.length) segments.push(segment.join(' '))
+      segment = []
+    } else {
+      segment.push(`${segment.length ? 'L' : 'M'} ${coordinate.x} ${coordinate.y}`)
+    }
+  })
+  if (segment.length) segments.push(segment.join(' '))
+  const hasEvent = hasData ?? points.some((point) => point.value !== null && point.value > 0)
+
+  return <Box sx={{ minWidth: 0 }}>
+    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}><Box sx={{ width: 20, height: 0, borderTop: `3px ${dashed ? 'dashed' : 'solid'} ${color}`, flexShrink: 0 }} /><Typography variant="body2" sx={{ fontWeight: 700 }}>{title}</Typography></Stack>
+    {!points.length || !hasEvent ? <Box sx={{ display: 'grid', placeItems: 'center', minHeight: 145, borderRadius: 2, bgcolor: 'action.hover' }}><Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', px: 1 }}>{emptyMessage}</Typography></Box> : <Box sx={{ minWidth: 0, overflow: 'hidden' }}><Box component="svg" viewBox={`0 0 ${width} ${height}`} sx={{ display: 'block', width: '100%', height: 'auto' }} role="img" aria-label={title}>
+      {ticks.map((tick, index) => {
+        const y = margins.top + plotHeight * (index / 4)
+        return <g key={`${title}-tick-${index}`}><line x1={margins.left} x2={width - margins.right} y1={y} y2={y} stroke={theme.palette.divider} strokeDasharray="4 5" /><text x={margins.left - 8} y={y + 4} fill={theme.palette.text.secondary} fontSize="10" textAnchor="end">{formatter(tick)}</text></g>
+      })}
+      {segments.map((path, index) => <path key={`${title}-segment-${index}`} d={path} fill="none" stroke={color} strokeWidth="3" strokeDasharray={dashed ? '7 5' : undefined} strokeLinecap="round" strokeLinejoin="round" />)}
+      {coordinates.map((coordinate, index) => coordinate && <g key={`${title}-point-${index}`}><circle cx={coordinate.x} cy={coordinate.y} r="4" fill={theme.palette.background.paper} stroke={color} strokeWidth="2.5"><title>{points[index].tooltip}</title></circle></g>)}
+      {points.map((point, index) => {
+        const x = margins.left + (points.length < 2 ? plotWidth / 2 : (plotWidth * index) / (points.length - 1))
+        const anchor = index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle'
+        return <text key={`${title}-label-${index}`} x={x} y={height - 9} fill={theme.palette.text.secondary} fontSize="10" textAnchor={anchor}>{isNarrow ? point.label.slice(0, 3) : point.label}</text>
+      })}
+    </Box></Box>}
+  </Box>
+}
+
+const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'paidRevenueComparison' | 'lessonCompletionsByMonth' | 'quizPerformanceByMonth' | 'courseEnrollments' | 'classEnrollments' | 'enrollmentSummary'> & { selectedClassId: number | 'all' }> = ({ paidRevenueByMonth, paidRevenueComparison, lessonCompletionsByMonth, quizPerformanceByMonth, courseEnrollments, classEnrollments, enrollmentSummary, selectedClassId }) => {
+  const theme = useTheme()
+  const isNarrow = useMediaQuery(theme.breakpoints.down('lg'))
+  const [chosenCurrency, setChosenCurrency] = useState('')
+  const [offeringType, setOfferingType] = useState<'courses' | 'classes'>('courses')
+  const availableCurrencies = [...new Set(paidRevenueByMonth.map((point) => point.currency))]
+  const currency = availableCurrencies.includes(chosenCurrency) ? chosenCurrency : availableCurrencies[0] ?? ''
+  const revenueSeries = paidRevenueByMonth.filter((point) => point.currency === currency).sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+  const revenueTotal = revenueSeries.reduce((total, point) => total + point.value, 0)
+  const comparison = paidRevenueComparison.find((item) => item.currency === currency)
+  const growth = comparison && comparison.previousTotal > 0 ? ((comparison.currentTotal - comparison.previousTotal) / comparison.previousTotal) * 100 : null
+  const formatCurrency = (value: number) => currency ? new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value) : String(value)
+  const formatAxisCurrency = (value: number) => currency ? new Intl.NumberFormat('en-US', { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(value) : String(value)
+  const formatCount = (value: number) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value)
+  const revenueWidth = isNarrow ? 420 : 900
+  const revenueHeight = 286
+  const revenueMargins = isNarrow ? { top: 24, right: 14, bottom: 42, left: 62 } : { top: 24, right: 22, bottom: 44, left: 82 }
   const revenuePlotWidth = revenueWidth - revenueMargins.left - revenueMargins.right
   const revenuePlotHeight = revenueHeight - revenueMargins.top - revenueMargins.bottom
-  const maxRevenue = Math.max(0, ...revenueByMonth.map(({ value }) => value))
-  const revenueStep = niceStep(maxRevenue / 4)
+  const maxRevenue = Math.max(0, ...revenueSeries.map(({ value }) => value))
+  const revenueStep = maxRevenue > 0 ? (() => {
+    const roughStep = maxRevenue / 4
+    const magnitude = 10 ** Math.floor(Math.log10(roughStep))
+    const normalized = roughStep / magnitude
+    return (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude
+  })() : 1
   const revenueAxisMax = revenueStep * 4
   const revenueTicks = Array.from({ length: 5 }, (_, index) => revenueAxisMax - revenueStep * index)
-  const revenueCoordinates = revenueByMonth.map(({ value }, index) => ({
-    x: revenueMargins.left + (revenueByMonth.length < 2 ? revenuePlotWidth / 2 : (revenuePlotWidth * index) / (revenueByMonth.length - 1)),
+  const revenueCoordinates = revenueSeries.map(({ value }, index) => ({
+    x: revenueMargins.left + (revenueSeries.length < 2 ? revenuePlotWidth / 2 : (revenuePlotWidth * index) / (revenueSeries.length - 1)),
     y: revenueMargins.top + revenuePlotHeight * (1 - value / revenueAxisMax),
   }))
   const revenueLine = revenueCoordinates.map(({ x, y }, index) => `${index === 0 ? 'M' : 'L'} ${x} ${y}`).join(' ')
   const revenueArea = revenueCoordinates.length ? `${revenueLine} L ${revenueCoordinates[revenueCoordinates.length - 1].x} ${revenueMargins.top + revenuePlotHeight} L ${revenueCoordinates[0].x} ${revenueMargins.top + revenuePlotHeight} Z` : ''
-  const revenueLabelIndexes = new Set<number>()
-  if (revenueCoordinates.length) {
-    revenueLabelIndexes.add(0)
-    revenueLabelIndexes.add(revenueCoordinates.length - 1)
-    revenueLabelIndexes.add(revenueByMonth.reduce((best, point, index, points) => point.value > points[best].value ? index : best, 0))
-  }
-
-  const categoryRevenueTotal = revenueByCategory.reduce((total, category) => total + category.value, 0)
-  let gradientEnd = 0
-  const revenueGradient = categoryRevenueTotal > 0 ? revenueByCategory.map(({ value }, index) => {
-    const start = gradientEnd
-    gradientEnd += (value / categoryRevenueTotal) * 100
-    return `${categoryColor(revenueByCategory[index].label, index)} ${start}% ${gradientEnd}%`
-  }).join(', ') : '#e8eef2 0% 100%'
-
-  const enrollmentWidth = isNarrow ? 420 : 620
-  const enrollmentHeight = 290
-  const enrollmentMargins = { top: 24, right: 14, bottom: 68, left: 48 }
+  const enrollmentIsLocked = selectedClassId !== 'all'
+  const selectedOfferingType = enrollmentIsLocked ? 'classes' : offeringType
+  const offerings = selectedOfferingType === 'courses' ? courseEnrollments : classEnrollments
+  const enrollmentTotals = enrollmentSummary[selectedOfferingType]
+  const enrollmentWidth = Math.max(560, offerings.length * 76)
+  const enrollmentHeight = 270
+  const enrollmentMargins = { top: 20, right: 16, bottom: 66, left: 48 }
   const enrollmentPlotWidth = enrollmentWidth - enrollmentMargins.left - enrollmentMargins.right
   const enrollmentPlotHeight = enrollmentHeight - enrollmentMargins.top - enrollmentMargins.bottom
-  const maxEnrollments = Math.max(0, ...enrollmentsByCategory.map(({ value }) => value))
-  const enrollmentStep = Math.max(1, Math.ceil(maxEnrollments / 4))
+  const maxLearners = Math.max(0, ...offerings.map(({ learners }) => learners))
+  const enrollmentStep = Math.max(1, Math.ceil(maxLearners / 4))
   const enrollmentAxisMax = enrollmentStep * 4
   const enrollmentTicks = Array.from({ length: 5 }, (_, index) => enrollmentAxisMax - enrollmentStep * index)
+  const enrollmentColor = selectedOfferingType === 'courses' ? '#0b8877' : '#bd791b'
 
-  return (
-    <Stack spacing={2}>
-      <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2}>
-          <Stack direction="row" spacing={1.25} alignItems="center">
-            <Box sx={{ display: 'grid', placeItems: 'center', width: 40, height: 40, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.1) }}><AssessmentOutlinedIcon /></Box>
-            <Box><Typography variant="h6" sx={{ color: 'text.primary', fontWeight: 750 }}>Revenue Overview</Typography><Typography variant="body2" color="text.secondary">Monthly revenue performance</Typography></Box>
-          </Stack>
-          <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}><Typography variant="caption" color="text.secondary">Total revenue</Typography><Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.15 }}>{formatCurrency(totalRevenue)}</Typography></Box>
+  return <Stack spacing={2}>
+    <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0 }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1.5}>
+        <Stack direction="row" spacing={1.25} alignItems="center"><Box sx={{ display: 'grid', placeItems: 'center', width: 40, height: 40, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.1) }}><PaymentsOutlinedIcon /></Box><Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Revenue Overview</Typography><Typography variant="body2" color="text.secondary">Paid revenue from courses, classes, exams, and bookstore sales</Typography></Box></Stack>
+        <Stack direction={{ xs: 'row', sm: 'column' }} alignItems={{ xs: 'center', sm: 'flex-end' }} justifyContent="space-between" spacing={0.5}>
+          {availableCurrencies.length > 1 && <FormControl size="small" sx={{ minWidth: 128 }}><InputLabel id="dashboard-revenue-currency-label">Currency</InputLabel><Select labelId="dashboard-revenue-currency-label" label="Currency" value={currency} onChange={(event) => setChosenCurrency(event.target.value)}>{availableCurrencies.map((item) => <MenuItem key={item} value={item}>{item}</MenuItem>)}</Select></FormControl>}
+          <Box sx={{ textAlign: { xs: 'right', sm: 'right' } }}><Typography variant="caption" color="text.secondary">12-month paid revenue</Typography><Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.15 }}>{currency ? formatCurrency(revenueTotal) : '—'}</Typography>{growth !== null && <Typography variant="caption" color={growth >= 0 ? 'success.main' : 'error.main'}>{`${growth >= 0 ? '+' : ''}${growth.toFixed(1)}% vs. prior 12 months`}</Typography>}</Box>
         </Stack>
-        <Box sx={{ mt: 2.25, minWidth: 0, overflow: 'hidden' }}>
-          <Box component="svg" viewBox={`0 0 ${revenueWidth} ${revenueHeight}`} sx={{ display: 'block', width: '100%', height: 'auto', overflow: 'visible' }} role="img" aria-label="Monthly revenue performance">
-            <defs><linearGradient id="admin-revenue-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={theme.palette.primary.main} stopOpacity="0.2" /><stop offset="100%" stopColor={theme.palette.primary.main} stopOpacity="0.015" /></linearGradient></defs>
-            {revenueTicks.map((tick) => {
-              const y = revenueMargins.top + revenuePlotHeight * (1 - tick / revenueAxisMax)
-              return <g key={tick}><line x1={revenueMargins.left} x2={revenueWidth - revenueMargins.right} y1={y} y2={y} stroke={theme.palette.divider} strokeDasharray="4 5" /><text x={revenueMargins.left - 10} y={y + 4} fill={theme.palette.text.secondary} fontSize={isNarrow ? 10 : 12} textAnchor="end">{formatAxisCurrency(tick)}</text></g>
-            })}
-            {revenueArea && <path d={revenueArea} fill="url(#admin-revenue-area)" />}
-            {revenueLine && <path d={revenueLine} fill="none" stroke={theme.palette.primary.main} strokeWidth={isNarrow ? 3 : 3.5} strokeLinecap="round" strokeLinejoin="round" />}
-            {revenueCoordinates.map(({ x, y }, index) => {
-              const point = revenueByMonth[index]
-              const labelAnchor = index === 0 ? 'start' : index === revenueCoordinates.length - 1 ? 'end' : 'middle'
-              return <g key={`${point.label}-${index}`}><circle cx={x} cy={y} r={isNarrow ? 4 : 5} fill={theme.palette.background.paper} stroke={theme.palette.primary.main} strokeWidth="3"><title>{`${point.label}: ${formatCurrency(point.value)}`}</title></circle>{revenueLabelIndexes.has(index) && <text x={x} y={Math.max(14, y - 12)} fill={theme.palette.text.primary} fontSize={isNarrow ? 10 : 12} fontWeight="700" textAnchor={labelAnchor}>{formatCurrency(point.value)}</text>}</g>
-            })}
-            {revenueByMonth.map(({ label }, index) => {
-              const x = revenueCoordinates[index]?.x ?? revenueMargins.left
-              const anchor = index === 0 ? 'start' : index === revenueByMonth.length - 1 ? 'end' : 'middle'
-              return <text key={`${label}-${index}`} x={x} y={revenueHeight - 12} fill={theme.palette.text.secondary} fontSize={isNarrow ? 10 : 12} textAnchor={anchor}>{label}</text>
-            })}
-            {!revenueByMonth.length && <text x={revenueWidth / 2} y={revenueHeight / 2} fill={theme.palette.text.secondary} fontSize="14" textAnchor="middle">No revenue data available yet</text>}
-          </Box>
-        </Box>
+      </Stack>
+      {revenueSeries.length ? <Box sx={{ mt: 2.25, minWidth: 0, overflow: 'hidden' }}><Box component="svg" viewBox={`0 0 ${revenueWidth} ${revenueHeight}`} sx={{ display: 'block', width: '100%', height: 'auto' }} role="img" aria-label={`Paid revenue over 12 completed months in ${currency}`}>
+        <defs><linearGradient id="admin-paid-revenue-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#0b8877" stopOpacity="0.22" /><stop offset="100%" stopColor="#0b8877" stopOpacity="0.015" /></linearGradient></defs>
+        {revenueTicks.map((tick, index) => {
+          const y = revenueMargins.top + revenuePlotHeight * (index / 4)
+          return <g key={`revenue-tick-${index}`}><line x1={revenueMargins.left} x2={revenueWidth - revenueMargins.right} y1={y} y2={y} stroke={theme.palette.divider} strokeDasharray="4 5" /><text x={revenueMargins.left - 9} y={y + 4} fill={theme.palette.text.secondary} fontSize={isNarrow ? 10 : 12} textAnchor="end">{formatAxisCurrency(tick)}</text></g>
+        })}
+        {revenueArea && <path d={revenueArea} fill="url(#admin-paid-revenue-area)" />}
+        {revenueLine && <path d={revenueLine} fill="none" stroke="#0b8877" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />}
+        {revenueCoordinates.map(({ x, y }, index) => <g key={`${revenueSeries[index].monthKey}-${index}`}><circle cx={x} cy={y} r="5" fill={theme.palette.background.paper} stroke="#0b8877" strokeWidth="3"><title>{`${revenueSeries[index].label}: ${formatCurrency(revenueSeries[index].value)}`}</title></circle></g>)}
+        {revenueSeries.map(({ label, monthKey }, index) => {
+          const x = revenueCoordinates[index].x
+          const anchor = index === 0 ? 'start' : index === revenueSeries.length - 1 ? 'end' : 'middle'
+          return <text key={`${monthKey}-label`} x={x} y={revenueHeight - 12} fill={theme.palette.text.secondary} fontSize={isNarrow ? 10 : 12} textAnchor={anchor}>{isNarrow ? label.slice(0, 3) : label}</text>
+        })}
+      </Box></Box> : <Box sx={{ display: 'grid', placeItems: 'center', minHeight: 230 }}><Typography color="text.secondary">No paid revenue data is available for the completed months yet.</Typography></Box>}
+    </Paper>
+
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'repeat(2, minmax(0, 1fr))' }, gap: 2, alignItems: 'stretch' }}>
+      <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.5 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0, height: '100%', boxSizing: 'border-box' }}>
+        <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 2 }}><Box sx={{ display: 'grid', placeItems: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.1) }}><AssessmentOutlinedIcon fontSize="small" /></Box><Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Student Learning Progress</Typography><Typography variant="body2" color="text.secondary">Monthly completions and assessment performance</Typography></Box></Stack>
+        <Stack spacing={2.25}>
+          <DashboardMetricChart title="Lesson completions · completed lesson records" color="#0b8877" points={[...lessonCompletionsByMonth].sort((a, b) => a.monthKey.localeCompare(b.monthKey)).map((point) => ({ label: point.label, value: point.value, tooltip: `${point.label}: ${formatCount(point.value)} lesson completions` }))} formatter={(value) => formatCount(Math.round(value))} emptyMessage="No lesson completions recorded in this period yet." />
+          <DashboardMetricChart title="Quiz average score · percent" color="#bd791b" dashed points={[...quizPerformanceByMonth].sort((a, b) => a.monthKey.localeCompare(b.monthKey)).map((point) => ({ label: point.label, value: point.averageScore, tooltip: `${point.label}: ${point.averageScore === null ? 'No average score' : `${point.averageScore}% average`} · ${formatCount(point.attempts)} attempts` }))} formatter={(value) => `${Math.round(value)}%`} maxValue={100} hasData={quizPerformanceByMonth.some((point) => point.attempts > 0)} emptyMessage="No submitted quiz attempts recorded in this period yet." />
+        </Stack>
       </Paper>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))' }, gap: 2, alignItems: 'stretch' }}>
-        <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0, height: '100%', boxSizing: 'border-box' }}>
-          <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 2.25 }}>
-            <Box sx={{ display: 'grid', placeItems: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.1) }}><PaymentsOutlinedIcon fontSize="small" /></Box>
-            <Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Revenue by Category</Typography><Typography variant="body2" color="text.secondary">Published course revenue distribution</Typography></Box>
-          </Stack>
-          {revenueByCategory.length ? <Stack direction={{ xs: 'column', sm: 'row' }} alignItems="center" justifyContent="center" spacing={{ xs: 2, sm: 2.5 }} sx={{ minHeight: 220 }}>
-            <Box role="img" aria-label="Revenue distribution by category" sx={{ position: 'relative', width: 172, height: 172, flexShrink: 0, borderRadius: '50%', background: `conic-gradient(${revenueGradient})` }}>
-              <Box sx={{ position: 'absolute', inset: '28%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', backgroundColor: 'background.paper', textAlign: 'center' }}><Typography variant="caption" color="text.secondary">Total revenue</Typography><Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{formatCurrency(totalRevenue)}</Typography></Box>
-            </Box>
-            <Stack spacing={1.2} sx={{ width: '100%', minWidth: 0, maxWidth: 300 }}>
-              {revenueByCategory.map(({ label, value }, index) => <Box key={label} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}><Box sx={{ width: 10, height: 10, flexShrink: 0, borderRadius: '50%', backgroundColor: categoryColor(label, index) }} /><Typography variant="body2" noWrap title={label}>{label}</Typography></Box>
-                <Box sx={{ textAlign: 'right', whiteSpace: 'nowrap' }}><Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{formatCurrency(value)}</Typography><Typography variant="caption" color="text.secondary">{`${categoryRevenueTotal > 0 ? ((value / categoryRevenueTotal) * 100).toFixed(1) : '0.0'}% of total`}</Typography></Box>
-              </Box>)}
-            </Stack>
-          </Stack> : <Box sx={{ display: 'grid', placeItems: 'center', minHeight: 220 }}><Typography color="text.secondary">No category revenue available yet.</Typography></Box>}
-        </Paper>
-
-        <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0, height: '100%', boxSizing: 'border-box' }}>
-          <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 2.25 }}>
-            <Box sx={{ display: 'grid', placeItems: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.1) }}><GroupOutlinedIcon fontSize="small" /></Box>
-            <Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Course Enrollments</Typography><Typography variant="body2" color="text.secondary">Students enrolled by category</Typography></Box>
-          </Stack>
-          {enrollmentsByCategory.length ? <Box sx={{ minWidth: 0 }}>
-            <Box sx={{ overflow: 'hidden' }}><Box component="svg" viewBox={`0 0 ${enrollmentWidth} ${enrollmentHeight}`} sx={{ display: 'block', width: '100%', height: 'auto' }} role="img" aria-label="Course enrollments by category">
-              {enrollmentTicks.map((tick) => {
-                const y = enrollmentMargins.top + enrollmentPlotHeight * (1 - tick / enrollmentAxisMax)
-                return <g key={tick}><line x1={enrollmentMargins.left} x2={enrollmentWidth - enrollmentMargins.right} y1={y} y2={y} stroke={theme.palette.divider} strokeDasharray="4 5" /><text x={enrollmentMargins.left - 8} y={y + 4} fill={theme.palette.text.secondary} fontSize="11" textAnchor="end">{formatCount(tick)}</text></g>
-              })}
-              {enrollmentsByCategory.map(({ label, value }, index) => {
-                const groupWidth = enrollmentPlotWidth / enrollmentsByCategory.length
-                const center = enrollmentMargins.left + groupWidth * (index + 0.5)
-                const barWidth = Math.min(48, groupWidth * 0.52)
-                const barHeight = (value / enrollmentAxisMax) * enrollmentPlotHeight
-                const color = categoryColor(label, index)
-                const shortLabel = label.length > (isNarrow ? 9 : 13) ? `${label.slice(0, isNarrow ? 8 : 12)}…` : label
-                return <g key={label}><rect x={center - barWidth / 2} y={enrollmentMargins.top + enrollmentPlotHeight - barHeight} width={barWidth} height={barHeight} rx="5" fill={color}><title>{`${label}: ${formatCount(value)} enrollments`}</title></rect><text x={center} y={enrollmentMargins.top + enrollmentPlotHeight - barHeight - 8} fill={theme.palette.text.primary} fontSize="12" fontWeight="700" textAnchor="middle">{formatCount(value)}</text><text x={center} y={enrollmentHeight - 24} fill={theme.palette.text.secondary} fontSize="11" textAnchor="middle"><title>{label}</title>{shortLabel}</text></g>
-              })}
-            </Box></Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, mt: 1.5, px: 1.5, py: 1.25, borderRadius: 2, backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.06) }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}><GroupOutlinedIcon fontSize="small" sx={{ color: 'primary.main' }} /><Typography variant="body2" color="text.secondary">Total enrollments</Typography></Box>
-              <Typography variant="h6" sx={{ fontWeight: 800, whiteSpace: 'nowrap' }}>{formatCount(activeStudents)}</Typography>
-            </Box>
-          </Box> : <Box sx={{ display: 'grid', placeItems: 'center', minHeight: 260 }}><Typography color="text.secondary">No course enrollment data available yet.</Typography></Box>}
-        </Paper>
-      </Box>
-    </Stack>
-  )
+      <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.5 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0, height: '100%', boxSizing: 'border-box' }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1.25} sx={{ mb: 2 }}><Stack direction="row" spacing={1.25} alignItems="center"><Box sx={{ display: 'grid', placeItems: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: 2, color: selectedOfferingType === 'courses' ? 'primary.main' : 'warning.dark', backgroundColor: (currentTheme) => alpha(selectedOfferingType === 'courses' ? currentTheme.palette.primary.main : currentTheme.palette.warning.main, 0.1) }}><GroupOutlinedIcon fontSize="small" /></Box><Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Enrollment Analytics</Typography><Typography variant="body2" color="text.secondary">Distinct learners by offering</Typography></Box></Stack><FormControl size="small" sx={{ minWidth: 132 }} disabled={enrollmentIsLocked}><InputLabel id="dashboard-enrollment-type-label">Offering type</InputLabel><Select labelId="dashboard-enrollment-type-label" label="Offering type" value={selectedOfferingType} onChange={(event) => setOfferingType(event.target.value as 'courses' | 'classes')}><MenuItem value="courses">Courses</MenuItem><MenuItem value="classes">Classes</MenuItem></Select></FormControl></Stack>
+        {offerings.length ? <Box sx={{ minWidth: 0 }}>
+          <Box sx={{ overflowX: offerings.length > 7 ? 'auto' : 'hidden' }}><Box component="svg" viewBox={`0 0 ${enrollmentWidth} ${enrollmentHeight}`} sx={{ display: 'block', width: '100%', minWidth: offerings.length > 7 ? 560 : 0, height: 'auto' }} role="img" aria-label={`${selectedOfferingType} distinct learners by offering`}>
+            {enrollmentTicks.map((tick, index) => {
+              const y = enrollmentMargins.top + enrollmentPlotHeight * (index / 4)
+              return <g key={`enrollment-tick-${index}`}><line x1={enrollmentMargins.left} x2={enrollmentWidth - enrollmentMargins.right} y1={y} y2={y} stroke={theme.palette.divider} strokeDasharray="4 5" /><text x={enrollmentMargins.left - 8} y={y + 4} fill={theme.palette.text.secondary} fontSize="10" textAnchor="end">{formatCount(tick)}</text></g>
+            })}
+            {offerings.map(({ label, learners, enrollmentRecords }, index) => {
+              const groupWidth = enrollmentPlotWidth / offerings.length
+              const center = enrollmentMargins.left + groupWidth * (index + 0.5)
+              const barWidth = Math.min(48, groupWidth * 0.56)
+              const barHeight = (learners / enrollmentAxisMax) * enrollmentPlotHeight
+              const shortLimit = Math.max(6, Math.floor(groupWidth / 7))
+              const shortLabel = label.length > shortLimit ? `${label.slice(0, shortLimit - 1)}…` : label
+              return <g key={`${label}-${index}`}><rect x={center - barWidth / 2} y={enrollmentMargins.top + enrollmentPlotHeight - barHeight} width={barWidth} height={barHeight} rx="5" fill={enrollmentColor}><title>{`${label}: ${formatCount(learners)} distinct learners · ${formatCount(enrollmentRecords)} enrollment records`}</title></rect><text x={center} y={enrollmentMargins.top + enrollmentPlotHeight - barHeight - 7} fill={theme.palette.text.primary} fontSize="11" fontWeight="700" textAnchor="middle">{formatCount(learners)}</text><text x={center} y={enrollmentHeight - 20} fill={theme.palette.text.secondary} fontSize="10" textAnchor="middle"><title>{label}</title>{shortLabel}</text></g>
+            })}
+          </Box></Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 1.25, px: 1.5, py: 1.25, borderRadius: 2, backgroundColor: (currentTheme) => alpha(selectedOfferingType === 'courses' ? currentTheme.palette.primary.main : currentTheme.palette.warning.main, 0.07) }}>
+            <Typography variant="caption" color="text.secondary">{selectedOfferingType === 'courses' ? 'Courses' : 'Classes'} summary · totals within this offering type</Typography>
+            <Stack direction="row" spacing={1.5}><Typography variant="caption" sx={{ fontWeight: 700 }}>{formatCount(enrollmentTotals.learners)} distinct learners</Typography><Typography variant="caption" sx={{ fontWeight: 700 }}>{formatCount(enrollmentTotals.enrollmentRecords)} enrollment records</Typography></Stack>
+          </Box>
+        </Box> : <Box sx={{ display: 'grid', placeItems: 'center', minHeight: 260 }}><Typography color="text.secondary">No {selectedOfferingType === 'courses' ? 'course' : 'class'} enrollment data is available yet.</Typography></Box>}
+      </Paper>
+    </Box>
+  </Stack>
 }
 
 const WeakAreasPanel: FC<{ weakAreas: AdminWeakArea[] }> = ({ weakAreas }) => {
@@ -1075,7 +1092,7 @@ const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
       <AtRiskStudentsPanel students={atRiskStudents} loading={atRiskLoading} error={atRiskError} compact />
       <WeakAreasPanel weakAreas={overview.weakAreas} />
     </Box>
-    <DashboardCharts totalRevenue={overview.totalRevenue} activeStudents={overview.activeStudents} revenueByMonth={overview.revenueByMonth} enrollmentsByCategory={overview.enrollmentsByCategory} revenueByCategory={overview.revenueByCategory} /></>}
+    <DashboardCharts paidRevenueByMonth={overview.paidRevenueByMonth} paidRevenueComparison={overview.paidRevenueComparison} lessonCompletionsByMonth={overview.lessonCompletionsByMonth} quizPerformanceByMonth={overview.quizPerformanceByMonth} courseEnrollments={overview.courseEnrollments} classEnrollments={overview.classEnrollments} enrollmentSummary={overview.enrollmentSummary} selectedClassId={selectedClassId} /></>}
   </>
 }
 

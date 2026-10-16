@@ -3436,12 +3436,12 @@ app.get('/api/admin/overview', requireAdmin, async (request, response) => {
         AND payments.paid_at IS NOT NULL
         AND (
           ${classId}::BIGINT IS NULL
+          OR payments.class_id = ${classId}
           OR EXISTS (
             SELECT 1
             FROM enrollments
             WHERE enrollments.payment_id = payments.id
               AND enrollments.class_id = ${classId}
-              AND enrollments.class_status = 'enrolled'
           )
         )
         AND payments.paid_at >= date_trunc('month', CURRENT_DATE) - INTERVAL '24 months'
@@ -3491,7 +3491,7 @@ app.get('/api/admin/overview', requireAdmin, async (request, response) => {
       INNER JOIN enrollments ON enrollments.id = progress.enrollment_id
       INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
       WHERE progress.completed_at IS NOT NULL
-        AND (enrollments.class_id IS NULL OR enrollments.class_status IS DISTINCT FROM 'waitlisted')
+        AND (enrollments.class_id IS NULL OR enrollments.class_status = 'enrolled')
         AND (${classId}::BIGINT IS NULL OR enrollments.class_id = ${classId})
         AND progress.completed_at >= date_trunc('month', CURRENT_DATE) - INTERVAL '12 months'
         AND progress.completed_at < date_trunc('month', CURRENT_DATE)
@@ -3519,7 +3519,8 @@ app.get('/api/admin/overview', requireAdmin, async (request, response) => {
       INNER JOIN enrollments ON enrollments.id = quiz_attempts.enrollment_id
       INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
       WHERE quiz_attempts.submitted_at IS NOT NULL
-        AND (enrollments.class_id IS NULL OR enrollments.class_status IS DISTINCT FROM 'waitlisted')
+        AND quiz_attempts.disqualified = false
+        AND (enrollments.class_id IS NULL OR enrollments.class_status = 'enrolled')
         AND (${classId}::BIGINT IS NULL OR enrollments.class_id = ${classId})
         AND quiz_attempts.submitted_at >= date_trunc('month', CURRENT_DATE) - INTERVAL '12 months'
         AND quiz_attempts.submitted_at < date_trunc('month', CURRENT_DATE)
