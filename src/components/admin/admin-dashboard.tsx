@@ -706,7 +706,7 @@ const LessonDetailsPanel: FC<{ lessonPanel: LessonPanelState; updateLessonDraft:
   </Paper>
 }
 
-const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'paidRevenueComparison' | 'learningMetrics' | 'enrollmentDistribution'>> = ({ paidRevenueByMonth, paidRevenueComparison, learningMetrics, enrollmentDistribution }) => {
+const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'paidRevenueComparison' | 'learningMetrics' | 'enrollmentDistribution'>> = ({ paidRevenueByMonth = [], paidRevenueComparison = [], learningMetrics, enrollmentDistribution = [] }) => {
   const theme = useTheme()
   const isNarrow = useMediaQuery(theme.breakpoints.down('lg'))
   const [chosenCurrency, setChosenCurrency] = useState('')
@@ -719,11 +719,14 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'p
   const formatCurrency = (value: number) => currency ? new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value) : String(value)
   const formatAxisCurrency = (value: number) => currency ? new Intl.NumberFormat('en-US', { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(value) : String(value)
   const formatCount = (value: number) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value)
+  const lessonCompletion = learningMetrics?.lessonCompletion
+  const classAttendance = learningMetrics?.classAttendance
+  const quizPerformance = learningMetrics?.quizPerformance
   const metrics = [
-    learningMetrics.lessonCompletion.total > 0 ? { key: 'lesson-completion', label: 'Lesson Completion', value: learningMetrics.lessonCompletion.percentage, detail: `${formatCount(learningMetrics.lessonCompletion.completed)} of ${formatCount(learningMetrics.lessonCompletion.total)} lesson records completed`, icon: <BookOutlinedIcon fontSize="small" />, color: '#0b8877' } : null,
-    learningMetrics.classAttendance.total > 0 ? { key: 'class-attendance', label: 'Class Attendance', value: learningMetrics.classAttendance.percentage, detail: `${formatCount(learningMetrics.classAttendance.present)} of ${formatCount(learningMetrics.classAttendance.total)} marked sessions attended`, icon: <ClassOutlinedIcon fontSize="small" />, color: '#0b8877' } : null,
-    learningMetrics.quizPerformance.attempts > 0 ? { key: 'quiz-performance', label: 'Quiz Performance', value: learningMetrics.quizPerformance.percentage, detail: `Average score across ${formatCount(learningMetrics.quizPerformance.attempts)} submitted attempts`, icon: <QuizOutlinedIcon fontSize="small" />, color: '#bd791b' } : null,
-  ].filter((metric): metric is Exclude<typeof metric, null> & { value: number } => metric !== null && metric.value !== null)
+    lessonCompletion?.total && lessonCompletion.percentage != null ? { key: 'lesson-completion', label: 'Lesson Completion', value: lessonCompletion.percentage, detail: `${formatCount(lessonCompletion.completed)} of ${formatCount(lessonCompletion.total)} lesson records completed`, icon: <BookOutlinedIcon fontSize="small" />, color: '#0b8877' } : null,
+    classAttendance?.total && classAttendance.percentage != null ? { key: 'class-attendance', label: 'Class Attendance', value: classAttendance.percentage, detail: `${formatCount(classAttendance.present)} of ${formatCount(classAttendance.total)} marked sessions attended`, icon: <ClassOutlinedIcon fontSize="small" />, color: '#0b8877' } : null,
+    quizPerformance?.attempts && quizPerformance.percentage != null ? { key: 'quiz-performance', label: 'Quiz Performance', value: quizPerformance.percentage, detail: `Average score across ${formatCount(quizPerformance.attempts)} submitted attempts`, icon: <QuizOutlinedIcon fontSize="small" />, color: '#bd791b' } : null,
+  ].filter((metric): metric is Exclude<typeof metric, null> => metric !== null)
   const enrollmentStyles = { courses: { label: 'Courses', color: '#0b8877' }, classes: { label: 'Classes', color: '#4279c5' }, exams: { label: 'Exams', color: '#bd791b' } } as const
   const enrollmentRecords = enrollmentDistribution.filter((record) => record.count > 0)
   const enrollmentTotal = enrollmentRecords.reduce((total, record) => total + record.count, 0)
