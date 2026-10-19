@@ -81,7 +81,7 @@ import { toast } from '@/components/toast'
 import { Logo } from '@/components/logo'
 import { StyledButton } from '@/components/styled-button'
 import { navigateTo } from '@/lib/navigation'
-import { approveAdminQuizRetake, changePassword, getAdminRegistrations, getAuthenticatedUser, resetAdminUserPassword, saveAuthenticatedUser, signOut, updateAdminCourse, updateAdminTutor, updateAdminTutorStatus, updateAdminUserStatus, updateAuthenticatedProfile, type AdminDashboardOverview, type AdminRegistration, type AdminWeakArea, createAdminCourse, createAdminTutor, deleteAdminCourse, deleteAdminTutor, getAdminAtRiskStudents, getAdminClassesWorkspace, getAdminCourse, getAdminCourses, getAdminDashboardOverview, getAdminQuizViolations, getAdminTutor, getAdminTutors, getAdminUsers, getClassStatistics, type AdminClassesWorkspace, type AdminQuizViolation, type AtRiskStudent, type AuthUser, type ClassStatistics, type ClassStudentStat } from '@/services/api'
+import { approveAdminQuizRetake, changePassword, getAdminRegistrations, getAuthenticatedUser, resetAdminUserPassword, saveAuthenticatedUser, signOut, updateAdminCourse, updateAdminTutor, updateAdminTutorStatus, updateAdminUserStatus, updateAuthenticatedProfile, type AdminDashboardOverview, type AdminRegistration, type AdminWeakArea, createAdminCourse, createAdminTutor, deleteAdminCourse, deleteAdminTutor, getAdminAtRiskStudents, getAdminClassesWorkspace, getAdminCourse, getAdminCourseOptions, getAdminCourses, getAdminDashboardOverview, getAdminQuizViolations, getAdminTutor, getAdminTutors, getAdminUsers, getClassStatistics, type AdminClassesWorkspace, type AdminQuizViolation, type AtRiskStudent, type AuthUser, type ClassStatistics, type ClassStudentStat } from '@/services/api'
 import AtRiskStudentsPanel from '@/components/at-risk-students-panel'
 import AdminDataTable, { type DataColumn } from './admin-data-table'
 import ClassesWorkspace from './classes-workspace'
@@ -1369,10 +1369,10 @@ const TutorEditorPage: FC<TutorEditorPageProps> = ({ mode, tutorId }) => {
   const [isLoading, setIsLoading] = useState(mode === 'edit')
   const [isSaving, setIsSaving] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [courses, setCourses] = useState<AdminCourse[]>([])
+  const [courses, setCourses] = useState<Array<Pick<AdminCourse, 'id' | 'title'>>>([])
 
   useEffect(() => {
-    getAdminCourses().then(setCourses).catch(() => setLoadError('Unable to load courses.'))
+    getAdminCourseOptions().then(setCourses).catch(() => setLoadError('Unable to load courses.'))
   }, [])
 
   useEffect(() => {
@@ -1776,7 +1776,6 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [section, setSection] = useState<Section>(() => getSectionFromPath(window.location.pathname))
   const [pathname, setPathname] = useState(() => window.location.pathname)
-  const [isLoading, setIsLoading] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [profileAnchor, setProfileAnchor] = useState<null | HTMLElement>(null)
   const adminUser = getAuthenticatedUser()
@@ -1793,7 +1792,6 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
   }
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setIsLoading(false), 400)
     const handlePopState = () => {
       setPathname(window.location.pathname)
       setSection(getSectionFromPath(window.location.pathname))
@@ -1801,7 +1799,6 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
     window.addEventListener('popstate', handlePopState)
 
     return () => {
-      window.clearTimeout(timer)
       window.removeEventListener('popstate', handlePopState)
     }
   }, [])
@@ -1885,7 +1882,7 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
   )
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }} aria-busy={isLoading}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
       {isMobile ? <Drawer open={mobileOpen} onClose={() => setMobileOpen(false)}>{sidebar}</Drawer> : <Box sx={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: drawerWidth, zIndex: 'drawer' }}>{sidebar}</Box>}
       <Box sx={{ flex: 1, minWidth: 0, ml: { xs: 0, md: `${drawerWidth}px` } }}>
         <Box component="header" sx={{ minHeight: 82, px: { xs: 2, md: 3.5 }, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, backgroundColor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === 'dark' ? 0.96 : 0.82), backdropFilter: 'blur(16px)', borderBottom: 1, borderColor: 'divider' }}>
@@ -1935,7 +1932,7 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
           </Stack>
         </Box>
         <Box component="main" sx={{ p: { xs: 2, md: 3.5 }, width: '100%', minWidth: 0, maxWidth: 1540, boxSizing: 'border-box', minHeight: 'calc(100vh - 82px)', background: 'var(--app-content-gradient)' }}>
-          {isLoading ? <AdminLoadingState /> : currentPage}
+          {currentPage}
         </Box>
       </Box>
     </Box>

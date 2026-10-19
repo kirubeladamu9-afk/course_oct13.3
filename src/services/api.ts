@@ -786,6 +786,12 @@ export const getAdminCourses = async (): Promise<Array<AdminCourse>> => {
   return response.json()
 }
 
+export const getAdminCourseOptions = async (): Promise<Array<Pick<AdminCourse, 'id' | 'title'>>> => {
+  const response = await requestApi('/api/admin/course-options')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
 export const getAdminCourse = async (id: AdminCourse['id']): Promise<AdminCourse> => requestCourse(`/api/admin/courses/${id}`)
 
 export const createAdminCourse = (course: AdminCourse) => requestCourse('/api/admin/courses', {

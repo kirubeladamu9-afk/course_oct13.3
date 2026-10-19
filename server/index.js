@@ -631,24 +631,40 @@ const parseTutorPayload = (body) => {
 
 const parseTutorStatus = (body) => body && typeof body === 'object' && !Array.isArray(body) && (body.status === 'Active' || body.status === 'Inactive') ? body.status : null
 
-const addAssignedCourses = async (tutor) => {
-  const [assignedCourses, assignedClasses] = await Promise.all([
+const addAssignedCoursesToTutors = async (tutors) => {
+  if (tutors.length === 0) return []
+
+  const tutorIds = tutors.map((tutor) => tutor.id)
+  const tutorNameKeys = tutors.map((tutor) => tutor.name.toLowerCase())
+  const [courses, classes] = await Promise.all([
     sql`
-      SELECT id::INTEGER AS id, title, category, students
+      SELECT id::INTEGER AS id, title, category, students, tutor_id::INTEGER AS "tutorId", LOWER(TRIM(tutor)) AS "tutorKey"
       FROM courses
-      WHERE tutor_id = ${tutor.id}
-         OR (tutor_id IS NULL AND LOWER(TRIM(tutor)) = LOWER(${tutor.name}))
+      WHERE tutor_id = ANY(${tutorIds})
+         OR (tutor_id IS NULL AND LOWER(TRIM(tutor)) = ANY(${tutorNameKeys}))
       ORDER BY id
     `,
     sql`
-      SELECT id::INTEGER AS id, title
+      SELECT id::INTEGER AS id, title, tutor_id::INTEGER AS "tutorId"
       FROM classes
-      WHERE tutor_id = ${tutor.id}
+      WHERE tutor_id = ANY(${tutorIds})
       ORDER BY id
     `,
   ])
-  return { ...tutor, assignedCourses, assignedCourseIds: assignedCourses.map((course) => course.id), assignedClasses }
+
+  return tutors.map((tutor) => {
+    const nameKey = tutor.name.toLowerCase()
+    const assignedCourses = courses
+      .filter((course) => course.tutorId === tutor.id || (course.tutorId === null && course.tutorKey === nameKey))
+      .map(({ id, title, category, students }) => ({ id, title, category, students }))
+    const assignedClasses = classes
+      .filter((classRecord) => classRecord.tutorId === tutor.id)
+      .map(({ id, title }) => ({ id, title }))
+    return { ...tutor, assignedCourses, assignedCourseIds: assignedCourses.map((course) => course.id), assignedClasses }
+  })
 }
+
+const addAssignedCourses = async (tutor) => (await addAssignedCoursesToTutors([tutor]))[0]
 
 const readTutor = async (id) => {
   const [tutor] = await sql`
@@ -3696,7 +3712,16 @@ app.get('/api/admin/tutors', requireAdmin, async (_request, response) => {
     FROM tutors
     ORDER BY id
   `
-  return response.json(await Promise.all(tutors.map(addAssignedCourses)))
+  return response.json(await addAssignedCoursesToTutors(tutors))
+})
+
+app.get('/api/admin/course-options', requireAdmin, async (_request, response) => {
+  const courses = await sql`
+    SELECT id::INTEGER AS id, title
+    FROM courses
+    ORDER BY id
+  `
+  return response.json(courses)
 })
 
 app.get('/api/admin/tutors/:id', requireAdmin, async (request, response) => {
