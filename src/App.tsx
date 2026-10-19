@@ -93,6 +93,8 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   const isAuthenticated = currentUser !== null
   const canAccessAdmin = currentUser?.role === 'admin'
   const canAccessTutor = currentUser?.role === 'tutor'
+  const isPublicPath = !isAdminPath && !isTutorPath && !isDashboardPath
+  const signedInHomePath = currentUser?.role === 'admin' ? '/admin' : currentUser?.role === 'tutor' ? '/tutor' : '/dashboard'
 
   useEffect(() => {
     const handlePopState = () => setCurrentPath(window.location.pathname)
@@ -135,7 +137,8 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
     if (isAdminPath && !canAccessAdmin) navigateTo('/', true)
     if (isTutorPath && !canAccessTutor) navigateTo('/', true)
     if (isDashboardPath && (!isAuthenticated || currentUser?.role === 'admin' || currentUser?.role === 'tutor')) navigateTo(currentUser?.role === 'admin' ? '/admin' : currentUser?.role === 'tutor' ? '/tutor' : '/', true)
-  }, [canAccessAdmin, canAccessTutor, currentPath, currentUser?.role, isAdminPath, isAuthenticated, isDashboardPath, isTutorPath])
+    if (isAuthenticated && isPublicPath) navigateTo(signedInHomePath, true)
+  }, [canAccessAdmin, canAccessTutor, currentPath, currentUser?.role, isAdminPath, isAuthenticated, isDashboardPath, isPublicPath, isTutorPath, signedInHomePath])
 
   useEffect(() => {
     if (isAdminPath || isDashboardPath || isTutorPath || isPracticeCatalogPath || practiceExamMatch || isAboutPath || isBookstorePath || isContactPath || isSignInPath || courseMatch) {
@@ -158,7 +161,7 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
     }
   }, [currentPath, isAboutPath, isAdminPath, isBookstorePath, isContactPath, isDashboardPath, isPracticeCatalogPath, isTutorPath, practiceExamMatch])
 
-  if ((isAdminPath && !canAccessAdmin) || (isTutorPath && !canAccessTutor) || (isDashboardPath && (!isAuthenticated || currentUser?.role === 'admin' || currentUser?.role === 'tutor'))) return <RouteLoadingState message="Returning to Coursespace..." />
+  if ((isAdminPath && !canAccessAdmin) || (isTutorPath && !canAccessTutor) || (isDashboardPath && (!isAuthenticated || currentUser?.role === 'admin' || currentUser?.role === 'tutor')) || (isAuthenticated && isPublicPath)) return <RouteLoadingState message="Returning to Coursespace..." />
   if (isAdminPath) return <AdminDashboard darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
   if (isTutorPath) return <TutorDashboard darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
   if (isDashboardPath) return <StudentDashboard darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
