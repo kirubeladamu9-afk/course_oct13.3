@@ -679,6 +679,7 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
   const daysUntilExam = examDate ? getDaysBetween(today, examDate) : 0
   const allTopics = classRecord.course ? getPlannerTopics(classRecord.course, enrollment.weakAreas, enrollment.quizResults, enrollment.quizAttempts, completedLessonIds) : []
   const remainingTopics = prioritizePlannerTopics(allTopics)
+  const masteredTopics = allTopics.filter((topic) => topic.mastery === 'strong')
   const masteryCounts = countMasteryLevels(allTopics.map((topic) => topic.mastery))
   const canPlan = Boolean(examDate) && daysUntilExam >= 0 && remainingTopics.length > 0
 
@@ -750,6 +751,18 @@ const StudyPlannerPanel: FC<{ classRecord: DashboardClass; enrollment: Dashboard
     </Stack>}
     {planSaveError && <Alert severity="error" sx={{ mb: 2 }}>{planSaveError}</Alert>}
     {content}
+    {masteredTopics.length > 0 && <Box sx={{ mt: 2.5 }}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>Mastered</Typography>
+      <Stack spacing={0.75}>{masteredTopics.map((topic) => <Button key={topic.lessonId} onClick={() => onOpenCourse(classRecord.id, topic.lessonId)} sx={{ justifyContent: 'space-between', alignItems: 'center', minWidth: 0, gap: 1, px: 1.25, py: 1, borderRadius: 2, textAlign: 'left', border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: 'success.main', backgroundColor: (theme) => alpha(theme.palette.success.main, 0.06), color: 'text.primary' }}>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+            <Chip size="small" label={MASTERY_LABELS.strong.toUpperCase()} color="success" sx={{ height: 20, fontSize: 11, fontWeight: 800, flexShrink: 0 }} />
+            <Typography noWrap sx={{ fontWeight: 600, minWidth: 0 }}>{topic.title}</Typography>
+          </Stack>
+          <Typography noWrap variant="caption" color="text.secondary">{topic.moduleTitle}</Typography>
+        </Box>
+      </Button>)}</Stack>
+    </Box>}
   </Paper>
 }
 
