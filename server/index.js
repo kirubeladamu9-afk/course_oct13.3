@@ -3421,62 +3421,43 @@ app.get('/api/admin/overview', requireAdmin, async (request, response) => {
   `
 
   const paidRevenue = await sql`
-    WITH months AS (
-      SELECT generate_series(
-        date_trunc('month', CURRENT_DATE) - INTERVAL '24 months',
-        date_trunc('month', CURRENT_DATE) - INTERVAL '1 month',
-        INTERVAL '1 month'
-      )::DATE AS month
-    ), paid_payments AS (
-      SELECT payments.currency,
-             date_trunc('month', payments.paid_at)::DATE AS month,
-             payments.amount
-      FROM payments
-      WHERE payments.status = 'paid'
-        AND payments.paid_at IS NOT NULL
-        AND (
-          ${classId}::BIGINT IS NULL
-          OR payments.class_id = ${classId}
-          OR EXISTS (
-            SELECT 1
-            FROM enrollments
-            WHERE enrollments.payment_id = payments.id
-              AND enrollments.class_id = ${classId}
-          )
+    SELECT EXTRACT(YEAR FROM payments.paid_at)::INTEGER AS year,
+           EXTRACT(MONTH FROM payments.paid_at)::INTEGER AS month,
+           payments.currency,
+           SUM(payments.amount)::FLOAT AS value
+    FROM payments
+    WHERE payments.status = 'paid'
+      AND payments.paid_at IS NOT NULL
+      AND (
+        ${classId}::BIGINT IS NULL
+        OR payments.class_id = ${classId}
+        OR EXISTS (
+          SELECT 1
+          FROM enrollments
+          WHERE enrollments.payment_id = payments.id
+            AND enrollments.class_id = ${classId}
         )
-        AND payments.paid_at >= date_trunc('month', CURRENT_DATE) - INTERVAL '24 months'
-        AND payments.paid_at < date_trunc('month', CURRENT_DATE)
-    ), currencies AS (
-      SELECT DISTINCT currency FROM paid_payments
-    ), monthly AS (
-      SELECT currencies.currency,
-             months.month,
-             COALESCE(SUM(paid_payments.amount) FILTER (WHERE paid_payments.month = months.month), 0)::FLOAT AS value
-      FROM currencies
-      CROSS JOIN months
-      LEFT JOIN paid_payments
-        ON paid_payments.currency = currencies.currency
-       AND paid_payments.month = months.month
-      GROUP BY currencies.currency, months.month
-    )
-    SELECT to_char(monthly.month, 'YYYY-MM') AS "monthKey",
-           to_char(monthly.month, 'Mon YYYY') AS label,
-           monthly.currency,
-           monthly.value,
-           monthly.month >= date_trunc('month', CURRENT_DATE) - INTERVAL '12 months' AS "isCurrent",
-           COALESCE(SUM(monthly.value) FILTER (WHERE monthly.month >= date_trunc('month', CURRENT_DATE) - INTERVAL '12 months') OVER (PARTITION BY monthly.currency), 0)::FLOAT AS "currentTotal",
-           COALESCE(SUM(monthly.value) FILTER (WHERE monthly.month < date_trunc('month', CURRENT_DATE) - INTERVAL '12 months') OVER (PARTITION BY monthly.currency), 0)::FLOAT AS "previousTotal"
-    FROM monthly
-    ORDER BY monthly.month, monthly.currency
+      )
+    GROUP BY 1, 2, 3
+    ORDER BY 1, 2, 3
   `
-  const paidRevenueByMonth = paidRevenue
-    .filter((row) => row.isCurrent)
-    .map(({ monthKey, label, currency, value }) => ({ monthKey, label, currency, value }))
-  const paidRevenueComparison = [...new Map(paidRevenue.map((row) => [row.currency, {
-    currency: row.currency,
-    currentTotal: row.currentTotal,
-    previousTotal: row.previousTotal,
-  }])).values()]
+  const currentYear = new Date().getFullYear()
+  const paidRevenueYears = [...new Set([currentYear, ...paidRevenue.map((row) => Number(row.year))])].sort((a, b) => b - a)
+  const paidRevenueCurrencies = [...new Set(paidRevenue.map((row) => row.currency))]
+  const paidRevenueByKey = new Map(paidRevenue.map((row) => [`${row.year}-${row.month}-${row.currency}`, Number(row.value)]))
+  const paidRevenueByMonth = paidRevenueYears.flatMap((year) => paidRevenueCurrencies.flatMap((currency) =>
+    Array.from({ length: 12 }, (_, index) => {
+      const month = index + 1
+      const monthKey = `${year}-${String(month).padStart(2, '0')}`
+      const label = new Date(Date.UTC(year, index, 1)).toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
+      return { year, monthKey, label, currency, value: paidRevenueByKey.get(`${year}-${month}-${currency}`) ?? 0 }
+    })
+  ))
+  const paidRevenueComparison = paidRevenueCurrencies.map((currency) => ({
+    currency,
+    currentTotal: paidRevenue.filter((row) => Number(row.year) === currentYear && row.currency === currency).reduce((total, row) => total + Number(row.value), 0),
+    previousTotal: paidRevenue.filter((row) => Number(row.year) === currentYear - 1 && row.currency === currency).reduce((total, row) => total + Number(row.value), 0),
+  }))
 
   const lessonCompletionsByMonth = await sql`
     WITH months AS (
@@ -3677,6 +3658,7 @@ app.get('/api/admin/overview', requireAdmin, async (request, response) => {
     enrollmentsByCategory,
     revenueByCategory,
     topCourses,
+    paidRevenueYears,
     paidRevenueByMonth,
     paidRevenueComparison,
     lessonCompletionsByMonth,

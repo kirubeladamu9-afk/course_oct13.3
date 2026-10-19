@@ -467,7 +467,8 @@ export interface AdminDashboardOverview {
   enrollmentsByCategory: Array<{ label: string; value: number }>
   revenueByCategory: Array<{ label: string; value: number }>
   topCourses: Array<{ label: string; value: number }>
-  paidRevenueByMonth: Array<{ monthKey: string; label: string; currency: string; value: number }>
+  paidRevenueYears: number[]
+  paidRevenueByMonth: Array<{ year: number; monthKey: string; label: string; currency: string; value: number }>
   paidRevenueComparison: Array<{ currency: string; currentTotal: number; previousTotal: number }>
   lessonCompletionsByMonth: Array<{ monthKey: string; label: string; value: number }>
   quizPerformanceByMonth: Array<{ monthKey: string; label: string; averageScore: number | null; attempts: number }>

@@ -76,7 +76,7 @@ import GpsFixedOutlinedIcon from '@mui/icons-material/GpsFixedOutlined'
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined'
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useState } from 'react'
 import { toast } from '@/components/toast'
 import { Logo } from '@/components/logo'
 import { StyledButton } from '@/components/styled-button'
@@ -706,16 +706,22 @@ const LessonDetailsPanel: FC<{ lessonPanel: LessonPanelState; updateLessonDraft:
   </Paper>
 }
 
-const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'paidRevenueComparison' | 'learningMetrics' | 'enrollmentDistribution'>> = ({ paidRevenueByMonth = [], paidRevenueComparison = [], learningMetrics, enrollmentDistribution = [] }) => {
+const AnalyticsValueTooltip: FC<{ label: string; value: string; children: ReactElement }> = ({ label, value, children }) => <Tooltip arrow enterTouchDelay={0} leaveTouchDelay={1800} placement="top" title={<Box><Typography variant="caption" sx={{ display: 'block', color: 'rgba(255,255,255,.78)', lineHeight: 1.4 }}>{label}</Typography><Stack direction="row" spacing={0.75} alignItems="center"><Box aria-hidden="true" sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: '#5ce0c2' }} /><Typography variant="body2" sx={{ color: '#fff', fontWeight: 700 }}>{value}</Typography></Stack></Box>} componentsProps={{ tooltip: { sx: { bgcolor: '#102b3f', px: 1.25, py: 0.8, borderRadius: 1.5, boxShadow: '0 8px 24px rgba(16, 43, 63, .24)' } }, arrow: { sx: { color: '#102b3f' } } }}>{children}</Tooltip>
+
+const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueYears' | 'paidRevenueByMonth' | 'learningMetrics' | 'enrollmentDistribution'>> = ({ paidRevenueYears = [], paidRevenueByMonth = [], learningMetrics, enrollmentDistribution = [] }) => {
+  const [activeEnrollmentType, setActiveEnrollmentType] = useState<'courses' | 'classes' | 'exams' | null>(null)
   const theme = useTheme()
   const isNarrow = useMediaQuery(theme.breakpoints.down('lg'))
+  const currentYear = new Date().getFullYear()
   const [chosenCurrency, setChosenCurrency] = useState('')
+  const [chosenYear, setChosenYear] = useState(currentYear)
+  const [activeRevenueIndex, setActiveRevenueIndex] = useState<number | null>(null)
+  const availableYears = [...new Set([currentYear, ...paidRevenueYears, ...paidRevenueByMonth.map((point) => Number(point.monthKey.slice(0, 4)))])].sort((a, b) => b - a)
+  const year = availableYears.includes(chosenYear) ? chosenYear : availableYears[0]
   const availableCurrencies = [...new Set(paidRevenueByMonth.map((point) => point.currency))]
   const currency = availableCurrencies.includes(chosenCurrency) ? chosenCurrency : availableCurrencies[0] ?? ''
-  const revenueSeries = paidRevenueByMonth.filter((point) => point.currency === currency).sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+  const revenueSeries = paidRevenueByMonth.filter((point) => Number(point.monthKey.slice(0, 4)) === year && point.currency === currency).sort((a, b) => a.monthKey.localeCompare(b.monthKey))
   const revenueTotal = revenueSeries.reduce((total, point) => total + point.value, 0)
-  const comparison = paidRevenueComparison.find((item) => item.currency === currency)
-  const growth = comparison && comparison.previousTotal > 0 ? ((comparison.currentTotal - comparison.previousTotal) / comparison.previousTotal) * 100 : null
   const formatCurrency = (value: number) => currency ? new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value) : String(value)
   const formatAxisCurrency = (value: number) => currency ? new Intl.NumberFormat('en-US', { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(value) : String(value)
   const formatCount = (value: number) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value)
@@ -756,17 +762,24 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'p
   }))
   const revenueLine = revenueCoordinates.map(({ x, y }, index) => `${index === 0 ? 'M' : 'L'} ${x} ${y}`).join(' ')
   const revenueArea = revenueCoordinates.length ? `${revenueLine} L ${revenueCoordinates[revenueCoordinates.length - 1].x} ${revenueMargins.top + revenuePlotHeight} L ${revenueCoordinates[0].x} ${revenueMargins.top + revenuePlotHeight} Z` : ''
+  const activeRevenuePoint = activeRevenueIndex === null ? null : revenueCoordinates[activeRevenueIndex]
+  const activeRevenueRecord = activeRevenueIndex === null ? null : revenueSeries[activeRevenueIndex]
+
+  useEffect(() => {
+    setActiveRevenueIndex(null)
+  }, [year, currency])
 
   return <Stack spacing={2}>
     <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0 }}>
       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1.5}>
         <Stack direction="row" spacing={1.25} alignItems="center"><Box sx={{ display: 'grid', placeItems: 'center', width: 40, height: 40, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.1) }}><PaymentsOutlinedIcon /></Box><Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Revenue Overview</Typography><Typography variant="body2" color="text.secondary">Paid revenue from courses, classes, exams, and bookstore sales</Typography></Box></Stack>
-        <Stack direction={{ xs: 'row', sm: 'column' }} alignItems={{ xs: 'center', sm: 'flex-end' }} justifyContent="space-between" spacing={0.5}>
-          {availableCurrencies.length > 1 && <FormControl size="small" sx={{ minWidth: 128 }}><InputLabel id="dashboard-revenue-currency-label">Currency</InputLabel><Select labelId="dashboard-revenue-currency-label" label="Currency" value={currency} onChange={(event) => setChosenCurrency(event.target.value)}>{availableCurrencies.map((item) => <MenuItem key={item} value={item}>{item}</MenuItem>)}</Select></FormControl>}
-          <Box sx={{ textAlign: { xs: 'right', sm: 'right' } }}><Typography variant="caption" color="text.secondary">12-month paid revenue</Typography><Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.15 }}>{currency ? formatCurrency(revenueTotal) : '—'}</Typography>{growth !== null && <Typography variant="caption" color={growth >= 0 ? 'success.main' : 'error.main'}>{`${growth >= 0 ? '+' : ''}${growth.toFixed(1)}% vs. prior 12 months`}</Typography>}</Box>
+        <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="flex-end" spacing={1.25}>
+          {availableCurrencies.length > 1 && <FormControl size="small" sx={{ minWidth: 112 }}><InputLabel id="dashboard-revenue-currency-label">Currency</InputLabel><Select labelId="dashboard-revenue-currency-label" label="Currency" value={currency} onChange={(event) => setChosenCurrency(event.target.value)}>{availableCurrencies.map((item) => <MenuItem key={item} value={item}>{item}</MenuItem>)}</Select></FormControl>}
+          <FormControl size="small" sx={{ minWidth: 112 }}><InputLabel id="dashboard-revenue-year-label">Year</InputLabel><Select labelId="dashboard-revenue-year-label" label="Year" value={year} onChange={(event) => setChosenYear(Number(event.target.value))}>{availableYears.map((item) => <MenuItem key={item} value={item}>{item}</MenuItem>)}</Select></FormControl>
+          <Box sx={{ textAlign: { xs: 'left', sm: 'right' }, minWidth: 154 }}><Typography variant="caption" color="text.secondary">Total Paid Revenue ({year})</Typography><Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.15 }}>{currency ? formatCurrency(revenueTotal) : '—'}</Typography></Box>
         </Stack>
       </Stack>
-      {revenueSeries.length ? <Box sx={{ mt: 2.25, minWidth: 0, overflow: 'hidden' }}><Box component="svg" viewBox={`0 0 ${revenueWidth} ${revenueHeight}`} sx={{ display: 'block', width: '100%', height: 'auto' }} role="img" aria-label={`Paid revenue over 12 completed months in ${currency}`}>
+      {revenueSeries.length === 12 ? <Box onPointerLeave={(event) => { if (event.pointerType !== 'touch' && !event.currentTarget.querySelector('[data-revenue-point]:focus')) setActiveRevenueIndex(null) }} sx={{ mt: 2.25, minWidth: 0, overflow: 'visible', position: 'relative' }}><Box component="svg" viewBox={`0 0 ${revenueWidth} ${revenueHeight}`} sx={{ display: 'block', width: '100%', height: 'auto' }} role="group" aria-label={`Paid revenue from January through December ${year} in ${currency}`}>
         <defs><linearGradient id="admin-paid-revenue-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#0b8877" stopOpacity="0.22" /><stop offset="100%" stopColor="#0b8877" stopOpacity="0.015" /></linearGradient></defs>
         {revenueTicks.map((tick, index) => {
           const y = revenueMargins.top + revenuePlotHeight * (index / 4)
@@ -774,13 +787,23 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'p
         })}
         {revenueArea && <path d={revenueArea} fill="url(#admin-paid-revenue-area)" />}
         {revenueLine && <path d={revenueLine} fill="none" stroke="#0b8877" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />}
-        {revenueCoordinates.map(({ x, y }, index) => <g key={`${revenueSeries[index].monthKey}-${index}`}><circle cx={x} cy={y} r="5" fill={theme.palette.background.paper} stroke="#0b8877" strokeWidth="3"><title>{`${revenueSeries[index].label}: ${formatCurrency(revenueSeries[index].value)}`}</title></circle></g>)}
+        {revenueCoordinates.map(({ x, y }, index) => <g key={`${revenueSeries[index].monthKey}-${index}`}>
+          {activeRevenueIndex === index && <line x1={x} x2={x} y1={y} y2={revenueMargins.top + revenuePlotHeight} stroke="#0b8877" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.55" pointerEvents="none" />}
+          <circle data-revenue-point="true" cx={x} cy={y} r={activeRevenueIndex === index ? 7 : 5} fill={theme.palette.background.paper} stroke="#0b8877" strokeWidth={activeRevenueIndex === index ? 3.5 : 3} tabIndex={0} role="button" aria-label={`${revenueSeries[index].label} ${year} — ${formatCurrency(revenueSeries[index].value)}`} aria-describedby={activeRevenueIndex === index ? 'revenue-point-tooltip' : undefined} onPointerEnter={() => setActiveRevenueIndex(index)} onPointerDown={(event) => { if (event.pointerType === 'touch') setActiveRevenueIndex(index) }} onFocus={() => setActiveRevenueIndex(index)} onBlur={(event) => { if (!(event.relatedTarget instanceof SVGElement) || !event.relatedTarget.hasAttribute('data-revenue-point')) setActiveRevenueIndex(null) }} onKeyDown={(event) => {
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+              event.preventDefault()
+              const points = Array.from(event.currentTarget.ownerSVGElement?.querySelectorAll<SVGCircleElement>('[data-revenue-point]') ?? [])
+              const currentIndex = points.indexOf(event.currentTarget)
+              points[(currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + points.length) % points.length]?.focus()
+            } else if (event.key === 'Escape') setActiveRevenueIndex(null)
+          }}><title>{`${revenueSeries[index].label} ${year}: ${formatCurrency(revenueSeries[index].value)}`}</title></circle>
+        </g>)}
         {revenueSeries.map(({ label, monthKey }, index) => {
           const x = revenueCoordinates[index].x
           const anchor = index === 0 ? 'start' : index === revenueSeries.length - 1 ? 'end' : 'middle'
           return <text key={`${monthKey}-label`} x={x} y={revenueHeight - 12} fill={theme.palette.text.secondary} fontSize={isNarrow ? 10 : 12} textAnchor={anchor}>{isNarrow ? label.slice(0, 3) : label}</text>
         })}
-      </Box></Box> : <Box sx={{ display: 'grid', placeItems: 'center', minHeight: 230 }}><Typography color="text.secondary">No paid revenue data is available for the completed months yet.</Typography></Box>}
+      </Box>{activeRevenuePoint && activeRevenueRecord && <Box id="revenue-point-tooltip" role="tooltip" sx={{ position: 'absolute', zIndex: 1, left: `${(activeRevenuePoint.x / revenueWidth) * 100}%`, top: `${(activeRevenuePoint.y / revenueHeight) * 100}%`, transform: `${activeRevenuePoint.x > revenueWidth * 0.65 ? 'translateX(-100%)' : 'translateX(0)'} ${activeRevenuePoint.y > revenueHeight * 0.38 ? 'translateY(calc(-100% - 12px))' : 'translateY(12px)'}`, px: 1.25, py: 0.8, borderRadius: 1.5, color: '#fff', bgcolor: '#102b3f', boxShadow: '0 8px 24px rgba(16, 43, 63, .24)', pointerEvents: 'none', whiteSpace: 'nowrap' }}><Typography variant="caption" sx={{ display: 'block', color: 'rgba(255,255,255,.8)', lineHeight: 1.4 }}>{activeRevenueRecord.label} {year}</Typography><Stack direction="row" spacing={0.75} alignItems="center"><Box aria-hidden="true" sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: '#5ce0c2' }} /><Typography variant="body2" sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.5 }}>{formatCurrency(activeRevenueRecord.value)}</Typography></Stack></Box>}</Box> : <Box sx={{ display: 'grid', placeItems: 'center', minHeight: 230 }}><Typography color="text.secondary">No paid revenue data is available for {year}.</Typography></Box>}
     </Paper>
 
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'repeat(2, minmax(0, 1fr))' }, gap: 2, alignItems: 'stretch' }}>
@@ -792,7 +815,7 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'p
             <Typography variant="body2" sx={{ fontWeight: 700, flex: 1, minWidth: 0 }}>{metric.label}</Typography>
             <Typography variant="body2" sx={{ fontWeight: 800, color: metric.color, fontVariantNumeric: 'tabular-nums' }}>{`${Math.round(metric.value)}%`}</Typography>
           </Stack>
-          <LinearProgress variant="determinate" value={Math.min(100, Math.max(0, metric.value))} aria-label={`${metric.label} ${Math.round(metric.value)} percent`} sx={{ height: 9, borderRadius: 99, bgcolor: alpha(metric.color, 0.12), '& .MuiLinearProgress-bar': { borderRadius: 99, bgcolor: metric.color } }} />
+          <AnalyticsValueTooltip label={metric.label} value={`${Math.round(metric.value)}% · ${metric.detail}`}><Box component="span" tabIndex={0} role="img" aria-label={`${metric.label}: ${Math.round(metric.value)} percent. ${metric.detail}`} sx={{ display: 'block', width: '100%', outlineOffset: 3 }}><LinearProgress variant="determinate" value={Math.min(100, Math.max(0, metric.value))} aria-label={`${metric.label} ${Math.round(metric.value)} percent`} sx={{ height: 9, borderRadius: 99, bgcolor: alpha(metric.color, 0.12), '& .MuiLinearProgress-bar': { borderRadius: 99, bgcolor: metric.color } }} /></Box></AnalyticsValueTooltip>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.6, pl: 5.5 }}>{metric.detail}</Typography>
         </Box>)}</Stack> : <Box role="status" sx={{ display: 'grid', placeItems: 'center', minHeight: 180, textAlign: 'center', px: 2 }}><Typography variant="body2" color="text.secondary">Learning progress metrics will appear when completion, attendance, or assessment records are available.</Typography></Box>}
       </Paper>
@@ -802,13 +825,13 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'p
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(112px, .85fr) minmax(0, 1.15fr)', sm: 'minmax(140px, .9fr) minmax(0, 1.1fr)' }, alignItems: 'center', gap: { xs: 1, sm: 2 }, minWidth: 0 }}>
           {enrollmentTotal > 0 ? <>
             <Box sx={{ minWidth: 0, justifySelf: 'center', width: '100%', maxWidth: donutSize }}>
-              <Box component="svg" viewBox={`0 0 ${donutSize} ${donutSize}`} sx={{ display: 'block', width: '100%', height: 'auto' }} role="img" aria-label={`Enrollment distribution, ${formatCount(enrollmentTotal)} records`}>
+              <Box component="svg" viewBox={`0 0 ${donutSize} ${donutSize}`} onPointerLeave={(event) => { if (event.pointerType !== 'touch') setActiveEnrollmentType(null) }} sx={{ display: 'block', width: '100%', height: 'auto' }} role="group" aria-label={`Enrollment distribution, ${formatCount(enrollmentTotal)} records`}>
                 <circle cx={donutCenter} cy={donutCenter} r={donutRadius} fill="none" stroke={theme.palette.action.hover} strokeWidth={donutStroke} />
                 {enrollmentRecords.map((record) => {
                   const segment = donutCircumference * record.count / enrollmentTotal
                   const offset = donutOffset
                   donutOffset += segment
-                  return <circle key={record.type} cx={donutCenter} cy={donutCenter} r={donutRadius} fill="none" stroke={enrollmentStyles[record.type].color} strokeWidth={donutStroke} strokeDasharray={`${segment} ${donutCircumference - segment}`} strokeDashoffset={-offset} transform={`rotate(-90 ${donutCenter} ${donutCenter})`}><title>{`${enrollmentStyles[record.type].label}: ${formatCount(record.count)} records, ${((record.count / enrollmentTotal) * 100).toFixed(1)}%`}</title></circle>
+                  return <AnalyticsValueTooltip key={record.type} label={enrollmentStyles[record.type].label} value={`${formatCount(record.count)} records · ${((record.count / enrollmentTotal) * 100).toFixed(1)}%`}><circle data-enrollment-point="true" cx={donutCenter} cy={donutCenter} r={donutRadius} fill="none" stroke={enrollmentStyles[record.type].color} strokeWidth={activeEnrollmentType === record.type ? donutStroke + 3 : donutStroke} strokeDasharray={`${segment} ${donutCircumference - segment}`} strokeDashoffset={-offset} transform={`rotate(-90 ${donutCenter} ${donutCenter})`} tabIndex={0} role="button" aria-label={`${enrollmentStyles[record.type].label}: ${formatCount(record.count)} records, ${((record.count / enrollmentTotal) * 100).toFixed(1)} percent`} onPointerEnter={() => setActiveEnrollmentType(record.type)} onPointerLeave={(event) => { if (event.pointerType !== 'touch') setActiveEnrollmentType(null) }} onPointerDown={() => setActiveEnrollmentType(record.type)} onFocus={() => setActiveEnrollmentType(record.type)} onBlur={() => setActiveEnrollmentType(null)}><title>{`${enrollmentStyles[record.type].label}: ${formatCount(record.count)} records, ${((record.count / enrollmentTotal) * 100).toFixed(1)}%`}</title></circle></AnalyticsValueTooltip>
                 })}
                 <text x={donutCenter} y={donutCenter - 3} textAnchor="middle" fill={theme.palette.text.primary} fontSize="25" fontWeight="800">{formatCount(enrollmentTotal)}</text>
                 <text x={donutCenter} y={donutCenter + 18} textAnchor="middle" fill={theme.palette.text.secondary} fontSize="10">total records</text>
@@ -1053,7 +1076,7 @@ const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
       <AtRiskStudentsPanel students={atRiskStudents} loading={atRiskLoading} error={atRiskError} compact />
       <WeakAreasPanel weakAreas={overview.weakAreas} />
     </Box>
-    <DashboardCharts paidRevenueByMonth={overview.paidRevenueByMonth} paidRevenueComparison={overview.paidRevenueComparison} learningMetrics={overview.learningMetrics} enrollmentDistribution={overview.enrollmentDistribution} /></>}
+    <DashboardCharts paidRevenueYears={overview.paidRevenueYears} paidRevenueByMonth={overview.paidRevenueByMonth} learningMetrics={overview.learningMetrics} enrollmentDistribution={overview.enrollmentDistribution} /></>}
   </>
 }
 
