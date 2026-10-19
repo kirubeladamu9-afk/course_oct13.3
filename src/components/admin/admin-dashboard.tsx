@@ -706,60 +706,10 @@ const LessonDetailsPanel: FC<{ lessonPanel: LessonPanelState; updateLessonDraft:
   </Paper>
 }
 
-type DashboardMetricPoint = { label: string; value: number | null; tooltip: string }
-
-const DashboardMetricChart: FC<{ title: string; points: DashboardMetricPoint[]; color: string; dashed?: boolean; formatter: (value: number) => string; emptyMessage: string; maxValue?: number; hasData?: boolean }> = ({ title, points, color, dashed = false, formatter, emptyMessage, maxValue, hasData }) => {
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
-  const isNarrow = useMediaQuery(theme.breakpoints.down('lg'))
-  const width = isMobile ? 360 : isNarrow ? 560 : 700
-  const height = 192
-  const margins = { top: 14, right: 12, bottom: 34, left: 52 }
-  const plotWidth = width - margins.left - margins.right
-  const plotHeight = height - margins.top - margins.bottom
-  const observedMax = Math.max(0, ...points.map((point) => point.value ?? 0))
-  const axisMax = maxValue ?? Math.max(1, Math.ceil(observedMax / 4) * 4)
-  const ticks = Array.from({ length: 5 }, (_, index) => axisMax - (axisMax * index) / 4)
-  const coordinates = points.map((point, index) => point.value === null ? null : ({
-    x: margins.left + (points.length < 2 ? plotWidth / 2 : (plotWidth * index) / (points.length - 1)),
-    y: margins.top + plotHeight * (1 - point.value / axisMax),
-  }))
-  const segments: string[] = []
-  let segment: string[] = []
-  coordinates.forEach((coordinate) => {
-    if (!coordinate) {
-      if (segment.length) segments.push(segment.join(' '))
-      segment = []
-    } else {
-      segment.push(`${segment.length ? 'L' : 'M'} ${coordinate.x} ${coordinate.y}`)
-    }
-  })
-  if (segment.length) segments.push(segment.join(' '))
-  const hasEvent = hasData ?? points.some((point) => point.value !== null && point.value > 0)
-
-  return <Box sx={{ minWidth: 0 }}>
-    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}><Box sx={{ width: 20, height: 0, borderTop: `3px ${dashed ? 'dashed' : 'solid'} ${color}`, flexShrink: 0 }} /><Typography variant="body2" sx={{ fontWeight: 700 }}>{title}</Typography></Stack>
-    {!points.length || !hasEvent ? <Box sx={{ display: 'grid', placeItems: 'center', minHeight: 145, borderRadius: 2, bgcolor: 'action.hover' }}><Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', px: 1 }}>{emptyMessage}</Typography></Box> : <Box sx={{ minWidth: 0, overflow: 'hidden' }}><Box component="svg" viewBox={`0 0 ${width} ${height}`} sx={{ display: 'block', width: '100%', height: 'auto' }} role="img" aria-label={title}>
-      {ticks.map((tick, index) => {
-        const y = margins.top + plotHeight * (index / 4)
-        return <g key={`${title}-tick-${index}`}><line x1={margins.left} x2={width - margins.right} y1={y} y2={y} stroke={theme.palette.divider} strokeDasharray="4 5" /><text x={margins.left - 8} y={y + 4} fill={theme.palette.text.secondary} fontSize="10" textAnchor="end">{formatter(tick)}</text></g>
-      })}
-      {segments.map((path, index) => <path key={`${title}-segment-${index}`} d={path} fill="none" stroke={color} strokeWidth="3" strokeDasharray={dashed ? '7 5' : undefined} strokeLinecap="round" strokeLinejoin="round" />)}
-      {coordinates.map((coordinate, index) => coordinate && <g key={`${title}-point-${index}`}><circle cx={coordinate.x} cy={coordinate.y} r="4" fill={theme.palette.background.paper} stroke={color} strokeWidth="2.5"><title>{points[index].tooltip}</title></circle></g>)}
-      {points.map((point, index) => {
-        const x = margins.left + (points.length < 2 ? plotWidth / 2 : (plotWidth * index) / (points.length - 1))
-        const anchor = index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle'
-        return <text key={`${title}-label-${index}`} x={x} y={height - 9} fill={theme.palette.text.secondary} fontSize="10" textAnchor={anchor}>{isNarrow ? point.label.slice(0, 3) : point.label}</text>
-      })}
-    </Box></Box>}
-  </Box>
-}
-
-const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'paidRevenueComparison' | 'lessonCompletionsByMonth' | 'quizPerformanceByMonth' | 'courseEnrollments' | 'classEnrollments' | 'enrollmentSummary'> & { selectedClassId: number | 'all' }> = ({ paidRevenueByMonth, paidRevenueComparison, lessonCompletionsByMonth, quizPerformanceByMonth, courseEnrollments, classEnrollments, enrollmentSummary, selectedClassId }) => {
+const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'paidRevenueComparison' | 'learningMetrics' | 'enrollmentDistribution'>> = ({ paidRevenueByMonth, paidRevenueComparison, learningMetrics, enrollmentDistribution }) => {
   const theme = useTheme()
   const isNarrow = useMediaQuery(theme.breakpoints.down('lg'))
   const [chosenCurrency, setChosenCurrency] = useState('')
-  const [offeringType, setOfferingType] = useState<'courses' | 'classes'>('courses')
   const availableCurrencies = [...new Set(paidRevenueByMonth.map((point) => point.currency))]
   const currency = availableCurrencies.includes(chosenCurrency) ? chosenCurrency : availableCurrencies[0] ?? ''
   const revenueSeries = paidRevenueByMonth.filter((point) => point.currency === currency).sort((a, b) => a.monthKey.localeCompare(b.monthKey))
@@ -769,6 +719,20 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'p
   const formatCurrency = (value: number) => currency ? new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value) : String(value)
   const formatAxisCurrency = (value: number) => currency ? new Intl.NumberFormat('en-US', { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(value) : String(value)
   const formatCount = (value: number) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value)
+  const metrics = [
+    learningMetrics.lessonCompletion.total > 0 ? { key: 'lesson-completion', label: 'Lesson Completion', value: learningMetrics.lessonCompletion.percentage, detail: `${formatCount(learningMetrics.lessonCompletion.completed)} of ${formatCount(learningMetrics.lessonCompletion.total)} lesson records completed`, icon: <BookOutlinedIcon fontSize="small" />, color: '#0b8877' } : null,
+    learningMetrics.classAttendance.total > 0 ? { key: 'class-attendance', label: 'Class Attendance', value: learningMetrics.classAttendance.percentage, detail: `${formatCount(learningMetrics.classAttendance.present)} of ${formatCount(learningMetrics.classAttendance.total)} marked sessions attended`, icon: <ClassOutlinedIcon fontSize="small" />, color: '#0b8877' } : null,
+    learningMetrics.quizPerformance.attempts > 0 ? { key: 'quiz-performance', label: 'Quiz Performance', value: learningMetrics.quizPerformance.percentage, detail: `Average score across ${formatCount(learningMetrics.quizPerformance.attempts)} submitted attempts`, icon: <QuizOutlinedIcon fontSize="small" />, color: '#bd791b' } : null,
+  ].filter((metric): metric is Exclude<typeof metric, null> & { value: number } => metric !== null && metric.value !== null)
+  const enrollmentStyles = { courses: { label: 'Courses', color: '#0b8877' }, classes: { label: 'Classes', color: '#4279c5' }, exams: { label: 'Exams', color: '#bd791b' } } as const
+  const enrollmentRecords = enrollmentDistribution.filter((record) => record.count > 0)
+  const enrollmentTotal = enrollmentRecords.reduce((total, record) => total + record.count, 0)
+  const donutSize = 190
+  const donutCenter = donutSize / 2
+  const donutRadius = 66
+  const donutStroke = 22
+  const donutCircumference = 2 * Math.PI * donutRadius
+  let donutOffset = 0
   const revenueWidth = isNarrow ? 420 : 900
   const revenueHeight = 286
   const revenueMargins = isNarrow ? { top: 24, right: 14, bottom: 42, left: 62 } : { top: 24, right: 22, bottom: 44, left: 82 }
@@ -789,20 +753,6 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'p
   }))
   const revenueLine = revenueCoordinates.map(({ x, y }, index) => `${index === 0 ? 'M' : 'L'} ${x} ${y}`).join(' ')
   const revenueArea = revenueCoordinates.length ? `${revenueLine} L ${revenueCoordinates[revenueCoordinates.length - 1].x} ${revenueMargins.top + revenuePlotHeight} L ${revenueCoordinates[0].x} ${revenueMargins.top + revenuePlotHeight} Z` : ''
-  const enrollmentIsLocked = selectedClassId !== 'all'
-  const selectedOfferingType = enrollmentIsLocked ? 'classes' : offeringType
-  const offerings = selectedOfferingType === 'courses' ? courseEnrollments : classEnrollments
-  const enrollmentTotals = enrollmentSummary[selectedOfferingType]
-  const enrollmentWidth = Math.max(560, offerings.length * 76)
-  const enrollmentHeight = 270
-  const enrollmentMargins = { top: 20, right: 16, bottom: 66, left: 48 }
-  const enrollmentPlotWidth = enrollmentWidth - enrollmentMargins.left - enrollmentMargins.right
-  const enrollmentPlotHeight = enrollmentHeight - enrollmentMargins.top - enrollmentMargins.bottom
-  const maxLearners = Math.max(0, ...offerings.map(({ learners }) => learners))
-  const enrollmentStep = Math.max(1, Math.ceil(maxLearners / 4))
-  const enrollmentAxisMax = enrollmentStep * 4
-  const enrollmentTicks = Array.from({ length: 5 }, (_, index) => enrollmentAxisMax - enrollmentStep * index)
-  const enrollmentColor = selectedOfferingType === 'courses' ? '#0b8877' : '#bd791b'
 
   return <Stack spacing={2}>
     <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0 }}>
@@ -832,36 +782,44 @@ const DashboardCharts: FC<Pick<AdminDashboardOverview, 'paidRevenueByMonth' | 'p
 
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'repeat(2, minmax(0, 1fr))' }, gap: 2, alignItems: 'stretch' }}>
       <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.5 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0, height: '100%', boxSizing: 'border-box' }}>
-        <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 2 }}><Box sx={{ display: 'grid', placeItems: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.1) }}><AssessmentOutlinedIcon fontSize="small" /></Box><Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Student Learning Progress</Typography><Typography variant="body2" color="text.secondary">Monthly completions and assessment performance</Typography></Box></Stack>
-        <Stack spacing={2.25}>
-          <DashboardMetricChart title="Lesson completions · completed lesson records" color="#0b8877" points={[...lessonCompletionsByMonth].sort((a, b) => a.monthKey.localeCompare(b.monthKey)).map((point) => ({ label: point.label, value: point.value, tooltip: `${point.label}: ${formatCount(point.value)} lesson completions` }))} formatter={(value) => formatCount(Math.round(value))} emptyMessage="No lesson completions recorded in this period yet." />
-          <DashboardMetricChart title="Quiz average score · percent" color="#bd791b" dashed points={[...quizPerformanceByMonth].sort((a, b) => a.monthKey.localeCompare(b.monthKey)).map((point) => ({ label: point.label, value: point.averageScore, tooltip: `${point.label}: ${point.averageScore === null ? 'No average score' : `${point.averageScore}% average`} · ${formatCount(point.attempts)} attempts` }))} formatter={(value) => `${Math.round(value)}%`} maxValue={100} hasData={quizPerformanceByMonth.some((point) => point.attempts > 0)} emptyMessage="No submitted quiz attempts recorded in this period yet." />
-        </Stack>
+        <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 2 }}><Box sx={{ display: 'grid', placeItems: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.1) }}><AssessmentOutlinedIcon fontSize="small" /></Box><Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Student Learning Progress</Typography><Typography variant="body2" color="text.secondary">Learning completion and assessment outcomes.</Typography></Box></Stack>
+        {metrics.length ? <Stack spacing={2.25}>{metrics.map((metric) => <Box key={metric.key}>
+          <Stack direction="row" alignItems="center" spacing={1.25} sx={{ mb: 1 }}>
+            <Tooltip title={metric.detail}><Box aria-label={`${metric.label}: ${metric.detail}`} sx={{ display: 'grid', placeItems: 'center', width: 34, height: 34, flexShrink: 0, borderRadius: 2, color: metric.color, bgcolor: alpha(metric.color, 0.1) }}>{metric.icon}</Box></Tooltip>
+            <Typography variant="body2" sx={{ fontWeight: 700, flex: 1, minWidth: 0 }}>{metric.label}</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 800, color: metric.color, fontVariantNumeric: 'tabular-nums' }}>{`${Math.round(metric.value)}%`}</Typography>
+          </Stack>
+          <LinearProgress variant="determinate" value={Math.min(100, Math.max(0, metric.value))} aria-label={`${metric.label} ${Math.round(metric.value)} percent`} sx={{ height: 9, borderRadius: 99, bgcolor: alpha(metric.color, 0.12), '& .MuiLinearProgress-bar': { borderRadius: 99, bgcolor: metric.color } }} />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.6, pl: 5.5 }}>{metric.detail}</Typography>
+        </Box>)}</Stack> : <Box role="status" sx={{ display: 'grid', placeItems: 'center', minHeight: 180, textAlign: 'center', px: 2 }}><Typography variant="body2" color="text.secondary">Learning progress metrics will appear when completion, attendance, or assessment records are available.</Typography></Box>}
       </Paper>
 
       <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.5 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper', minWidth: 0, height: '100%', boxSizing: 'border-box' }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={1.25} sx={{ mb: 2 }}><Stack direction="row" spacing={1.25} alignItems="center"><Box sx={{ display: 'grid', placeItems: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: 2, color: selectedOfferingType === 'courses' ? 'primary.main' : 'warning.dark', backgroundColor: (currentTheme) => alpha(selectedOfferingType === 'courses' ? currentTheme.palette.primary.main : currentTheme.palette.warning.main, 0.1) }}><GroupOutlinedIcon fontSize="small" /></Box><Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Enrollment Analytics</Typography><Typography variant="body2" color="text.secondary">Distinct learners by offering</Typography></Box></Stack><FormControl size="small" sx={{ minWidth: 132 }} disabled={enrollmentIsLocked}><InputLabel id="dashboard-enrollment-type-label">Offering type</InputLabel><Select labelId="dashboard-enrollment-type-label" label="Offering type" value={selectedOfferingType} onChange={(event) => setOfferingType(event.target.value as 'courses' | 'classes')}><MenuItem value="courses">Courses</MenuItem><MenuItem value="classes">Classes</MenuItem></Select></FormControl></Stack>
-        {offerings.length ? <Box sx={{ minWidth: 0 }}>
-          <Box sx={{ overflowX: offerings.length > 7 ? 'auto' : 'hidden' }}><Box component="svg" viewBox={`0 0 ${enrollmentWidth} ${enrollmentHeight}`} sx={{ display: 'block', width: '100%', minWidth: offerings.length > 7 ? 560 : 0, height: 'auto' }} role="img" aria-label={`${selectedOfferingType} distinct learners by offering`}>
-            {enrollmentTicks.map((tick, index) => {
-              const y = enrollmentMargins.top + enrollmentPlotHeight * (index / 4)
-              return <g key={`enrollment-tick-${index}`}><line x1={enrollmentMargins.left} x2={enrollmentWidth - enrollmentMargins.right} y1={y} y2={y} stroke={theme.palette.divider} strokeDasharray="4 5" /><text x={enrollmentMargins.left - 8} y={y + 4} fill={theme.palette.text.secondary} fontSize="10" textAnchor="end">{formatCount(tick)}</text></g>
-            })}
-            {offerings.map(({ label, learners, enrollmentRecords }, index) => {
-              const groupWidth = enrollmentPlotWidth / offerings.length
-              const center = enrollmentMargins.left + groupWidth * (index + 0.5)
-              const barWidth = Math.min(48, groupWidth * 0.56)
-              const barHeight = (learners / enrollmentAxisMax) * enrollmentPlotHeight
-              const shortLimit = Math.max(6, Math.floor(groupWidth / 7))
-              const shortLabel = label.length > shortLimit ? `${label.slice(0, shortLimit - 1)}…` : label
-              return <g key={`${label}-${index}`}><rect x={center - barWidth / 2} y={enrollmentMargins.top + enrollmentPlotHeight - barHeight} width={barWidth} height={barHeight} rx="5" fill={enrollmentColor}><title>{`${label}: ${formatCount(learners)} distinct learners · ${formatCount(enrollmentRecords)} enrollment records`}</title></rect><text x={center} y={enrollmentMargins.top + enrollmentPlotHeight - barHeight - 7} fill={theme.palette.text.primary} fontSize="11" fontWeight="700" textAnchor="middle">{formatCount(learners)}</text><text x={center} y={enrollmentHeight - 20} fill={theme.palette.text.secondary} fontSize="10" textAnchor="middle"><title>{label}</title>{shortLabel}</text></g>
-            })}
-          </Box></Box>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 1, mt: 1.25, px: 1.5, py: 1.25, borderRadius: 2, backgroundColor: (currentTheme) => alpha(selectedOfferingType === 'courses' ? currentTheme.palette.primary.main : currentTheme.palette.warning.main, 0.07) }}>
-            <Typography variant="caption" color="text.secondary">{selectedOfferingType === 'courses' ? 'Courses' : 'Classes'} summary · totals within this offering type</Typography>
-            <Stack direction="row" spacing={1.5}><Typography variant="caption" sx={{ fontWeight: 700 }}>{formatCount(enrollmentTotals.learners)} distinct learners</Typography><Typography variant="caption" sx={{ fontWeight: 700 }}>{formatCount(enrollmentTotals.enrollmentRecords)} enrollment records</Typography></Stack>
-          </Box>
-        </Box> : <Box sx={{ display: 'grid', placeItems: 'center', minHeight: 260 }}><Typography color="text.secondary">No {selectedOfferingType === 'courses' ? 'course' : 'class'} enrollment data is available yet.</Typography></Box>}
+        <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 2.5 }}><Box sx={{ display: 'grid', placeItems: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: 2, color: 'primary.main', backgroundColor: (currentTheme) => alpha(currentTheme.palette.primary.main, 0.1) }}><GroupOutlinedIcon fontSize="small" /></Box><Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Enrollment Analytics</Typography><Typography variant="body2" color="text.secondary">Paid enrollment records and practice-exam purchases</Typography></Box></Stack>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(112px, .85fr) minmax(0, 1.15fr)', sm: 'minmax(140px, .9fr) minmax(0, 1.1fr)' }, alignItems: 'center', gap: { xs: 1, sm: 2 }, minWidth: 0 }}>
+          {enrollmentTotal > 0 ? <>
+            <Box sx={{ minWidth: 0, justifySelf: 'center', width: '100%', maxWidth: donutSize }}>
+              <Box component="svg" viewBox={`0 0 ${donutSize} ${donutSize}`} sx={{ display: 'block', width: '100%', height: 'auto' }} role="img" aria-label={`Enrollment distribution, ${formatCount(enrollmentTotal)} records`}>
+                <circle cx={donutCenter} cy={donutCenter} r={donutRadius} fill="none" stroke={theme.palette.action.hover} strokeWidth={donutStroke} />
+                {enrollmentRecords.map((record) => {
+                  const segment = donutCircumference * record.count / enrollmentTotal
+                  const offset = donutOffset
+                  donutOffset += segment
+                  return <circle key={record.type} cx={donutCenter} cy={donutCenter} r={donutRadius} fill="none" stroke={enrollmentStyles[record.type].color} strokeWidth={donutStroke} strokeDasharray={`${segment} ${donutCircumference - segment}`} strokeDashoffset={-offset} transform={`rotate(-90 ${donutCenter} ${donutCenter})`}><title>{`${enrollmentStyles[record.type].label}: ${formatCount(record.count)} records, ${((record.count / enrollmentTotal) * 100).toFixed(1)}%`}</title></circle>
+                })}
+                <text x={donutCenter} y={donutCenter - 3} textAnchor="middle" fill={theme.palette.text.primary} fontSize="25" fontWeight="800">{formatCount(enrollmentTotal)}</text>
+                <text x={donutCenter} y={donutCenter + 18} textAnchor="middle" fill={theme.palette.text.secondary} fontSize="10">total records</text>
+              </Box>
+            </Box>
+            <Stack divider={<Divider flexItem />} sx={{ minWidth: 0 }}>
+              {enrollmentRecords.map((record) => <Stack key={record.type} direction="row" alignItems="center" spacing={1} sx={{ py: 1.25, minWidth: 0 }}>
+                <Box aria-hidden="true" sx={{ width: 10, height: 10, flexShrink: 0, borderRadius: '50%', bgcolor: enrollmentStyles[record.type].color }} />
+                <Box sx={{ minWidth: 0, flex: 1 }}><Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>{enrollmentStyles[record.type].label}</Typography><Typography variant="caption" color="text.secondary">{((record.count / enrollmentTotal) * 100).toFixed(1)}%</Typography></Box>
+                <Typography variant="body2" sx={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{formatCount(record.count)}</Typography>
+              </Stack>)}
+            </Stack>
+          </> : <Box role="status" sx={{ gridColumn: '1 / -1', display: 'grid', placeItems: 'center', minHeight: 180, textAlign: 'center', px: 2 }}><Typography variant="body2" color="text.secondary">No paid enrollment or exam purchase records are available yet.</Typography></Box>}
+        </Box>
       </Paper>
     </Box>
   </Stack>
@@ -1092,7 +1050,7 @@ const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
       <AtRiskStudentsPanel students={atRiskStudents} loading={atRiskLoading} error={atRiskError} compact />
       <WeakAreasPanel weakAreas={overview.weakAreas} />
     </Box>
-    <DashboardCharts paidRevenueByMonth={overview.paidRevenueByMonth} paidRevenueComparison={overview.paidRevenueComparison} lessonCompletionsByMonth={overview.lessonCompletionsByMonth} quizPerformanceByMonth={overview.quizPerformanceByMonth} courseEnrollments={overview.courseEnrollments} classEnrollments={overview.classEnrollments} enrollmentSummary={overview.enrollmentSummary} selectedClassId={selectedClassId} /></>}
+    <DashboardCharts paidRevenueByMonth={overview.paidRevenueByMonth} paidRevenueComparison={overview.paidRevenueComparison} learningMetrics={overview.learningMetrics} enrollmentDistribution={overview.enrollmentDistribution} /></>}
   </>
 }
 

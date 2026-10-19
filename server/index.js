@@ -3580,6 +3580,95 @@ app.get('/api/admin/overview', requireAdmin, async (request, response) => {
   `
   const enrollmentSummary = { courses: courseSummary, classes: classSummary }
 
+  const [lessonCompletion] = await sql`
+    WITH eligible_enrollments AS (
+      SELECT enrollments.id,
+             enrollments.class_id,
+             courses.modules AS course_modules,
+             classes.modules AS class_modules
+      FROM enrollments
+      INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+      LEFT JOIN courses ON courses.id = enrollments.course_id
+      LEFT JOIN classes ON classes.id = enrollments.class_id
+      WHERE (enrollments.class_id IS NULL OR enrollments.class_status = 'enrolled')
+        AND (${classId}::BIGINT IS NULL OR enrollments.class_id = ${classId})
+    ), lesson_rows AS (
+      SELECT DISTINCT eligible_enrollments.id AS enrollment_id, lesson.value->>'id' AS lesson_id
+      FROM eligible_enrollments
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE
+          WHEN eligible_enrollments.class_id IS NOT NULL AND jsonb_typeof(eligible_enrollments.class_modules) = 'array' THEN eligible_enrollments.class_modules
+          WHEN eligible_enrollments.class_id IS NULL AND jsonb_typeof(eligible_enrollments.course_modules) = 'array' THEN eligible_enrollments.course_modules
+          ELSE '[]'::jsonb
+        END
+      ) AS module(value)
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE WHEN jsonb_typeof(module.value->'lessons') = 'array' THEN module.value->'lessons' ELSE '[]'::jsonb END
+      ) AS lesson(value)
+    )
+    SELECT COUNT(*)::INTEGER AS total,
+           COUNT(*) FILTER (WHERE progress.completed_at IS NOT NULL)::INTEGER AS completed
+    FROM lesson_rows
+    LEFT JOIN student_lesson_progress AS progress
+      ON progress.enrollment_id = lesson_rows.enrollment_id
+     AND progress.lesson_id = lesson_rows.lesson_id::BIGINT
+  `
+  const [classAttendance] = await sql`
+    SELECT COUNT(*) FILTER (WHERE attendance.status = 'Present')::INTEGER AS present,
+           COUNT(*)::INTEGER AS total
+    FROM class_attendance AS attendance
+    INNER JOIN enrollments ON enrollments.id = attendance.enrollment_id
+    INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+    WHERE enrollments.class_id IS NOT NULL
+      AND enrollments.class_status = 'enrolled'
+      AND (${classId}::BIGINT IS NULL OR enrollments.class_id = ${classId})
+  `
+  const [quizSummary] = await sql`
+    SELECT AVG(quiz_attempts.score)::FLOAT AS average_score,
+           COUNT(*)::INTEGER AS attempts
+    FROM quiz_attempts
+    INNER JOIN enrollments ON enrollments.id = quiz_attempts.enrollment_id
+    INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+    WHERE quiz_attempts.submitted_at IS NOT NULL
+      AND quiz_attempts.disqualified = false
+      AND (enrollments.class_id IS NULL OR enrollments.class_status = 'enrolled')
+      AND (${classId}::BIGINT IS NULL OR enrollments.class_id = ${classId})
+  `
+  const learningMetrics = {
+    lessonCompletion: {
+      completed: lessonCompletion.completed,
+      total: lessonCompletion.total,
+      percentage: Number(lessonCompletion.total) > 0 ? Number(lessonCompletion.completed) / Number(lessonCompletion.total) * 100 : null,
+    },
+    classAttendance: {
+      present: classAttendance.present,
+      total: classAttendance.total,
+      percentage: Number(classAttendance.total) > 0 ? Number(classAttendance.present) / Number(classAttendance.total) * 100 : null,
+    },
+    quizPerformance: {
+      attempts: quizSummary.attempts,
+      percentage: quizSummary.average_score,
+    },
+  }
+  const enrollmentDistribution = await sql`
+    SELECT 'courses' AS type, COUNT(*)::INTEGER AS count
+    FROM enrollments
+    INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+    WHERE enrollments.class_id IS NULL AND enrollments.course_id IS NOT NULL
+      AND ${classId}::BIGINT IS NULL
+    UNION ALL
+    SELECT 'classes' AS type, COUNT(*)::INTEGER AS count
+    FROM enrollments
+    INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+    WHERE enrollments.class_id IS NOT NULL AND enrollments.class_status = 'enrolled'
+      AND (${classId}::BIGINT IS NULL OR enrollments.class_id = ${classId})
+    UNION ALL
+    SELECT 'exams' AS type, COUNT(*)::INTEGER AS count
+    FROM practice_purchases
+    INNER JOIN payments ON payments.id = practice_purchases.payment_id AND payments.status = 'paid'
+    WHERE ${classId}::BIGINT IS NULL
+  `
+
   const weakAreas = await getAdminWeakAreas(classId)
 
   response.json({
@@ -3595,6 +3684,8 @@ app.get('/api/admin/overview', requireAdmin, async (request, response) => {
     courseEnrollments,
     classEnrollments,
     enrollmentSummary,
+    learningMetrics,
+    enrollmentDistribution,
     weakAreas,
   })
 })

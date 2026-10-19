@@ -477,6 +477,12 @@ export interface AdminDashboardOverview {
     courses: { learners: number; enrollmentRecords: number }
     classes: { learners: number; enrollmentRecords: number }
   }
+  learningMetrics: {
+    lessonCompletion: { completed: number; total: number; percentage: number | null }
+    classAttendance: { present: number; total: number; percentage: number | null }
+    quizPerformance: { attempts: number; percentage: number | null }
+  }
+  enrollmentDistribution: Array<{ type: 'courses' | 'classes' | 'exams'; count: number }>
   weakAreas: AdminWeakArea[]
 }
 
