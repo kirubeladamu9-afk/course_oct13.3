@@ -65,9 +65,6 @@ import GpsFixedOutlinedIcon from '@mui/icons-material/GpsFixedOutlined'
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined'
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
-import BookmarkBorderOutlinedIcon from '@mui/icons-material/BookmarkBorderOutlined'
-import BookmarkOutlinedIcon from '@mui/icons-material/BookmarkOutlined'
-import StarRoundedIcon from '@mui/icons-material/StarRounded'
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
 import { buildStudyPlan, getDaysBetween, prioritizePlannerTopics, toDateKey, type PlannerTopic } from '@/components/course/study-planner'
 import { countMasteryLevels, getLessonMastery, MASTERY_LABELS, type MasteryAttempt, type MasteryLevel } from '@/components/course/study-mastery'
@@ -184,8 +181,6 @@ const formatQuizCountdown = (seconds: number) => `${Math.floor(seconds / 60)}:${
   description?: string
   learningOutcomes?: string[]
   durationSeconds?: number
-  rating?: number | null
-  ratingCount?: number | null
   certificate: boolean
   modules: DashboardModule[]
   meetingLink?: string
@@ -299,8 +294,6 @@ const mapEnrollmentCourse = (enrollment: MyEnrollment): DashboardCourse => ({
   description: enrollment.courseDescription || enrollment.courseLongDescription || undefined,
   learningOutcomes: Array.isArray(enrollment.learningOutcomes) ? enrollment.learningOutcomes.filter((outcome): outcome is string => typeof outcome === 'string') : [],
   durationSeconds: enrollment.modules.flatMap((module) => module.lessons).reduce((total, lesson) => total + (lesson.duration ?? 0), 0),
-  rating: enrollment.courseRating,
-  ratingCount: enrollment.courseRatingCount,
   certificate: enrollment.certificate ?? false,
   modules: enrollment.modules.map((module) => ({
     id: module.id,
@@ -892,7 +885,7 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: R
 
 const CourseMiniRow: FC<{ course: DashboardCourse; enrollment: DashboardEnrollment; onOpenCourse: (courseId: number) => void }> = ({ course, enrollment, onOpenCourse }) => <Box component="button" type="button" onClick={() => onOpenCourse(course.id)} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1.5, p: 1.25, border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper', cursor: 'pointer', textAlign: 'left', font: 'inherit', '&:hover': { borderColor: 'primary.main' } }}><Box sx={{ display: 'flex', p: 1, borderRadius: 2, color: 'primary.main', backgroundColor: 'action.hover' }}><PlayCircleOutlineIcon /></Box><Box sx={{ flex: 1, minWidth: 0 }}><Typography noWrap sx={{ fontWeight: 600 }}>{course.title}</Typography><LinearProgress variant="determinate" value={enrollment.progress} sx={{ mt: 1, height: 6, borderRadius: 4 }} /></Box><Typography color="primary.main" variant="body2" sx={{ fontWeight: 700 }}>{enrollment.progress}%</Typography></Box>
 
-const EnrolledCourseCard: FC<{ enrollment: DashboardEnrollment; course: DashboardCourse; progress: number; grade: ReturnType<typeof getEnrollmentOverallGrade>; bookmarked: boolean; onToggleBookmark: () => void; onContinue: () => void }> = ({ enrollment, course, progress, grade, bookmarked, onToggleBookmark, onContinue }) => {
+const EnrolledCourseCard: FC<{ enrollment: DashboardEnrollment; course: DashboardCourse; progress: number; grade: ReturnType<typeof getEnrollmentOverallGrade>; onContinue: () => void }> = ({ enrollment, course, progress, grade, onContinue }) => {
   const cardRef = useRef<HTMLDivElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const closeTimerRef = useRef<number | null>(null)
@@ -935,12 +928,11 @@ const EnrolledCourseCard: FC<{ enrollment: DashboardEnrollment; course: Dashboar
     >
       <Box sx={{ position: 'relative', aspectRatio: '16 / 9', overflow: 'hidden', background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.22)}, ${alpha(theme.palette.info.main, 0.14)})` }}>
         {course.cover ? <Box component="img" src={course.cover} alt={`${course.title} thumbnail`} sx={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} /> : <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'primary.main' }}><MenuBookOutlinedIcon sx={{ fontSize: 46, opacity: 0.8 }} /></Box>}
-        <IconButton onClick={onToggleBookmark} aria-label={bookmarked ? `Remove ${course.title} from bookmarks` : `Bookmark ${course.title}`} aria-pressed={bookmarked} size="small" sx={{ position: 'absolute', top: 9, right: 9, color: bookmarked ? 'primary.main' : 'text.primary', backgroundColor: 'background.paper', '&:hover': { backgroundColor: 'background.paper', color: 'primary.main' } }}>{bookmarked ? <BookmarkOutlinedIcon fontSize="small" /> : <BookmarkBorderOutlinedIcon fontSize="small" />}</IconButton>
       </Box>
       <CardContent sx={{ p: 1.75, display: 'flex', flex: 1, flexDirection: 'column', '&:last-child': { pb: 1.75 } }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 0.9 }}>
           <Chip label={course.category} size="small" sx={{ height: 23, borderRadius: 1.5, fontSize: 11, fontWeight: 800, color: 'primary.dark', backgroundColor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.09) }} />
-          {course.ratingCount ? <Stack direction="row" spacing={0.25} alignItems="center" aria-label={`${course.rating} out of 5 stars, ${course.ratingCount} ratings`}><Typography variant="body2" sx={{ fontWeight: 800 }}>{course.rating?.toFixed(1)}</Typography><StarRoundedIcon sx={{ color: '#e7a82e', fontSize: 17 }} /><Typography variant="caption" color="text.secondary">({course.ratingCount})</Typography></Stack> : <Chip size="small" label={grade.letter} color={grade.letter === 'F' ? 'error' : grade.letter === 'D' ? 'warning' : 'success'} sx={{ height: 23, fontWeight: 800 }} />}
+          <Chip size="small" label={grade.letter} color={grade.letter === 'F' ? 'error' : grade.letter === 'D' ? 'warning' : 'success'} sx={{ height: 23, fontWeight: 800 }} />
         </Stack>
         <Typography variant="subtitle1" sx={{ minHeight: 48, mb: 0.5, fontWeight: 800, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{course.title}</Typography>
         <Typography variant="caption" color="text.secondary" sx={{ mb: 1.2 }}>Instructor: {course.tutor}</Typography>
@@ -981,7 +973,6 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
-  const [bookmarkedCourseIds, setBookmarkedCourseIds] = useState<number[]>([])
   const courseEnrollments = enrollments.filter((enrollment) => enrollment.type === 'course' && enrollment.course)
   const categories = Array.from(new Set(courseEnrollments.map((enrollment) => enrollment.course!.category)))
   const normalizedQuery = searchQuery.trim().toLowerCase()
@@ -1012,8 +1003,7 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
         const completed = completedLessons[course.id]
         const progress = completed === undefined ? enrollment.progress : getCourseProgress(course, completed)
         const grade = getEnrollmentOverallGrade(enrollment, progress)
-        const bookmarked = bookmarkedCourseIds.includes(course.id)
-        return <EnrolledCourseCard key={enrollment.id} enrollment={enrollment} course={course} progress={progress} grade={grade} bookmarked={bookmarked} onToggleBookmark={() => setBookmarkedCourseIds((current) => bookmarked ? current.filter((id) => id !== course.id) : [...current, course.id])} onContinue={() => onOpenCourse(course.id)} />
+        return <EnrolledCourseCard key={enrollment.id} enrollment={enrollment} course={course} progress={progress} grade={grade} onContinue={() => onOpenCourse(course.id)} />
       })}
       </Box>
       {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="My courses pages" /></Stack>}
@@ -1022,7 +1012,7 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
   </>
 }
 
-const EnrolledClassCard: FC<{ enrollment: DashboardEnrollment; classRecord: DashboardClass; course: DashboardCourse; now: Date; progress: number; grade: ReturnType<typeof getEnrollmentOverallGrade>; rank?: number; nextLiveLesson?: DashboardLesson; canOpenClass: boolean; bookmarked: boolean; onToggleBookmark: () => void; onContinue: () => void }> = ({ enrollment, classRecord, course, now, progress, grade, rank, nextLiveLesson, canOpenClass, bookmarked, onToggleBookmark, onContinue }) => {
+const EnrolledClassCard: FC<{ enrollment: DashboardEnrollment; classRecord: DashboardClass; course: DashboardCourse; now: Date; progress: number; grade: ReturnType<typeof getEnrollmentOverallGrade>; rank?: number; nextLiveLesson?: DashboardLesson; canOpenClass: boolean; onContinue: () => void }> = ({ enrollment, classRecord, course, now, progress, grade, rank, nextLiveLesson, canOpenClass, onContinue }) => {
   const cardRef = useRef<HTMLDivElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const closeTimerRef = useRef<number | null>(null)
@@ -1064,7 +1054,6 @@ const EnrolledClassCard: FC<{ enrollment: DashboardEnrollment; classRecord: Dash
       <Box sx={{ position: 'relative', aspectRatio: '16 / 9', overflow: 'hidden', background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.22)}, ${alpha(theme.palette.info.main, 0.14)})` }}>
         {course.cover ? <Box component="img" src={course.cover} alt={`${classRecord.title} thumbnail`} sx={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} /> : <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'primary.main' }}><ClassOutlinedIcon sx={{ fontSize: 46, opacity: 0.8 }} /></Box>}
         <Chip label={classRecord.status === 'pending_schedule' ? 'Pending schedule' : classHasEnded(classRecord.schedule, now) || classRecord.status === 'closed' ? 'Closed' : 'Active class'} size="small" color={canOpenClass ? 'success' : 'warning'} sx={{ position: 'absolute', left: 9, top: 9, height: 24, fontWeight: 700 }} />
-        <IconButton onClick={onToggleBookmark} aria-label={bookmarked ? `Remove ${classRecord.title} from bookmarks` : `Bookmark ${classRecord.title}`} aria-pressed={bookmarked} size="small" sx={{ position: 'absolute', top: 9, right: 9, color: bookmarked ? 'primary.main' : 'text.primary', backgroundColor: 'background.paper', '&:hover': { backgroundColor: 'background.paper', color: 'primary.main' } }}>{bookmarked ? <BookmarkOutlinedIcon fontSize="small" /> : <BookmarkBorderOutlinedIcon fontSize="small" />}</IconButton>
       </Box>
       <CardContent sx={{ p: 1.75, display: 'flex', flex: 1, flexDirection: 'column', '&:last-child': { pb: 1.75 } }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 0.9 }}>
@@ -1104,7 +1093,6 @@ const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [bookmarkedClassIds, setBookmarkedClassIds] = useState<number[]>([])
   const classEnrollments = enrollments.filter((enrollment, index) => enrollment.type === 'class' && enrollment.classRecord && enrollments.findIndex((other) => other.type === 'class' && other.classRecord?.id === enrollment.classRecord?.id) === index)
   const normalizedQuery = searchQuery.trim().toLowerCase()
   const filteredClassEnrollments = classEnrollments.filter((enrollment) => {
@@ -1139,8 +1127,7 @@ const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
       const progress = completed === undefined ? enrollment.progress : getCourseProgress(course, completed)
       const classRank = getClassRank(gamificationData, classRecord.id)
       const nextLiveLesson = getLessons(course).find((lesson) => lesson.type === 'live' && lesson.scheduledAt && new Date(lesson.scheduledAt).getTime() >= now.getTime())
-      const bookmarked = bookmarkedClassIds.includes(classRecord.id)
-      return <EnrolledClassCard key={enrollment.id} enrollment={enrollment} classRecord={classRecord} course={course} now={now} progress={progress} grade={getEnrollmentOverallGrade(enrollment, progress, now)} rank={classRank} nextLiveLesson={nextLiveLesson} canOpenClass={canOpenClass} bookmarked={bookmarked} onToggleBookmark={() => setBookmarkedClassIds((current) => bookmarked ? current.filter((id) => id !== classRecord.id) : [...current, classRecord.id])} onContinue={() => { if (canOpenClass) onOpenCourse(course.id) }} />
+      return <EnrolledClassCard key={enrollment.id} enrollment={enrollment} classRecord={classRecord} course={course} now={now} progress={progress} grade={getEnrollmentOverallGrade(enrollment, progress, now)} rank={classRank} nextLiveLesson={nextLiveLesson} canOpenClass={canOpenClass} onContinue={() => { if (canOpenClass) onOpenCourse(course.id) }} />
     })}</Box>
       {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="My classes pages" /></Stack>}
       </>}
