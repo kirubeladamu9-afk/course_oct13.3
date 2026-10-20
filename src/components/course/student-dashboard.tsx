@@ -1251,6 +1251,7 @@ const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; 
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [ratingFilter, setRatingFilter] = useState('all')
+  const [priceFilter, setPriceFilter] = useState('all')
   const [sortBy, setSortBy] = useState('popular')
   const [layout, setLayout] = useState<'grid' | 'list'>('grid')
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -1262,13 +1263,14 @@ const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; 
     const matchesSearch = !normalizedQuery || [course.title, course.category].some((value) => value.toLowerCase().includes(normalizedQuery))
     const matchesCategory = categoryFilter === 'all' || course.category === categoryFilter
     const matchesRating = ratingFilter === 'all' || course.rating >= Number(ratingFilter)
-    return matchesSearch && matchesCategory && matchesRating
+    const matchesPrice = priceFilter === 'all' || priceFilter === 'free' && course.price === 0 || priceFilter === 'under-25' && course.price > 0 && course.price < 25 || priceFilter === '25-50' && course.price >= 25 && course.price <= 50 || priceFilter === 'over-50' && course.price > 50
+    return matchesSearch && matchesCategory && matchesRating && matchesPrice
   })
   const sortedCourses = [...filteredCourses].sort((left, right) => sortBy === 'price' ? left.price - right.price : sortBy === 'title' ? left.title.localeCompare(right.title) : right.rating - left.rating)
   const pageCount = Math.ceil(sortedCourses.length / catalogPageSize)
   const visibleCourses = sortedCourses.slice((page - 1) * catalogPageSize, page * catalogPageSize)
 
-  useEffect(() => setPage(1), [courses.length, enrolledCourseIds.size, normalizedQuery, categoryFilter, ratingFilter, sortBy])
+  useEffect(() => setPage(1), [courses.length, enrolledCourseIds.size, normalizedQuery, categoryFilter, ratingFilter, priceFilter, sortBy])
 
   const filterPanel = <Paper elevation={0} sx={{ p: 2.25, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper' }}>
     <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 800 }}>Filter courses</Typography>
@@ -1285,9 +1287,22 @@ const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; 
       <FormLabel sx={{ mb: 0.75, color: 'text.primary', fontWeight: 700 }}>Rating</FormLabel>
       <RadioGroup value={ratingFilter} onChange={(event) => { setRatingFilter(event.target.value); setFiltersOpen(false) }}>
         <FormControlLabel value="all" control={<Radio size="small" />} label="Any rating" />
+        <FormControlLabel value="4.8" control={<Radio size="small" />} label="4.8 & up" />
         <FormControlLabel value="4.5" control={<Radio size="small" />} label="4.5 & up" />
         <FormControlLabel value="4" control={<Radio size="small" />} label="4.0 & up" />
         <FormControlLabel value="3.5" control={<Radio size="small" />} label="3.5 & up" />
+        <FormControlLabel value="3" control={<Radio size="small" />} label="3.0 & up" />
+      </RadioGroup>
+    </FormControl>
+    <Divider sx={{ my: 1.5 }} />
+    <FormControl>
+      <FormLabel sx={{ mb: 0.75, color: 'text.primary', fontWeight: 700 }}>Price</FormLabel>
+      <RadioGroup value={priceFilter} onChange={(event) => { setPriceFilter(event.target.value); setFiltersOpen(false) }}>
+        <FormControlLabel value="all" control={<Radio size="small" />} label="Any price" />
+        <FormControlLabel value="free" control={<Radio size="small" />} label="Free" />
+        <FormControlLabel value="under-25" control={<Radio size="small" />} label="Under $25" />
+        <FormControlLabel value="25-50" control={<Radio size="small" />} label="$25–$50" />
+        <FormControlLabel value="over-50" control={<Radio size="small" />} label="$50 and up" />
       </RadioGroup>
     </FormControl>
   </Paper>
@@ -1296,7 +1311,7 @@ const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; 
     <ViewHeading title="Explore courses" description="Discover available courses beyond your current learning plan." compact />
     {isLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading course catalog" /></Box> : error ? <EmptyState title="Courses unavailable" description={error} /> : availableCourses.length === 0 ? <EmptyState title="No more courses to explore" description="You are enrolled in every published course." /> : <>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5} alignItems="flex-start">
-        <Box component="aside" sx={{ display: { xs: 'none', md: 'block' }, width: 250, flexShrink: 0 }}>{filterPanel}</Box>
+        <Box component="aside" sx={{ display: { xs: 'none', md: 'block' }, width: 250, flexShrink: 0, position: 'sticky', top: 24, maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' }}>{filterPanel}</Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ mb: 2.5 }}>
             <Button variant="outlined" startIcon={<FilterListOutlinedIcon />} onClick={() => setFiltersOpen(true)} sx={{ display: { xs: 'inline-flex', md: 'none' }, alignSelf: { xs: 'flex-start', sm: 'auto' } }}>Filter</Button>
