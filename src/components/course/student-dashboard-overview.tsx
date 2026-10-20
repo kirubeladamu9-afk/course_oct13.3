@@ -21,6 +21,13 @@ interface OverviewCourse {
   progress: number
 }
 
+interface OverviewClass {
+  id: number
+  title: string
+  tutor: string
+  progress: number
+}
+
 interface OverviewSession {
   title: string
   courseTitle: string
@@ -56,6 +63,7 @@ const OverviewMetric = ({ label, value, detail, icon, tone }: OverviewMetricProp
 interface StudentDashboardOverviewProps {
   displayName: string
   courses: OverviewCourse[]
+  classes: OverviewClass[]
   lessonCount: number
   averageQuizScore: number | null
   quizCount: number
@@ -64,12 +72,15 @@ interface StudentDashboardOverviewProps {
   session?: OverviewSession
   readiness?: ReactNode
   onOpenCourse: (courseId: number) => void
+  onOpenClass: (classId: number) => void
   onSelectView: (view: 'calendar' | 'courses' | 'classes') => void
   children: ReactNode
 }
 
-const StudentDashboardOverview = ({ displayName, courses, lessonCount, averageQuizScore, quizCount, quizAverageNeedsAttention, learningStreak, session, readiness, onOpenCourse, onSelectView, children }: StudentDashboardOverviewProps) => {
+const StudentDashboardOverview = ({ displayName, courses, classes, lessonCount, averageQuizScore, quizCount, quizAverageNeedsAttention, learningStreak, session, readiness, onOpenCourse, onOpenClass, onSelectView, children }: StudentDashboardOverviewProps) => {
   const featuredCourse = courses[0]
+  const featuredClass = featuredCourse ? undefined : classes[0]
+  const featuredLearning = featuredCourse ?? featuredClass
 
   return <Box sx={{ maxWidth: 1260, mx: 'auto', pb: 2 }}>
     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'flex-end' }} spacing={2.5} sx={{ mb: 3 }}>
@@ -93,30 +104,30 @@ const StudentDashboardOverview = ({ displayName, courses, lessonCount, averageQu
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} spacing={3} sx={{ position: 'relative', p: { xs: 2.5, sm: 3.5, md: 4 } }}>
         <Box sx={{ maxWidth: 650 }}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-            <Chip size="small" icon={<SchoolOutlinedIcon />} label={featuredCourse ? 'PICK UP WHERE YOU LEFT OFF' : 'YOUR LEARNING PLAN'} sx={{ color: '#e6fff8', bgcolor: 'rgba(255,255,255,.13)', '& .MuiChip-icon': { color: 'inherit' }, fontWeight: 700, letterSpacing: '.04em' }} />
+            <Chip size="small" icon={<SchoolOutlinedIcon />} label={featuredLearning ? featuredClass ? 'PICK UP YOUR CLASS' : 'PICK UP WHERE YOU LEFT OFF' : 'YOUR LEARNING PLAN'} sx={{ color: '#e6fff8', bgcolor: 'rgba(255,255,255,.13)', '& .MuiChip-icon': { color: 'inherit' }, fontWeight: 700, letterSpacing: '.04em' }} />
           </Stack>
           <Typography variant="h4" sx={{ fontSize: { xs: '1.55rem', sm: '2rem' }, fontWeight: 800, letterSpacing: '-.035em', lineHeight: 1.2 }}>
-            {featuredCourse?.title ?? 'Your next chapter starts here'}
+            {featuredLearning?.title ?? 'Your next chapter starts here'}
           </Typography>
           <Typography sx={{ mt: 1, color: 'rgba(255,255,255,.76)', maxWidth: 540 }}>
-            {featuredCourse ? `${featuredCourse.category} · ${featuredCourse.level} · with ${featuredCourse.tutor}` : 'Explore your learning plan and find a course to get started.'}
+            {featuredLearning ? `${featuredLearning.category} · ${featuredLearning.level} · with ${featuredLearning.tutor}` : 'Explore your learning plan and find a course to get started.'}
           </Typography>
-          {featuredCourse && <Box sx={{ mt: 3, maxWidth: 480 }}>
+          {featuredLearning && <Box sx={{ mt: 3, maxWidth: 480 }}>
             <Stack direction="row" justifyContent="space-between" sx={{ mb: .8 }}>
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,.78)' }}>Course progress</Typography>
-              <Typography variant="body2" sx={{ fontWeight: 800 }}>{featuredCourse.progress}%</Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,.78)' }}>{featuredClass ? 'Class progress' : 'Course progress'}</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 800 }}>{featuredLearning.progress}%</Typography>
             </Stack>
-            <LinearProgress variant="determinate" value={featuredCourse.progress} sx={{ height: 8, borderRadius: 5, bgcolor: 'rgba(255,255,255,.22)', '& .MuiLinearProgress-bar': { borderRadius: 5, bgcolor: '#b8f0d9' } }} />
+            <LinearProgress variant="determinate" value={featuredLearning.progress} sx={{ height: 8, borderRadius: 5, bgcolor: 'rgba(255,255,255,.22)', '& .MuiLinearProgress-bar': { borderRadius: 5, bgcolor: '#b8f0d9' } }} />
           </Box>}
-          <Button variant="contained" endIcon={<PlayArrowRoundedIcon />} onClick={() => featuredCourse ? onOpenCourse(featuredCourse.id) : onSelectView('courses')} sx={{ mt: 2.5, borderRadius: 2.5, px: 2.25, color: '#12463e', bgcolor: '#fff', fontWeight: 800, boxShadow: 'none', '&:hover': { bgcolor: '#e8f8f2', boxShadow: 'none' } }}>
-            {featuredCourse ? 'Continue learning' : 'Browse courses'}
+          <Button variant="contained" endIcon={<PlayArrowRoundedIcon />} onClick={() => featuredCourse ? onOpenCourse(featuredCourse.id) : featuredClass ? onOpenClass(featuredClass.id) : onSelectView('courses')} sx={{ mt: 2.5, borderRadius: 2.5, px: 2.25, color: '#12463e', bgcolor: '#fff', fontWeight: 800, boxShadow: 'none', '&:hover': { bgcolor: '#e8f8f2', boxShadow: 'none' } }}>
+            {featuredLearning ? featuredClass ? 'Continue class' : 'Continue learning' : 'Browse courses'}
           </Button>
         </Box>
         <Box sx={{ display: 'flex', justifyContent: { xs: 'flex-start', md: 'center' }, alignItems: 'center', minWidth: { md: 190 }, pr: { md: 2 } }}>
-          <Box sx={{ width: 148, height: 148, borderRadius: '50%', display: 'grid', placeItems: 'center', background: `conic-gradient(#b8f0d9 ${featuredCourse?.progress ?? 0}%, rgba(255,255,255,.17) 0)` }}>
+          <Box sx={{ width: 148, height: 148, borderRadius: '50%', display: 'grid', placeItems: 'center', background: `conic-gradient(#b8f0d9 ${featuredLearning?.progress ?? 0}%, rgba(255,255,255,.17) 0)` }}>
             <Box sx={{ width: 128, height: 128, borderRadius: '50%', display: 'grid', placeItems: 'center', alignContent: 'center', gap: .25, bgcolor: '#17665b', border: '1px solid rgba(255,255,255,.16)' }}>
               <CheckCircleOutlineRoundedIcon sx={{ color: '#b8f0d9', fontSize: 25 }} />
-              <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1.1 }}>{featuredCourse?.progress ?? 0}%</Typography>
+              <Typography variant="h4" sx={{ fontWeight: 800, lineHeight: 1.1 }}>{featuredLearning?.progress ?? 0}%</Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,.72)' }}>completed</Typography>
             </Box>
           </Box>
@@ -125,7 +136,7 @@ const StudentDashboardOverview = ({ displayName, courses, lessonCount, averageQu
     </Paper>
 
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.25, sm: 1.75 }, mb: 2.25 }}>
-      <OverviewMetric label="Active courses" value={String(courses.length)} detail="In your learning plan" icon={<MenuBookOutlinedIcon fontSize="small" />} tone="teal" />
+      <OverviewMetric label="Active learning" value={String(courses.length + classes.length)} detail={`${courses.length} courses · ${classes.length} classes`} icon={<MenuBookOutlinedIcon fontSize="small" />} tone="teal" />
       <OverviewMetric label="Lessons completed" value={String(lessonCount)} detail="Keep the streak going" icon={<CheckCircleOutlineRoundedIcon fontSize="small" />} tone="blue" />
       <OverviewMetric label="Quiz average" value={averageQuizScore === null ? '—' : `${averageQuizScore}%`} detail={quizAverageNeedsAttention ? 'One or more quizzes need review' : quizCount ? `From ${quizCount} completed ${quizCount === 1 ? 'quiz' : 'quizzes'}` : 'No completed quizzes yet'} icon={quizAverageNeedsAttention ? <WarningAmberOutlinedIcon fontSize="small" /> : <QuizOutlinedIcon fontSize="small" />} tone={quizAverageNeedsAttention ? 'amber' : 'violet'} />
       <OverviewMetric label="Learning streak" value={`${learningStreak} ${learningStreak === 1 ? 'day' : 'days'}`} detail="Your learning habit is growing" icon={<LocalFireDepartmentOutlinedIcon fontSize="small" />} tone="amber" />
@@ -182,6 +193,28 @@ const StudentDashboardOverview = ({ displayName, courses, lessonCount, averageQu
         </>}
       </Paper>
     </Box>
+
+    <Paper elevation={0} sx={{ mt: 2.25, p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3.5 }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 2 }}>
+        <Box><Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>Your classes</Typography><Typography variant="body2" color="text.secondary">Continue learning with your enrolled classes</Typography></Box>
+        <Button size="small" endIcon={<ArrowForwardRoundedIcon />} onClick={() => onSelectView('classes')} sx={{ flexShrink: 0 }}>See all</Button>
+      </Stack>
+      {classes.length ? <Stack spacing={1}>
+        {classes.slice(0, 3).map((classItem) => <Box component="button" type="button" key={classItem.id} onClick={() => onOpenClass(classItem.id)} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1.5, p: 1.4, border: 1, borderColor: 'divider', borderRadius: 2.5, bgcolor: 'background.paper', cursor: 'pointer', textAlign: 'left', font: 'inherit', transition: 'border-color .18s, transform .18s', '&:hover': { borderColor: 'primary.main', transform: 'translateY(-1px)' } }}>
+          <Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, flexShrink: 0, borderRadius: 2.25, color: 'primary.main', bgcolor: 'action.hover' }}><SchoolOutlinedIcon /></Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography noWrap sx={{ fontWeight: 750 }}>{classItem.title}</Typography>
+            <Typography noWrap variant="caption" color="text.secondary">with {classItem.tutor}</Typography>
+            <LinearProgress variant="determinate" value={classItem.progress} sx={{ mt: 1, height: 5, borderRadius: 4 }} />
+          </Box>
+          <Typography variant="body2" color="primary.main" sx={{ fontWeight: 800, whiteSpace: 'nowrap' }}>{classItem.progress}%</Typography>
+        </Box>)}
+      </Stack> : <Box sx={{ p: 2.5, textAlign: 'center', borderRadius: 2.5, bgcolor: 'action.hover' }}>
+        <SchoolOutlinedIcon color="primary" />
+        <Typography sx={{ mt: .75, fontWeight: 700 }}>Your classes will appear here</Typography>
+        <Typography variant="body2" color="text.secondary">Browse available classes when you’re ready to join.</Typography>
+      </Box>}
+    </Paper>
 
     <Box sx={{ mt: 4, mb: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ color: 'primary.main', mb: .5 }}><AutoAwesomeOutlinedIcon sx={{ fontSize: 18 }} /><Typography variant="overline" sx={{ fontWeight: 800, letterSpacing: 1.3 }}>Keep your momentum</Typography></Stack>

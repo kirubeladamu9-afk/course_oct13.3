@@ -818,12 +818,19 @@ const StudyPlannerView: FC<{ enrollments: DashboardEnrollment[]; completedLesson
 
 const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; now: Date; onSelectView: (view: DashboardView) => void; onOpenCourse: (courseId: number, lessonId?: number) => void; gamificationData: GamificationData }> = ({ enrollments, completedLessons, now, onSelectView, onOpenCourse, gamificationData }) => {
   const courseEnrollments = enrollments.filter((enrollment) => enrollment.type === 'course' && enrollment.status !== 'completed')
+  const classEnrollments = enrollments.filter((enrollment) => enrollment.type === 'class' && enrollment.status !== 'completed' && enrollment.classRecord?.course)
   const courses = courseEnrollments.flatMap((enrollment) => enrollment.course ? [{
     id: enrollment.course.id,
     title: enrollment.course.title,
     category: enrollment.course.category,
     level: enrollment.course.level,
     tutor: enrollment.course.tutor,
+    progress: enrollment.progress,
+  }] : [])
+  const classes = classEnrollments.flatMap((enrollment) => enrollment.classRecord ? [{
+    id: enrollment.classRecord.id,
+    title: enrollment.classRecord.title,
+    tutor: enrollment.classRecord.tutorName,
     progress: enrollment.progress,
   }] : [])
   const latestQuizResults = courseEnrollments.flatMap((enrollment) => {
@@ -863,6 +870,7 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: R
   return <StudentDashboardOverview
     displayName={displayName}
     courses={courses}
+    classes={classes}
     lessonCount={gamificationData.stats.lesson_count}
     averageQuizScore={averageQuizScore}
     quizCount={quizCount}
@@ -873,6 +881,7 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: R
       {readinessCards.map(({ classRecord, readiness, daysUntilExam }) => <ExamReadinessCard key={classRecord.id} classRecord={classRecord} readiness={readiness} daysUntilExam={daysUntilExam} onViewStudyPlan={() => onSelectView('study-planner')} />)}
     </Stack> : undefined}
     onOpenCourse={(courseId) => onOpenCourse(courseId)}
+    onOpenClass={(classId) => onOpenCourse(classId)}
     onSelectView={onSelectView}
   >
     <WeakAreasPanel enrollments={enrollments} onOpenCourse={onOpenCourse} />
