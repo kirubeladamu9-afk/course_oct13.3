@@ -1074,11 +1074,6 @@ const EnrolledClassCard: FC<{ enrollment: DashboardEnrollment; classRecord: Dash
         </Stack>
         <Typography variant="subtitle1" sx={{ minHeight: 48, mb: 0.5, fontWeight: 800, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{classRecord.title}</Typography>
         <Typography variant="caption" color="text.secondary" sx={{ mb: 0.75 }}>Tutor: {classRecord.tutorName}</Typography>
-        <Typography variant="caption" color="text.secondary" noWrap sx={{ mb: 1 }}>{nextLiveLesson?.scheduledAt ? `Next session: ${new Date(nextLiveLesson.scheduledAt).toLocaleString()}` : classScheduleLabel(classRecord.schedule)}</Typography>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ px: 1, py: .75, mb: 1, borderRadius: 2, backgroundColor: 'action.hover' }}>
-          <Typography variant="caption" color="text.secondary">Overall grade</Typography>
-          <Stack direction="row" spacing={.75} alignItems="center"><Typography variant="body2" sx={{ fontWeight: 700 }}>{grade.percentage}%</Typography><Chip label={grade.letter} size="small" color={grade.letter === 'F' ? 'error' : grade.letter === 'D' ? 'warning' : 'success'} sx={{ height: 22, fontWeight: 800 }} /></Stack>
-        </Stack>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.55 }}><Typography variant="caption" sx={{ fontWeight: 700 }}>Progress</Typography><Typography variant="caption" sx={{ fontWeight: 800, color: 'success.dark' }}>{progress}%</Typography></Stack>
         <LinearProgress variant="determinate" value={progress} color="success" aria-label={`${classRecord.title} progress ${progress}%`} sx={{ height: 6, borderRadius: 4, mb: 1.5, backgroundColor: 'action.hover', '& .MuiLinearProgress-bar': { borderRadius: 4 } }} />
         <Button fullWidth variant="contained" disabled={!canOpenClass} onClick={onContinue} sx={{ mt: 'auto', minHeight: 40, borderRadius: 2, fontWeight: 800, backgroundColor: '#6d28d9', '&:hover': { backgroundColor: '#5b21b6' } }}>{classRecord.status === 'closed' || classHasEnded(classRecord.schedule, now) ? 'Class ended' : progress ? 'Continue class' : 'Open class'}</Button>
@@ -1137,7 +1132,7 @@ const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
         <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', ml: { md: 'auto' } }}>{filteredClassEnrollments.length} {filteredClassEnrollments.length === 1 ? 'class' : 'classes'} found</Typography>
       </Stack>
       {filteredClassEnrollments.length === 0 ? <EmptyState title="No matching classes" description="Try a different search term or status." /> : <>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.5, md: 2 }, alignItems: 'stretch' }}>{visibleClassEnrollments.map((enrollment) => {
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: { xs: 1.5, md: 2 }, alignItems: 'stretch' }}>{visibleClassEnrollments.map((enrollment) => {
       const classRecord = enrollment.classRecord!
       const course = classRecord.course!
       const classEnded = classHasEnded(classRecord.schedule, now)
