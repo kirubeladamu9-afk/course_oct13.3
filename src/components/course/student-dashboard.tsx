@@ -61,6 +61,8 @@ import TranslateOutlinedIcon from '@mui/icons-material/TranslateOutlined'
 import VideoCallOutlinedIcon from '@mui/icons-material/VideoCallOutlined'
 import CloseIcon from '@mui/icons-material/Close'
 import SearchIcon from '@mui/icons-material/Search'
+import FilterListOutlinedIcon from '@mui/icons-material/FilterListOutlined'
+import SortOutlinedIcon from '@mui/icons-material/SortOutlined'
 import LayersOutlinedIcon from '@mui/icons-material/LayersOutlined'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import GpsFixedOutlinedIcon from '@mui/icons-material/GpsFixedOutlined'
@@ -93,7 +95,24 @@ import { navigateTo } from '@/lib/navigation'
 import { SITE_NAME } from '@/lib/site'
 import { calculateOverallGrade } from '@/lib/overall-grade'
 
- type DashboardView = 'overview' | 'calendar' | 'courses' | 'classes' | 'study-planner' | 'quizzes' | 'purchases' | 'profile' | 'payments' | 'course-view'
+ type DashboardView = 'overview' | 'calendar' | 'courses' | 'classes' | 'explore-courses' | 'explore-classes' | 'study-planner' | 'quizzes' | 'purchases' | 'profile' | 'payments' | 'course-view'
+ const dashboardViewPaths: Record<Exclude<DashboardView, 'course-view'>, string> = {
+  overview: '/dashboard',
+  calendar: '/calendar',
+  courses: '/enrollments',
+  classes: '/classes',
+  'explore-courses': '/explore-courses',
+  'explore-classes': '/explore-classes',
+  'study-planner': '/study-planner',
+  quizzes: '/quizzes',
+  purchases: '/purchases',
+  profile: '/profile',
+  payments: '/payments',
+ }
+ const dashboardViewFromPath = (pathname: string): DashboardView => {
+  const route = pathname.replace(/\/+$/, '') || '/dashboard'
+  return (Object.entries(dashboardViewPaths).find(([, path]) => path === route)?.[0] as DashboardView | undefined) ?? 'overview'
+ }
  type EnrollmentType = 'course' | 'class'
  type EnrollmentStatus = 'active' | 'pending_schedule' | 'completed'
  type ClassStatus = 'pending_schedule' | 'open' | 'full' | 'closed'
@@ -971,7 +990,7 @@ const EnrolledCourseCard: FC<{ enrollment: DashboardEnrollment; course: Dashboar
   </>
 }
 
-const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; onOpenCourse: (courseId: number) => void; catalogCourses: Course[]; enrolledCourseIds: Set<string>; isLoadingCatalog: boolean; catalogError: string | null }> = ({ enrollments, completedLessons, onOpenCourse, catalogCourses, enrolledCourseIds, isLoadingCatalog, catalogError }) => {
+const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; onOpenCourse: (courseId: number) => void }> = ({ enrollments, completedLessons, onOpenCourse }) => {
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -988,7 +1007,7 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
   useEffect(() => setPage(1), [courseEnrollments.length, normalizedQuery, categoryFilter])
 
   return <>
-    <ViewHeading title="My Courses" description="Build momentum with the self-paced courses in your learning plan." compact />
+    <ViewHeading title="My Courses" description="Build momentum with the self-paced courses in your learning plan." compact action={<Button variant="outlined" startIcon={<MenuBookOutlinedIcon />} onClick={() => navigateTo('/explore-courses')}>Explore courses</Button>} />
     {courseEnrollments.length === 0 ? <EmptyState title="No courses yet" description="Your paid course enrollments will appear here." /> : <>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }} sx={{ mb: 2.5 }}>
         <TextField size="small" placeholder="Search my courses..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} inputProps={{ 'aria-label': 'Search my courses' }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} sx={{ flex: 1, minWidth: 0, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }} />
@@ -1011,8 +1030,6 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
       {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="My courses pages" /></Stack>}
       </>}
     </>}
-    <Divider sx={{ my: 4 }} />
-    <OtherCoursesView courses={catalogCourses} enrolledCourseIds={enrolledCourseIds} isLoading={isLoadingCatalog} error={catalogError} />
   </>
 }
 
@@ -1093,7 +1110,7 @@ const EnrolledClassCard: FC<{ enrollment: DashboardEnrollment; classRecord: Dash
   </>
 }
 
-const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; now: Date; onOpenCourse: (courseId: number) => void; gamificationData: GamificationData | null; catalogClasses: PublicClass[]; catalogCourses: Course[]; enrolledClassIds: Set<number>; isLoadingCatalog: boolean; catalogError: string | null; onEnroll: (classRecord: PublicClass) => void }> = ({ enrollments, completedLessons, now, onOpenCourse, gamificationData, catalogClasses, catalogCourses, enrolledClassIds, isLoadingCatalog, catalogError, onEnroll }) => {
+const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; now: Date; onOpenCourse: (courseId: number) => void; gamificationData: GamificationData | null }> = ({ enrollments, completedLessons, now, onOpenCourse, gamificationData }) => {
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -1112,7 +1129,7 @@ const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
   useEffect(() => setPage(1), [classEnrollments.length, normalizedQuery, statusFilter])
 
   return <>
-    <ViewHeading title="My Classes" description="Continue your class curriculum and keep up with live learning sessions." />
+    <ViewHeading title="My Classes" description="Continue your class curriculum and keep up with live learning sessions." action={<Button variant="outlined" startIcon={<ClassOutlinedIcon />} onClick={() => navigateTo('/explore-classes')}>Explore classes</Button>} />
     {classEnrollments.length === 0 ? <EmptyState title="No classes yet" description="Paid class enrollments will appear here once they are assigned." /> : <>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }} sx={{ mb: 2.5 }}>
         <TextField size="small" placeholder="Search my classes..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} inputProps={{ 'aria-label': 'Search my classes' }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} sx={{ flex: 1, minWidth: 0, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }} />
@@ -1136,8 +1153,6 @@ const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
       {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="My classes pages" /></Stack>}
       </>}
     </>}
-    <Divider sx={{ my: 4 }} />
-    <OtherClassesView classes={catalogClasses} courses={catalogCourses} enrolledClassIds={enrolledClassIds} isLoading={isLoadingCatalog} error={catalogError} onEnroll={onEnroll} />
   </>
 }
 
@@ -1225,7 +1240,10 @@ const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; 
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
+  const [ratingFilter, setRatingFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('popular')
   const [layout, setLayout] = useState<'grid' | 'list'>('grid')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const availableCourses = courses.filter((course) => !enrolledCourseIds.has(String(course.id)))
   const categoryOptions = Array.from(new Set(availableCourses.map((course) => course.category)))
 
@@ -1233,46 +1251,59 @@ const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; 
   const filteredCourses = availableCourses.filter((course) => {
     const matchesSearch = !normalizedQuery || [course.title, course.category].some((value) => value.toLowerCase().includes(normalizedQuery))
     const matchesCategory = categoryFilter === 'all' || course.category === categoryFilter
-    return matchesSearch && matchesCategory
+    const matchesRating = ratingFilter === 'all' || course.rating >= Number(ratingFilter)
+    return matchesSearch && matchesCategory && matchesRating
   })
-  const pageCount = Math.ceil(filteredCourses.length / catalogPageSize)
-  const visibleCourses = filteredCourses.slice((page - 1) * catalogPageSize, page * catalogPageSize)
+  const sortedCourses = [...filteredCourses].sort((left, right) => sortBy === 'price' ? left.price - right.price : sortBy === 'title' ? left.title.localeCompare(right.title) : right.rating - left.rating)
+  const pageCount = Math.ceil(sortedCourses.length / catalogPageSize)
+  const visibleCourses = sortedCourses.slice((page - 1) * catalogPageSize, page * catalogPageSize)
 
-  useEffect(() => setPage(1), [courses.length, enrolledCourseIds.size, normalizedQuery, categoryFilter])
+  useEffect(() => setPage(1), [courses.length, enrolledCourseIds.size, normalizedQuery, categoryFilter, ratingFilter, sortBy])
+
+  const filterPanel = <Paper elevation={0} sx={{ p: 2.25, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper' }}>
+    <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 800 }}>Filter courses</Typography>
+    <Divider sx={{ mb: 1.5 }} />
+    <FormControl>
+      <FormLabel sx={{ mb: 0.75, color: 'text.primary', fontWeight: 700 }}>Category</FormLabel>
+      <RadioGroup value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setFiltersOpen(false) }}>
+        <FormControlLabel value="all" control={<Radio size="small" />} label="All categories" />
+        {categoryOptions.map((category) => <FormControlLabel key={category} value={category} control={<Radio size="small" />} label={category} />)}
+      </RadioGroup>
+    </FormControl>
+    <Divider sx={{ my: 1.5 }} />
+    <FormControl>
+      <FormLabel sx={{ mb: 0.75, color: 'text.primary', fontWeight: 700 }}>Rating</FormLabel>
+      <RadioGroup value={ratingFilter} onChange={(event) => { setRatingFilter(event.target.value); setFiltersOpen(false) }}>
+        <FormControlLabel value="all" control={<Radio size="small" />} label="Any rating" />
+        <FormControlLabel value="4.5" control={<Radio size="small" />} label="4.5 & up" />
+        <FormControlLabel value="4" control={<Radio size="small" />} label="4.0 & up" />
+        <FormControlLabel value="3.5" control={<Radio size="small" />} label="3.5 & up" />
+      </RadioGroup>
+    </FormControl>
+  </Paper>
 
   return <>
     <ViewHeading title="Explore courses" description="Discover available courses beyond your current learning plan." compact />
     {isLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading course catalog" /></Box> : error ? <EmptyState title="Courses unavailable" description={error} /> : availableCourses.length === 0 ? <EmptyState title="No more courses to explore" description="You are enrolled in every published course." /> : <>
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }} sx={{ mb: 2.5 }}>
-        <TextField
-          size="small"
-          placeholder="Search courses..."
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-          inputProps={{ 'aria-label': 'Search courses' }}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }}
-          sx={{ flex: 1, minWidth: 0, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
-        />
-        <TextField
-          select
-          size="small"
-          value={categoryFilter}
-          onChange={(event) => setCategoryFilter(event.target.value)}
-          inputProps={{ 'aria-label': 'Filter courses by category' }}
-          InputProps={{ startAdornment: <InputAdornment position="start"><LayersOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }}
-          sx={{ minWidth: { md: 180 }, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
-        >
-          <MenuItem value="all">All categories</MenuItem>
-          {categoryOptions.map((category) => <MenuItem key={category} value={category}>{category}</MenuItem>)}
-        </TextField>
-        <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', ml: { md: 'auto' } }}>{filteredCourses.length} {filteredCourses.length === 1 ? 'course' : 'courses'} found</Typography>
-        <ToggleButtonGroup exclusive size="small" value={layout} onChange={(_, value: 'grid' | 'list' | null) => { if (value) setLayout(value) }} aria-label="Course catalog layout"><ToggleButton value="grid" aria-label="Show courses as a grid"><GridViewOutlinedIcon fontSize="small" /></ToggleButton><ToggleButton value="list" aria-label="Show courses as a list"><ViewListOutlinedIcon fontSize="small" /></ToggleButton></ToggleButtonGroup>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5} alignItems="flex-start">
+        <Box component="aside" sx={{ display: { xs: 'none', md: 'block' }, width: 250, flexShrink: 0 }}>{filterPanel}</Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ mb: 2.5 }}>
+            <Button variant="outlined" startIcon={<FilterListOutlinedIcon />} onClick={() => setFiltersOpen(true)} sx={{ display: { xs: 'inline-flex', md: 'none' }, alignSelf: { xs: 'flex-start', sm: 'auto' } }}>Filter</Button>
+            <TextField size="small" placeholder="Search courses..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} inputProps={{ 'aria-label': 'Search courses' }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} sx={{ flex: 1, minWidth: 0, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }} />
+            <TextField select size="small" value={sortBy} onChange={(event) => setSortBy(event.target.value)} inputProps={{ 'aria-label': 'Sort courses' }} InputProps={{ startAdornment: <InputAdornment position="start"><SortOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} sx={{ minWidth: { sm: 180 }, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}>
+              <MenuItem value="popular">Most popular</MenuItem><MenuItem value="price">Price: low to high</MenuItem><MenuItem value="title">Name: A to Z</MenuItem>
+            </TextField>
+            <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>{filteredCourses.length} {filteredCourses.length === 1 ? 'course' : 'courses'}</Typography>
+            <ToggleButtonGroup exclusive size="small" value={layout} onChange={(_, value: 'grid' | 'list' | null) => { if (value) setLayout(value) }} aria-label="Course catalog layout"><ToggleButton value="grid" aria-label="Show courses as a grid"><GridViewOutlinedIcon fontSize="small" /></ToggleButton><ToggleButton value="list" aria-label="Show courses as a list"><ViewListOutlinedIcon fontSize="small" /></ToggleButton></ToggleButtonGroup>
+          </Stack>
+          {filteredCourses.length === 0 ? <EmptyState title="No matching courses" description="Try a different search term or category." /> : <>
+            <Box sx={layout === 'grid' ? { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 } : { display: 'grid', gridTemplateColumns: '1fr', gap: 1.5 }}>{visibleCourses.map((course) => <Card key={String(course.id)} elevation={0} sx={{ border: 1, borderColor: 'divider', display: 'flex', flexDirection: layout === 'grid' ? 'column' : { xs: 'column', sm: 'row' }, overflow: 'hidden' }}><Box component="img" src={course.cover} alt={course.title} sx={{ width: layout === 'grid' ? '100%' : { xs: '100%', sm: 240 }, aspectRatio: '16 / 9', objectFit: 'cover', flexShrink: 0 }} /><CardContent sx={{ display: 'flex', flex: 1, flexDirection: 'column' }}><Chip label={course.category} size="small" color="primary" variant="outlined" sx={{ alignSelf: 'flex-start', mb: 1.5 }} /><Typography variant="h6" sx={{ mb: 0.5 }}>{course.title}</Typography><Typography variant="caption" color="text.secondary" sx={{ mb: 1 }}>★ {course.rating} ({course.ratingCount})</Typography><Typography variant="subtitle1" sx={{ fontWeight: 800 }}>${course.price}</Typography><Stack direction="row" justifyContent="flex-end" alignItems="center" sx={{ mt: 'auto', pt: 2 }}><Button variant="outlined" size="small" onClick={() => navigateTo(`/courses/${course.id}`)}>View course</Button></Stack></CardContent></Card>)}</Box>
+            {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="Other courses pages" /></Stack>}
+          </>}
+        </Box>
       </Stack>
-
-      {filteredCourses.length === 0 ? <EmptyState title="No matching courses" description="Try a different search term or category." /> : <>
-        <Box sx={layout === 'grid' ? { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 } : { display: 'grid', gridTemplateColumns: '1fr', gap: 1.5 }}>{visibleCourses.map((course) => <Card key={String(course.id)} elevation={0} sx={{ border: 1, borderColor: 'divider', display: 'flex', flexDirection: layout === 'grid' ? 'column' : { xs: 'column', sm: 'row' }, overflow: 'hidden' }}><Box component="img" src={course.cover} alt={course.title} sx={{ width: layout === 'grid' ? '100%' : { xs: '100%', sm: 240 }, aspectRatio: '16 / 9', objectFit: 'cover', flexShrink: 0 }} /><CardContent sx={{ display: 'flex', flex: 1, flexDirection: 'column' }}><Chip label={course.category} size="small" color="primary" variant="outlined" sx={{ alignSelf: 'flex-start', mb: 1.5 }} /><Typography variant="h6" sx={{ mb: 1 }}>{course.title}</Typography><Stack direction="row" justifyContent="flex-end" alignItems="center" sx={{ mt: 'auto', pt: 2 }}><Button variant="outlined" size="small" onClick={() => navigateTo(`/courses/${course.id}`)}>View course</Button></Stack></CardContent></Card>)}</Box>
-        {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="Other courses pages" /></Stack>}
-      </>}
+      <Drawer anchor="left" open={filtersOpen} onClose={() => setFiltersOpen(false)} PaperProps={{ sx: { width: 300, p: 2 } }}>{filterPanel}</Drawer>
     </>}
   </>
 }
@@ -1333,7 +1364,10 @@ const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolled
   const [searchQuery, setSearchQuery] = useState('')
   const [scheduleFilter, setScheduleFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
+  const [gradeFilter, setGradeFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('popular')
   const [layout, setLayout] = useState<'grid' | 'list'>('grid')
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   const courseById = new Map(courses.map((course) => [String(course.id), course]))
   const getClassCourse = (classRecord: PublicClass) => classRecord.courseId === null ? undefined : courseById.get(String(classRecord.courseId))
@@ -1341,74 +1375,79 @@ const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolled
   const dayOptions = Array.from(new Set(availableClasses.flatMap((classRecord) => classRecord.schedule.days)))
   const hasFlexibleClasses = availableClasses.some((classRecord) => classRecord.schedule.flexible)
   const categoryOptions = Array.from(new Set(availableClasses.map((classRecord) => getClassCourse(classRecord)?.category).filter((category): category is string => Boolean(category))))
+  const gradeOptions = Array.from(new Set(availableClasses.map((classRecord) => classRecord.gradeLevel).filter((grade): grade is number => grade !== null))).sort((left, right) => left - right)
 
   const normalizedQuery = searchQuery.trim().toLowerCase()
   const filteredClasses = availableClasses.filter((classRecord) => {
     const matchesSearch = !normalizedQuery || [classRecord.title, classRecord.tutorName, classRecord.courseTitle ?? ''].some((value) => value.toLowerCase().includes(normalizedQuery))
     const matchesSchedule = scheduleFilter === 'all' || (scheduleFilter === 'flexible' ? classRecord.schedule.flexible : classRecord.schedule.days.includes(scheduleFilter))
     const matchesCategory = categoryFilter === 'all' || getClassCourse(classRecord)?.category === categoryFilter
-    return matchesSearch && matchesSchedule && matchesCategory
+    const matchesGrade = gradeFilter === 'all' || classRecord.gradeLevel === Number(gradeFilter)
+    return matchesSearch && matchesSchedule && matchesCategory && matchesGrade
   })
-  const pageCount = Math.ceil(filteredClasses.length / catalogPageSize)
-  const visibleClasses = filteredClasses.slice((page - 1) * catalogPageSize, page * catalogPageSize)
+  const sortedClasses = [...filteredClasses].sort((left, right) => sortBy === 'price' ? left.price - right.price : sortBy === 'title' ? left.title.localeCompare(right.title) : right.enrolledCount - left.enrolledCount)
+  const pageCount = Math.ceil(sortedClasses.length / catalogPageSize)
+  const visibleClasses = sortedClasses.slice((page - 1) * catalogPageSize, page * catalogPageSize)
 
-  useEffect(() => setPage(1), [classes.length, enrolledClassIds.size, normalizedQuery, scheduleFilter, categoryFilter])
+  useEffect(() => setPage(1), [classes.length, enrolledClassIds.size, normalizedQuery, scheduleFilter, categoryFilter, gradeFilter, sortBy])
+
+  const filterPanel = <Paper elevation={0} sx={{ p: 2.25, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper' }}>
+    <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 800 }}>Filter classes</Typography>
+    <Divider sx={{ mb: 1.5 }} />
+    <Stack spacing={2}>
+      <FormControl>
+        <FormLabel sx={{ mb: 0.75, color: 'text.primary', fontWeight: 700 }}>Schedule</FormLabel>
+        <RadioGroup value={scheduleFilter} onChange={(event) => { setScheduleFilter(event.target.value); setFiltersOpen(false) }}>
+          <FormControlLabel value="all" control={<Radio size="small" />} label="Any schedule" />
+          {hasFlexibleClasses && <FormControlLabel value="flexible" control={<Radio size="small" />} label="Flexible" />}
+          {dayOptions.map((day) => <FormControlLabel key={day} value={day} control={<Radio size="small" />} label={day} />)}
+        </RadioGroup>
+      </FormControl>
+      <Divider />
+      <FormControl>
+        <FormLabel sx={{ mb: 0.75, color: 'text.primary', fontWeight: 700 }}>Category</FormLabel>
+        <RadioGroup value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setFiltersOpen(false) }}>
+          <FormControlLabel value="all" control={<Radio size="small" />} label="All categories" />
+          {categoryOptions.map((category) => <FormControlLabel key={category} value={category} control={<Radio size="small" />} label={category} />)}
+        </RadioGroup>
+      </FormControl>
+      {gradeOptions.length > 0 && <>
+        <Divider />
+        <FormControl>
+          <FormLabel sx={{ mb: 0.75, color: 'text.primary', fontWeight: 700 }}>Grade level</FormLabel>
+          <RadioGroup value={gradeFilter} onChange={(event) => { setGradeFilter(event.target.value); setFiltersOpen(false) }}>
+            <FormControlLabel value="all" control={<Radio size="small" />} label="All levels" />
+            {gradeOptions.map((grade) => <FormControlLabel key={grade} value={String(grade)} control={<Radio size="small" />} label={`Grade ${grade}`} />)}
+          </RadioGroup>
+        </FormControl>
+      </>}
+    </Stack>
+  </Paper>
 
   return <>
     <ViewHeading title="Explore classes" description="Find live classes and schedules that fit your learning plan." compact />
     {isLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading class catalog" /></Box> : error ? <EmptyState title="Classes unavailable" description={error} /> : availableClasses.length === 0 ? <EmptyState title="No more classes to explore" description="There are no additional published classes available right now." /> : <>
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }} sx={{ mb: 2.5 }}>
-        <TextField
-          size="small"
-          placeholder="Search classes..."
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-          inputProps={{ 'aria-label': 'Search classes' }}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }}
-          sx={{ flex: 1, minWidth: 0, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
-        />
-        <TextField
-          select
-          size="small"
-          value={scheduleFilter}
-          onChange={(event) => setScheduleFilter(event.target.value)}
-          InputProps={{ startAdornment: <InputAdornment position="start"><CalendarTodayOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }}
-          sx={{ minWidth: { md: 180 }, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
-        >
-          <MenuItem value="all">All schedules</MenuItem>
-          {hasFlexibleClasses && <MenuItem value="flexible">Flexible schedule</MenuItem>}
-          {dayOptions.map((day) => <MenuItem key={day} value={day}>On {day}</MenuItem>)}
-        </TextField>
-        <TextField
-          select
-          size="small"
-          value={categoryFilter}
-          onChange={(event) => setCategoryFilter(event.target.value)}
-          InputProps={{ startAdornment: <InputAdornment position="start"><LayersOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }}
-          sx={{ minWidth: { md: 180 }, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
-        >
-          <MenuItem value="all">All categories</MenuItem>
-          {categoryOptions.map((category) => <MenuItem key={category} value={category}>{category}</MenuItem>)}
-        </TextField>
-        <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', ml: { md: 'auto' } }}>{filteredClasses.length} {filteredClasses.length === 1 ? 'class' : 'classes'} found</Typography>
-        <ToggleButtonGroup exclusive size="small" value={layout} onChange={(_, value: 'grid' | 'list' | null) => { if (value) setLayout(value) }} aria-label="Class catalog layout"><ToggleButton value="grid" aria-label="Show classes as a grid"><GridViewOutlinedIcon fontSize="small" /></ToggleButton><ToggleButton value="list" aria-label="Show classes as a list"><ViewListOutlinedIcon fontSize="small" /></ToggleButton></ToggleButtonGroup>
-      </Stack>
-
-      {filteredClasses.length === 0 ? <EmptyState title="No matching classes" description="Try a different search term or filter." /> : <>
-        <Box sx={layout === 'grid' ? { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2, alignItems: 'start' } : { display: 'grid', gridTemplateColumns: '1fr', gap: 2 }}>
-          {visibleClasses.map((classRecord) => <OtherClassCard
-            key={classRecord.id}
-            classRecord={classRecord}
-            cover={classRecord.cover || getClassCourse(classRecord)?.cover}
-            category={getClassCourse(classRecord)?.category}
-            isExpanded={expandedClassId === classRecord.id}
-            onToggleDetails={() => setExpandedClassId((current) => current === classRecord.id ? null : classRecord.id)}
-            onEnroll={() => onEnroll(classRecord)}
-            layout={layout}
-          />)}
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5} alignItems="flex-start">
+        <Box component="aside" sx={{ display: { xs: 'none', md: 'block' }, width: 250, flexShrink: 0 }}>{filterPanel}</Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ mb: 2.5 }}>
+            <Button variant="outlined" startIcon={<FilterListOutlinedIcon />} onClick={() => setFiltersOpen(true)} sx={{ display: { xs: 'inline-flex', md: 'none' }, alignSelf: { xs: 'flex-start', sm: 'auto' } }}>Filter</Button>
+            <TextField size="small" placeholder="Search classes..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} inputProps={{ 'aria-label': 'Search classes' }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} sx={{ flex: 1, minWidth: 0, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }} />
+            <TextField select size="small" value={sortBy} onChange={(event) => setSortBy(event.target.value)} inputProps={{ 'aria-label': 'Sort classes' }} InputProps={{ startAdornment: <InputAdornment position="start"><SortOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} sx={{ minWidth: { sm: 180 }, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}>
+              <MenuItem value="popular">Most popular</MenuItem><MenuItem value="price">Price: low to high</MenuItem><MenuItem value="title">Name: A to Z</MenuItem>
+            </TextField>
+            <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>{filteredClasses.length} {filteredClasses.length === 1 ? 'class' : 'classes'}</Typography>
+            <ToggleButtonGroup exclusive size="small" value={layout} onChange={(_, value: 'grid' | 'list' | null) => { if (value) setLayout(value) }} aria-label="Class catalog layout"><ToggleButton value="grid" aria-label="Show classes as a grid"><GridViewOutlinedIcon fontSize="small" /></ToggleButton><ToggleButton value="list" aria-label="Show classes as a list"><ViewListOutlinedIcon fontSize="small" /></ToggleButton></ToggleButtonGroup>
+          </Stack>
+          {filteredClasses.length === 0 ? <EmptyState title="No matching classes" description="Try a different search term or filter." /> : <>
+            <Box sx={layout === 'grid' ? { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2, alignItems: 'start' } : { display: 'grid', gridTemplateColumns: '1fr', gap: 2 }}>
+              {visibleClasses.map((classRecord) => <OtherClassCard key={classRecord.id} classRecord={classRecord} cover={classRecord.cover || getClassCourse(classRecord)?.cover} category={getClassCourse(classRecord)?.category} isExpanded={expandedClassId === classRecord.id} onToggleDetails={() => setExpandedClassId((current) => current === classRecord.id ? null : classRecord.id)} onEnroll={() => onEnroll(classRecord)} layout={layout} />)}
+            </Box>
+            {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="Other classes pages" /></Stack>}
+          </>}
         </Box>
-        {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="Other classes pages" /></Stack>}
-      </>}
+      </Stack>
+      <Drawer anchor="left" open={filtersOpen} onClose={() => setFiltersOpen(false)} PaperProps={{ sx: { width: 300, p: 2 } }}>{filterPanel}</Drawer>
     </>}
   </>
 }
@@ -1911,7 +1950,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const currentUser = getAuthenticatedUser()
   const currentUserId = Number(currentUser?.id)
-  const [activeView, setActiveView] = useState<DashboardView>('overview')
+  const [activeView, setActiveView] = useState<DashboardView>(() => dashboardViewFromPath(window.location.pathname))
   const [quizActive, setQuizActive] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [language, setLanguage] = useState('EN')
@@ -1961,9 +2000,15 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   }, [activeView, selectedCourseId])
 
   useEffect(() => {
-    const handleProfileOpen = () => setActiveView('profile')
+    const handleProfileOpen = () => navigateTo(dashboardViewPaths.profile)
     window.addEventListener('student-profile-open', handleProfileOpen)
     return () => window.removeEventListener('student-profile-open', handleProfileOpen)
+  }, [])
+
+  useEffect(() => {
+    const handlePopState = () => setActiveView(dashboardViewFromPath(window.location.pathname))
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
   useEffect(() => {
@@ -2109,7 +2154,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   const selectedCourseProgress = selectedCourse ? getCourseProgress(selectedCourse, completedLessons[selectedCourse.id] ?? []) : 0
   const enrolledCourseIds = new Set(enrollments.filter((enrollment) => enrollment.type === 'course').map((enrollment) => String(enrollment.item_id)))
   const enrolledClassIds = new Set(enrollments.filter((enrollment) => enrollment.type === 'class').map((enrollment) => enrollment.item_id))
-  const pageTitle = activeView === 'course-view' ? selectedCourse?.title ?? 'Course view' : activeView === 'overview' ? 'Dashboard' : activeView === 'calendar' ? 'Calendar' : activeView === 'courses' ? 'My Courses' : activeView === 'classes' ? 'My Classes' : activeView === 'study-planner' ? 'Study Planner' : activeView === 'quizzes' ? 'Quizzes & Results' : activeView === 'purchases' ? 'My Purchases' : activeView === 'profile' ? 'Profile' : 'Payment History'
+  const pageTitle = activeView === 'course-view' ? selectedCourse?.title ?? 'Course view' : activeView === 'overview' ? 'Dashboard' : activeView === 'calendar' ? 'Calendar' : activeView === 'courses' ? 'My Courses' : activeView === 'classes' ? 'My Classes' : activeView === 'explore-courses' ? 'Explore Courses' : activeView === 'explore-classes' ? 'Explore Classes' : activeView === 'study-planner' ? 'Study Planner' : activeView === 'quizzes' ? 'Quizzes & Results' : activeView === 'purchases' ? 'My Purchases' : activeView === 'profile' ? 'Profile' : 'Payment History'
 
   useEffect(() => {
     const title = quizActive ? (readOnlyQuizResult ? 'Quiz Results' : 'Quiz') : pageTitle
@@ -2117,6 +2162,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   }, [pageTitle, quizActive, readOnlyQuizResult])
 
   const selectView = (view: DashboardView) => {
+    if (view !== 'course-view') navigateTo(dashboardViewPaths[view])
     setActiveView(view)
     setProgressError(null)
     setMobileOpen(false)
@@ -2256,8 +2302,10 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
         {isLoadingEnrollments ? <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 8 }} aria-live="polite"><CircularProgress aria-label="Loading enrollments" /><Typography color="text.secondary">Loading your enrollments...</Typography></Box> : enrollmentError ? <Alert severity="error">{enrollmentError}</Alert> : <>
           {activeView === 'overview' && (gamificationData ? <OverviewView enrollments={enrollments} completedLessons={completedLessons} now={now} onSelectView={selectView} onOpenCourse={openCourse} gamificationData={gamificationData} /> : gamificationError ? <Alert severity="error">{gamificationError}</Alert> : <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }} aria-live="polite"><CircularProgress aria-label="Loading gamification" /></Box>)}
           {activeView === 'calendar' && <StudentCalendarView enrollments={enrollments} now={now} onJoin={(session) => { if (session.lessonId && session.meetingUrl) void joinLiveSession(session.lessonId, session.meetingUrl, session.enrollmentId) }} />}
-          {activeView === 'courses' && <Box sx={{ mx: { xs: -2, md: -3.5 }, mt: { xs: -2, md: -3.5 }, px: { xs: 2, md: 3.5 }, pt: { xs: 2, md: 3.5 }, minHeight: 'calc(100vh - 82px)', bgcolor: (theme) => theme.palette.mode === 'dark' ? theme.palette.background.default : '#fff', backgroundImage: 'none' }}><CoursesView enrollments={enrollments} completedLessons={completedLessons} onOpenCourse={openCourse} catalogCourses={otherCourses} enrolledCourseIds={enrolledCourseIds} isLoadingCatalog={isLoadingOtherCourses} catalogError={otherCoursesError} /></Box>}
-          {activeView === 'classes' && <ClassesView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} gamificationData={gamificationData} catalogClasses={otherClasses} catalogCourses={otherCourses} enrolledClassIds={enrolledClassIds} isLoadingCatalog={isLoadingOtherClasses} catalogError={otherClassesError} onEnroll={setClassToEnroll} />}
+          {activeView === 'courses' && <Box sx={{ mx: { xs: -2, md: -3.5 }, mt: { xs: -2, md: -3.5 }, px: { xs: 2, md: 3.5 }, pt: { xs: 2, md: 3.5 }, minHeight: 'calc(100vh - 82px)', bgcolor: (theme) => theme.palette.mode === 'dark' ? theme.palette.background.default : '#fff', backgroundImage: 'none' }}><CoursesView enrollments={enrollments} completedLessons={completedLessons} onOpenCourse={openCourse} /></Box>}
+          {activeView === 'classes' && <ClassesView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} gamificationData={gamificationData} />}
+          {activeView === 'explore-courses' && <OtherCoursesView courses={otherCourses} enrolledCourseIds={enrolledCourseIds} isLoading={isLoadingOtherCourses} error={otherCoursesError} />}
+          {activeView === 'explore-classes' && <OtherClassesView classes={otherClasses} courses={otherCourses} enrolledClassIds={enrolledClassIds} isLoading={isLoadingOtherClasses} error={otherClassesError} onEnroll={setClassToEnroll} />}
           {activeView === 'study-planner' && <StudyPlannerView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} onStudyPlanSaved={(enrollmentId, lessonOrder) => setEnrollments((current) => current.map((enrollment) => enrollment.id === enrollmentId ? { ...enrollment, studyPlanOrder: lessonOrder } : enrollment))} />}
           {activeView === 'quizzes' && <QuizzesView enrollments={enrollments} completedLessons={completedLessons} quizResults={quizResults} now={now} onOpenCourse={openCourse} />}
           {activeView === 'purchases' && <PurchasesView />}

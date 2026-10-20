@@ -80,7 +80,7 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname)
   const [homeCourses, setHomeCourses] = useState<Course[] | null>(null)
   const isAdminPath = /^\/admin(?:\/|$)/.test(currentPath)
-  const isDashboardPath = /^\/dashboard\/?$/.test(currentPath)
+  const isDashboardPath = /^\/(?:dashboard|calendar|enrollments|classes|explore-courses|explore-classes|study-planner|quizzes|purchases|profile|payments)\/?$/.test(currentPath)
   const isTutorPath = /^\/tutor(?:\/|$)/.test(currentPath)
   const isPracticeCatalogPath = /^\/practice-exams\/?$/.test(currentPath)
   const practiceExamMatch = currentPath.match(/^\/practice-exams\/(\d+)\/?$/)
@@ -103,13 +103,12 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   }, [])
 
   useEffect(() => {
+    if (isDashboardPath) return
     const pageName = isSignInPath
       ? 'Sign In'
       : isAdminPath
         ? getAdminPageTitle(currentPath)
-        : isDashboardPath
-          ? 'Dashboard'
-          : isTutorPath
+        : isTutorPath
             ? 'Tutor Dashboard'
             : isPracticeCatalogPath
               ? 'Practice Exams'
