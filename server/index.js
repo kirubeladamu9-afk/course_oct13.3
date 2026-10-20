@@ -626,7 +626,13 @@ const courseSummaryColumns = sql.unsafe(`
   (SELECT COUNT(*)::INTEGER FROM course_reviews reviews WHERE reviews.course_id = courses.id AND reviews.is_hidden = false) AS "ratingCount",
   price::FLOAT AS price,
   category,
-  description
+  level,
+  description,
+  COALESCE((
+    SELECT jsonb_agg(DISTINCT lesson_item.lesson ->> 'type')
+    FROM jsonb_array_elements(CASE WHEN jsonb_typeof(courses.modules) = 'array' THEN courses.modules ELSE '[]'::jsonb END) AS module_item(module)
+    CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(module_item.module -> 'lessons') = 'array' THEN module_item.module -> 'lessons' ELSE '[]'::jsonb END) AS lesson_item(lesson)
+  ), '[]'::jsonb) AS "lessonTypes"
 `)
 
 const tutorColumns = sql.unsafe(`

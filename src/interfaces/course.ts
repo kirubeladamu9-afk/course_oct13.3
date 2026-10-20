@@ -7,4 +7,6 @@ export interface Course {
   price: number
   category: string
   description?: string
+  level?: string
+  lessonTypes?: string[]
 }

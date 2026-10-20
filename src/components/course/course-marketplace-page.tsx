@@ -16,7 +16,11 @@ import Grid from '@mui/material/Grid'
 import InputAdornment from '@mui/material/InputAdornment'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
+import Radio from '@mui/material/Radio'
+import RadioGroup from '@mui/material/RadioGroup'
+import Rating from '@mui/material/Rating'
 import Select from '@mui/material/Select'
+import Slider from '@mui/material/Slider'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
@@ -34,23 +38,38 @@ interface CourseMarketplacePageProps {
 }
 
 type SortOrder = 'popular' | 'rating' | 'price-low' | 'price-high' | 'title'
+type CourseType = 'Self-paced' | 'Live class' | 'Practice'
+
+const getCourseTypes = (course: Course): CourseType[] => {
+  const types: CourseType[] = []
+  const lessonTypes = course.lessonTypes ?? []
+  if (lessonTypes.some((type) => type !== 'live' && type !== 'practice')) types.push('Self-paced')
+  if (lessonTypes.includes('live')) types.push('Live class')
+  if (lessonTypes.includes('practice')) types.push('Practice')
+  return types.length ? types : ['Self-paced']
+}
 
 const CourseMarketplacePage: FC<CourseMarketplacePageProps> = ({ courses, darkMode, onToggleDarkMode, isLoading }) => {
   const [search, setSearch] = useState('')
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [selectedLevels, setSelectedLevels] = useState<string[]>([])
+  const [selectedCourseTypes, setSelectedCourseTypes] = useState<CourseType[]>([])
   const [minRating, setMinRating] = useState(0)
-  const [minPrice, setMinPrice] = useState('')
-  const [maxPrice, setMaxPrice] = useState('')
+  const [priceRange, setPriceRange] = useState<[number, number] | null>(null)
   const [sortOrder, setSortOrder] = useState<SortOrder>('popular')
   const categories = useMemo(() => Array.from(new Set(courses.map((course) => course.category).filter(Boolean))).sort((a, b) => a.localeCompare(b)), [courses])
-  const hasFilters = selectedCategories.length > 0 || minRating > 0 || minPrice !== '' || maxPrice !== ''
+  const levels = useMemo(() => Array.from(new Set(courses.map((course) => course.level).filter((level): level is string => Boolean(level)))).sort((a, b) => a.localeCompare(b)), [courses])
+  const priceMaximum = Math.max(50, Math.ceil(Math.max(0, ...courses.map((course) => course.price)) / 50) * 50)
+  const activePriceRange = priceRange ?? [0, priceMaximum]
+  const hasFilters = selectedCategories.length > 0 || selectedLevels.length > 0 || selectedCourseTypes.length > 0 || minRating > 0 || activePriceRange[0] > 0 || activePriceRange[1] < priceMaximum
   const visibleCourses = useMemo(() => {
     const query = search.trim().toLocaleLowerCase()
     return courses
       .filter((course) => selectedCategories.length === 0 || selectedCategories.includes(course.category))
+      .filter((course) => selectedLevels.length === 0 || selectedLevels.includes(course.level ?? ''))
+      .filter((course) => selectedCourseTypes.length === 0 || getCourseTypes(course).some((type) => selectedCourseTypes.includes(type)))
       .filter((course) => course.rating >= minRating)
-      .filter((course) => minPrice === '' || course.price >= Number(minPrice))
-      .filter((course) => maxPrice === '' || course.price <= Number(maxPrice))
+      .filter((course) => course.price >= activePriceRange[0] && course.price <= activePriceRange[1])
       .filter((course) => !query || `${course.title} ${course.description ?? ''} ${course.category}`.toLocaleLowerCase().includes(query))
       .sort((a, b) => {
         if (sortOrder === 'rating') return b.rating - a.rating || b.ratingCount - a.ratingCount
@@ -59,14 +78,15 @@ const CourseMarketplacePage: FC<CourseMarketplacePageProps> = ({ courses, darkMo
         if (sortOrder === 'title') return a.title.localeCompare(b.title)
         return b.ratingCount - a.ratingCount || b.rating - a.rating
       })
-  }, [courses, maxPrice, minPrice, minRating, search, selectedCategories, sortOrder])
+  }, [activePriceRange, courses, minRating, search, selectedCategories, selectedCourseTypes, selectedLevels, sortOrder])
 
   const clearFilters = () => {
     setSearch('')
     setSelectedCategories([])
+    setSelectedLevels([])
+    setSelectedCourseTypes([])
     setMinRating(0)
-    setMinPrice('')
-    setMaxPrice('')
+    setPriceRange(null)
   }
 
   const scrollToCatalog = () => document.getElementById('course-catalog')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -135,23 +155,31 @@ const CourseMarketplacePage: FC<CourseMarketplacePageProps> = ({ courses, darkMo
               </Box>
               <Divider />
               <Box sx={{ py: 2 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Minimum rating</Typography>
-                <FormControl fullWidth size="small">
-                  <Select value={minRating} onChange={(event) => setMinRating(Number(event.target.value))} inputProps={{ 'aria-label': 'Filter by minimum course rating' }}>
-                    <MenuItem value={0}>Any rating</MenuItem>
-                    <MenuItem value={4}>4 stars & up</MenuItem>
-                    <MenuItem value={3}>3 stars & up</MenuItem>
-                    <MenuItem value={2}>2 stars & up</MenuItem>
-                  </Select>
-                </FormControl>
+                <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 700 }}>Price range</Typography>
+                <Typography variant="caption" color="text.secondary">${activePriceRange[0]} – ${activePriceRange[1]}</Typography>
+                <Slider aria-label="Course price range" value={activePriceRange} min={0} max={priceMaximum} step={1} onChange={(_, value) => { if (Array.isArray(value)) setPriceRange([value[0], value[1]]) }} valueLabelDisplay="auto" valueLabelFormat={(value) => `$${value}`} sx={{ mt: 1, mb: 0.5, color: 'primary.main' }} />
+                <Stack direction="row" justifyContent="space-between"><Typography variant="caption" color="text.secondary">Min</Typography><Typography variant="caption" color="text.secondary">Max</Typography></Stack>
+              </Box>
+              <Divider />
+              <Box sx={{ py: 2 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Level</Typography>
+                {levels.length ? <FormGroup>{levels.map((level) => <FormControlLabel key={level} control={<Checkbox size="small" checked={selectedLevels.includes(level)} onChange={(event) => setSelectedLevels((current) => event.target.checked ? [...current, level] : current.filter((value) => value !== level))} />} label={<Typography variant="body2">{level} <Typography component="span" variant="caption" color="text.secondary">({courses.filter((course) => course.level === level).length})</Typography></Typography>} sx={{ ml: 0, mr: 0, minHeight: 34 }} />)}</FormGroup> : <Typography variant="body2" color="text.secondary">No difficulty levels available</Typography>}
+              </Box>
+              <Divider />
+              <Box sx={{ py: 2 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Course type</Typography>
+                <FormGroup>{(['Self-paced', 'Live class', 'Practice'] as CourseType[]).map((type) => <FormControlLabel key={type} control={<Checkbox size="small" checked={selectedCourseTypes.includes(type)} onChange={(event) => setSelectedCourseTypes((current) => event.target.checked ? [...current, type] : current.filter((value) => value !== type))} />} label={<Typography variant="body2">{type} <Typography component="span" variant="caption" color="text.secondary">({courses.filter((course) => getCourseTypes(course).includes(type)).length})</Typography></Typography>} sx={{ ml: 0, mr: 0, minHeight: 34 }} />)}</FormGroup>
               </Box>
               <Divider />
               <Box sx={{ pt: 2 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Price range</Typography>
-                <Stack direction="row" spacing={1}>
-                  <TextField size="small" label="Min" type="number" value={minPrice} onChange={(event) => setMinPrice(event.target.value)} inputProps={{ min: 0, 'aria-label': 'Minimum course price' }} />
-                  <TextField size="small" label="Max" type="number" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} inputProps={{ min: 0, 'aria-label': 'Maximum course price' }} />
-                </Stack>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Ratings</Typography>
+                <RadioGroup aria-label="Filter by minimum course rating" value={String(minRating)} onChange={(event) => setMinRating(Number(event.target.value))}>
+                  {[4.5, 4, 3.5, 3].map((rating) => <FormControlLabel key={rating} value={String(rating)} control={<Radio size="small" />} label={<Stack direction="row" alignItems="center" spacing={0.75}>
+                    <Rating value={rating} precision={0.5} readOnly size="small" sx={{ color: '#c18120', fontSize: 16 }} />
+                    <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>{rating.toFixed(1)} & up</Typography>
+                    <Typography variant="caption" color="text.secondary">({courses.filter((course) => course.rating >= rating).length.toLocaleString()})</Typography>
+                  </Stack>} sx={{ ml: 0, mr: 0, minHeight: 42 }} />)}
+                </RadioGroup>
               </Box>
             </Paper>
           </Grid>
