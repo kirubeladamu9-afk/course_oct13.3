@@ -2,6 +2,7 @@ import { type AdminCourse, type AdminModule, type AdminTutor, type AdminUser } f
 import { type Course } from '@/interfaces/course'
 import { type ArticleContentBlock, type SimulationConfig } from '@/components/admin/admin-data'
 import { type PracticeExam, type PracticeExamWithQuestions, type PracticePurchase, type PracticeQuestion } from '@/components/practice/practice-data'
+import { navigateTo } from '@/lib/navigation'
 
 export interface AuthUser {
   id: number | string
@@ -430,11 +431,19 @@ export const updateAdminPracticeQuestion = async (examId: number, questionId: nu
   return response.json()
 }
 
-const requestApi = (url: string, init?: RequestInit) => {
+const requestApi = async (url: string, init?: RequestInit) => {
   const headers = new Headers(init?.headers)
   const sessionToken = sessionStorage.getItem(authSessionTokenKey)
   if (sessionToken) headers.set('Authorization', `Bearer ${sessionToken}`)
-  return fetchApi(url, { ...init, headers })
+  const response = await fetchApi(url, { ...init, headers })
+  if (response.status === 401) {
+    const error = await response.clone().json().catch(() => null)
+    if (error?.message === 'Authentication is required.' || error?.message === 'Admin authentication is required.') {
+      clearAuthenticatedUser()
+      if (window.location.pathname !== '/sign-in') navigateTo('/sign-in', true)
+    }
+  }
+  return response
 }
 
 const requestCourse = async (url: string, init?: RequestInit): Promise<AdminCourse> => {
