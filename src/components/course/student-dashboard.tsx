@@ -869,11 +869,35 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: R
 const CourseMiniRow: FC<{ course: DashboardCourse; enrollment: DashboardEnrollment; onOpenCourse: (courseId: number) => void }> = ({ course, enrollment, onOpenCourse }) => <Box component="button" type="button" onClick={() => onOpenCourse(course.id)} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1.5, p: 1.25, border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper', cursor: 'pointer', textAlign: 'left', font: 'inherit', '&:hover': { borderColor: 'primary.main' } }}><Box sx={{ display: 'flex', p: 1, borderRadius: 2, color: 'primary.main', backgroundColor: 'action.hover' }}><PlayCircleOutlineIcon /></Box><Box sx={{ flex: 1, minWidth: 0 }}><Typography noWrap sx={{ fontWeight: 600 }}>{course.title}</Typography><LinearProgress variant="determinate" value={enrollment.progress} sx={{ mt: 1, height: 6, borderRadius: 4 }} /></Box><Typography color="primary.main" variant="body2" sx={{ fontWeight: 700 }}>{enrollment.progress}%</Typography></Box>
 
 const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; onOpenCourse: (courseId: number) => void }> = ({ enrollments, completedLessons, onOpenCourse }) => {
+  const [page, setPage] = useState(1)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const courseEnrollments = enrollments.filter((enrollment) => enrollment.type === 'course' && enrollment.course)
+  const categories = Array.from(new Set(courseEnrollments.map((enrollment) => enrollment.course!.category)))
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const filteredCourseEnrollments = courseEnrollments.filter(({ course }) => {
+    const matchesSearch = !normalizedQuery || [course!.title, course!.category, course!.tutor].some((value) => value.toLowerCase().includes(normalizedQuery))
+    return matchesSearch && (categoryFilter === 'all' || course!.category === categoryFilter)
+  })
+  const pageCount = Math.ceil(filteredCourseEnrollments.length / catalogPageSize)
+  const visibleCourseEnrollments = filteredCourseEnrollments.slice((page - 1) * catalogPageSize, page * catalogPageSize)
+
+  useEffect(() => setPage(1), [courseEnrollments.length, normalizedQuery, categoryFilter])
+
   return <>
     <ViewHeading title="My Courses" description="Build momentum with the self-paced courses in your learning plan." />
-    {courseEnrollments.length === 0 ? <EmptyState title="No courses yet" description="Your paid course enrollments will appear here." actionLabel="Browse courses" onAction={() => navigateTo('/')} /> : <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: { xs: 2, md: 2.5 }, alignItems: 'stretch' }}>
-      {courseEnrollments.map((enrollment) => {
+    {courseEnrollments.length === 0 ? <EmptyState title="No courses yet" description="Your paid course enrollments will appear here." actionLabel="Browse courses" onAction={() => navigateTo('/')} /> : <>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }} sx={{ mb: 2.5 }}>
+        <TextField size="small" placeholder="Search my courses..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} inputProps={{ 'aria-label': 'Search my courses' }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} sx={{ flex: 1, minWidth: 0, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }} />
+        <TextField select size="small" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} inputProps={{ 'aria-label': 'Filter my courses by category' }} InputProps={{ startAdornment: <InputAdornment position="start"><LayersOutlinedIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} sx={{ minWidth: { md: 180 }, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}>
+          <MenuItem value="all">All categories</MenuItem>
+          {categories.map((category) => <MenuItem key={category} value={category}>{category}</MenuItem>)}
+        </TextField>
+        <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', ml: { md: 'auto' } }}>{filteredCourseEnrollments.length} {filteredCourseEnrollments.length === 1 ? 'course' : 'courses'} found</Typography>
+      </Stack>
+      {filteredCourseEnrollments.length === 0 ? <EmptyState title="No matching courses" description="Try a different search term or category." /> : <>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: { xs: 2, md: 2.5 }, alignItems: 'stretch' }}>
+      {visibleCourseEnrollments.map((enrollment) => {
         const course = enrollment.course!
         const completed = completedLessons[course.id]
         const progress = completed === undefined ? enrollment.progress : getCourseProgress(course, completed)
@@ -892,15 +916,43 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
           </CardContent>
         </Card>
       })}
-    </Box>}
+      </Box>
+      {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="My courses pages" /></Stack>}
+      </>}
+    </>}
   </>
 }
 
 const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; now: Date; onOpenCourse: (courseId: number) => void; gamificationData: GamificationData | null }> = ({ enrollments, completedLessons, now, onOpenCourse, gamificationData }) => {
+  const [page, setPage] = useState(1)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
   const classEnrollments = enrollments.filter((enrollment, index) => enrollment.type === 'class' && enrollment.classRecord && enrollments.findIndex((other) => other.type === 'class' && other.classRecord?.id === enrollment.classRecord?.id) === index)
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const filteredClassEnrollments = classEnrollments.filter((enrollment) => {
+    const classRecord = enrollment.classRecord!
+    const matchesSearch = !normalizedQuery || [classRecord.title, classRecord.tutorName].some((value) => value.toLowerCase().includes(normalizedQuery))
+    const classEnded = classHasEnded(classRecord.schedule, now)
+    const status = classRecord.status === 'pending_schedule' ? 'pending' : classEnded || classRecord.status === 'closed' ? 'closed' : 'active'
+    return matchesSearch && (statusFilter === 'all' || statusFilter === status)
+  })
+  const pageCount = Math.ceil(filteredClassEnrollments.length / catalogPageSize)
+  const visibleClassEnrollments = filteredClassEnrollments.slice((page - 1) * catalogPageSize, page * catalogPageSize)
+
+  useEffect(() => setPage(1), [classEnrollments.length, normalizedQuery, statusFilter])
+
   return <>
     <ViewHeading title="My Classes" description="Continue your class curriculum and keep up with live learning sessions." />
-    {classEnrollments.length === 0 ? <EmptyState title="No classes yet" description="Paid class enrollments will appear here once they are assigned." actionLabel="Explore courses" onAction={() => navigateTo('/')} /> : <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: { xs: 2, md: 2.5 }, alignItems: 'stretch' }}>{classEnrollments.map((enrollment) => {
+    {classEnrollments.length === 0 ? <EmptyState title="No classes yet" description="Paid class enrollments will appear here once they are assigned." actionLabel="Explore courses" onAction={() => navigateTo('/')} /> : <>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }} sx={{ mb: 2.5 }}>
+        <TextField size="small" placeholder="Search my classes..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} inputProps={{ 'aria-label': 'Search my classes' }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} sx={{ flex: 1, minWidth: 0, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }} />
+        <TextField select size="small" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} inputProps={{ 'aria-label': 'Filter my classes by status' }} sx={{ minWidth: { md: 180 }, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}>
+          <MenuItem value="all">All statuses</MenuItem><MenuItem value="active">Active</MenuItem><MenuItem value="pending">Pending schedule</MenuItem><MenuItem value="closed">Closed</MenuItem>
+        </TextField>
+        <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', ml: { md: 'auto' } }}>{filteredClassEnrollments.length} {filteredClassEnrollments.length === 1 ? 'class' : 'classes'} found</Typography>
+      </Stack>
+      {filteredClassEnrollments.length === 0 ? <EmptyState title="No matching classes" description="Try a different search term or status." /> : <>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: { xs: 2, md: 2.5 }, alignItems: 'stretch' }}>{visibleClassEnrollments.map((enrollment) => {
       const classRecord = enrollment.classRecord!
       const course = classRecord.course!
       const classEnded = classHasEnded(classRecord.schedule, now)
@@ -921,7 +973,10 @@ const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
           <Box sx={{ mt: 'auto' }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.9 }}><Typography variant="body2" sx={{ fontWeight: 600 }}>Progress</Typography><Typography variant="body2" color="primary.main" sx={{ fontWeight: 800 }}>{progress}%</Typography></Stack><LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4, mb: 2, backgroundColor: 'action.selected', '& .MuiLinearProgress-bar': { borderRadius: 4 } }} /><Button fullWidth variant="contained" disabled={!canOpenClass} onClick={() => { if (canOpenClass) onOpenCourse(course.id) }} sx={{ minHeight: 44, borderRadius: 2.25, fontWeight: 800, boxShadow: 'none', '&:hover': { boxShadow: 2 } }}>{classEnded || classRecord.status === 'closed' ? 'Class ended' : progress ? 'Continue class' : 'Open class'}</Button></Box>
         </CardContent>
       </Card>
-    })}</Box>}
+    })}</Box>
+      {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="My classes pages" /></Stack>}
+      </>}
+    </>}
   </>
 }
 
