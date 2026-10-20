@@ -546,13 +546,17 @@ const ClassesWorkspace: FC<ClassesWorkspaceProps> = ({ view, classId }) => {
   const handleSaveClass = async (values: ClassFormValue) => {
     const editingClass = classes.find((classRecord) => classRecord.id === editingClassId)
     try {
-      const classRecord = editingClass
+      const savedClass = editingClass
         ? await updateAdminClass({ ...editingClass, ...values, title: values.title.trim(), modules: values.modules })
         : await createAdminClass({ ...values, title: values.title.trim(), modules: values.modules })
+      if (values.cover && savedClass.cover !== values.cover) throw new Error('The class thumbnail was not saved. Please try again.')
+      const updatedClass: AdminClass = { ...savedClass, schedule: normalizeSchedule(savedClass.schedule) }
+      setClasses((currentClasses) => editingClass
+        ? currentClasses.map((currentClass) => currentClass.id === updatedClass.id ? updatedClass : currentClass)
+        : [...currentClasses, updatedClass])
       setEditingClassId(null)
-      await loadWorkspace()
-      toast.add({ title: editingClass ? 'Class saved' : 'Class created', description: `${classRecord.title} is ready to manage.`, type: 'success' })
-      navigateTo(`/admin/classes/${classRecord.id}`)
+      toast.add({ title: editingClass ? 'Class saved' : 'Class created', description: `${updatedClass.title} is ready to manage.`, type: 'success' })
+      navigateTo(`/admin/classes/${updatedClass.id}`)
     } catch (error) {
       toast.add({ title: 'Unable to save class', description: error instanceof Error ? error.message : 'Please try again.', type: 'error' })
     }
