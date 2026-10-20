@@ -16,7 +16,7 @@ interface Props {
 
 const Navigation: FC<Props> = ({ isAdmin = false, onNavigate }) => {
   const [programsAnchor, setProgramsAnchor] = useState<HTMLElement | null>(null)
-  const [activeDestination, setActiveDestination] = useState(() => window.location.pathname.startsWith('/practice-exams') ? '/practice-exams' : 'hero')
+  const [activeDestination, setActiveDestination] = useState(() => navigations.find(({ path }) => path.startsWith('/') && window.location.pathname.startsWith(path))?.path ?? 'hero')
 
   if (isAdmin) return null
 
@@ -51,7 +51,7 @@ const Navigation: FC<Props> = ({ isAdmin = false, onNavigate }) => {
     fontSize: { xs: '1.2rem', md: 'inherit' },
     '& > div': { display: 'none' },
     '&.current': { color: 'primary.main', '&>div': { display: 'block' } },
-    '&:hover': { color: 'primary.main', '&>div': { display: 'block' } },
+    '&:hover': { color: 'primary.main' },
   }
 
   const renderDestination = ({ path: destination, label }: typeof primaryDestinations[number]) => {
