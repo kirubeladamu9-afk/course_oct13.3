@@ -52,7 +52,7 @@ const ContactPage: FC = () => {
     <Box sx={{ position: 'relative', overflow: 'hidden', color: 'common.white', background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(120deg, #102b3f 0%, #0b514b 100%)' : 'linear-gradient(120deg, #102b3f 0%, #12685d 68%, #168276 100%)' }}>
       <Box aria-hidden="true" sx={{ position: 'absolute', width: 440, height: 440, borderRadius: '50%', right: { xs: -240, md: -90 }, top: -225, border: '1px solid rgba(255,255,255,.12)', boxShadow: '0 0 0 48px rgba(255,255,255,.035), 0 0 0 96px rgba(255,255,255,.025)' }} />
       <Box component="img" src={contactHeroImage} alt="" aria-hidden="true" sx={{ display: { xs: 'none', sm: 'block' }, position: 'absolute', top: 0, right: { sm: '5%', md: '12%' }, height: '100%', width: 'auto', maxWidth: 'none' }} />
-      <Container maxWidth="lg" sx={{ position: 'relative', py: { xs: 6, md: 9 } }}>
+      <Container maxWidth="lg" sx={{ position: 'relative', py: { xs: 7, md: 10 } }}>
         <Box sx={{ position: 'relative', zIndex: 1, minHeight: { xs: 'auto', sm: 300, md: 300 }, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, alignItems: 'center', gap: { xs: 3, sm: 1.5, md: 2 } }}>
           <Box sx={{ position: 'relative', zIndex: 1, maxWidth: { sm: 390 } }}>
             <Typography variant="overline" sx={{ color: '#b9f0dd', fontWeight: 800, letterSpacing: 1.1 }}>GET IN TOUCH</Typography>
@@ -68,35 +68,35 @@ const ContactPage: FC = () => {
       </Container>
     </Box>
 
-    <Container maxWidth="lg" sx={{ py: { xs: 4, md: 5 } }}>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }, gap: { xs: 2, sm: 2.5 } }}>
+    <Container maxWidth="lg" sx={{ py: { xs: 6, md: 7 } }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }, gap: { xs: 2.5, sm: 3 } }}>
         <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, boxShadow: '0 8px 26px rgba(15, 60, 70, .055)', transition: 'transform .2s, box-shadow .2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 14px 32px rgba(15, 60, 70, .1)' } }}>
-          <CardContent sx={{ p: { xs: 2, sm: 2.25, md: 2.5 }, '&:last-child': { pb: { xs: 2, sm: 2.25, md: 2.5 } } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2, borderRadius: 2, color: '#168c7d', backgroundColor: '#e4f6f1' }}><PhoneOutlinedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Phone</Typography><Link href="tel:+25121297831" underline="hover" color="text.primary" sx={{ display: 'inline-block', mt: .5, fontSize: '.9rem', fontWeight: 650 }}>+251 212 97831</Link><Typography display="block" variant="caption" color="text.secondary" sx={{ mt: .75 }}>Mon – Fri, 8:00 AM – 5:00 PM (EAT)</Typography></CardContent>
+          <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 3.25 }, '&:last-child': { pb: { xs: 2.5, sm: 3, md: 3.25 } } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2.5, borderRadius: 2, color: '#168c7d', backgroundColor: '#e4f6f1' }}><PhoneOutlinedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Phone</Typography><Link href="tel:+25121297831" underline="hover" color="text.primary" sx={{ display: 'inline-block', mt: .5, fontSize: '.9rem', fontWeight: 650 }}>+251 212 97831</Link><Typography display="block" variant="caption" color="text.secondary" sx={{ mt: .75 }}>Mon – Fri, 8:00 AM – 5:00 PM (EAT)</Typography></CardContent>
         </Card>
         <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, boxShadow: '0 8px 26px rgba(15, 60, 70, .055)', transition: 'transform .2s, box-shadow .2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 14px 32px rgba(15, 60, 70, .1)' } }}>
-          <CardContent sx={{ p: { xs: 2, sm: 2.25, md: 2.5 }, '&:last-child': { pb: { xs: 2, sm: 2.25, md: 2.5 } } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2, borderRadius: 2, color: '#2782b4', backgroundColor: '#e8f3fb' }}><EmailOutlinedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Email</Typography><Link href={`mailto:${emailAddress}`} underline="hover" color="primary.main" sx={{ display: 'inline-block', mt: .5, fontSize: '.9rem', fontWeight: 650 }}>{emailAddress}</Link><Typography display="block" variant="caption" color="text.secondary" sx={{ mt: .75 }}>We usually reply within 24 hours.</Typography></CardContent>
+          <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 3.25 }, '&:last-child': { pb: { xs: 2.5, sm: 3, md: 3.25 } } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2.5, borderRadius: 2, color: '#2782b4', backgroundColor: '#e8f3fb' }}><EmailOutlinedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Email</Typography><Link href={`mailto:${emailAddress}`} underline="hover" color="primary.main" sx={{ display: 'inline-block', mt: .5, fontSize: '.9rem', fontWeight: 650 }}>{emailAddress}</Link><Typography display="block" variant="caption" color="text.secondary" sx={{ mt: .75 }}>We usually reply within 24 hours.</Typography></CardContent>
         </Card>
         <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, boxShadow: '0 8px 26px rgba(15, 60, 70, .055)', transition: 'transform .2s, box-shadow .2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 14px 32px rgba(15, 60, 70, .1)' } }}>
-          <CardContent sx={{ p: { xs: 2, sm: 2.25, md: 2.5 }, '&:last-child': { pb: { xs: 2, sm: 2.25, md: 2.5 } } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2, borderRadius: 2, color: '#7455b5', backgroundColor: '#f0ebfa' }}><LocationOnOutlinedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Office Address</Typography><Typography sx={{ mt: .5, fontSize: '.9rem', fontWeight: 600 }}>{officeAddress}</Typography><Typography display="block" variant="caption" color="text.secondary" sx={{ mt: .75 }}>Near Bole International Airport</Typography></CardContent>
+          <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 3.25 }, '&:last-child': { pb: { xs: 2.5, sm: 3, md: 3.25 } } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2.5, borderRadius: 2, color: '#7455b5', backgroundColor: '#f0ebfa' }}><LocationOnOutlinedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Office Address</Typography><Typography sx={{ mt: .5, fontSize: '.9rem', fontWeight: 600 }}>{officeAddress}</Typography><Typography display="block" variant="caption" color="text.secondary" sx={{ mt: .75 }}>Near Bole International Airport</Typography></CardContent>
         </Card>
         <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, boxShadow: '0 8px 26px rgba(15, 60, 70, .055)', transition: 'transform .2s, box-shadow .2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 14px 32px rgba(15, 60, 70, .1)' } }}>
-          <CardContent sx={{ p: { xs: 2, sm: 2.25, md: 2.5 }, '&:last-child': { pb: { xs: 2, sm: 2.25, md: 2.5 } } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2, borderRadius: 2, color: '#b27c12', backgroundColor: '#fff4dc' }}><ChatBubbleOutlineRoundedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Live Chat</Typography><Typography sx={{ mt: .5, fontSize: '.9rem', fontWeight: 600 }}>Live chat isn’t available yet.</Typography><Link href={`mailto:${emailAddress}?subject=Support%20request`} underline="hover" color="text.secondary" sx={{ display: 'inline-block', mt: .75, fontSize: '.8rem' }}>Email our support team instead</Link></CardContent>
+          <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 3.25 }, '&:last-child': { pb: { xs: 2.5, sm: 3, md: 3.25 } } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2.5, borderRadius: 2, color: '#b27c12', backgroundColor: '#fff4dc' }}><ChatBubbleOutlineRoundedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Live Chat</Typography><Typography sx={{ mt: .5, fontSize: '.9rem', fontWeight: 600 }}>Live chat isn’t available yet.</Typography><Link href={`mailto:${emailAddress}?subject=Support%20request`} underline="hover" color="text.secondary" sx={{ display: 'inline-block', mt: .75, fontSize: '.8rem' }}>Email our support team instead</Link></CardContent>
         </Card>
       </Box>
     </Container>
 
-    <Container maxWidth="lg" sx={{ py: { xs: 2, md: 3 } }}>
-      <Paper elevation={0} sx={{ p: { xs: 2.5, sm: 3, md: 3.5 }, border: 1, borderColor: 'divider', borderRadius: 3.5, boxShadow: '0 10px 35px rgba(15, 60, 70, .055)' }}>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.65fr .85fr' }, gap: { xs: 3, md: 4 } }}>
+    <Container maxWidth="lg" sx={{ py: { xs: 3, md: 4 } }}>
+      <Paper elevation={0} sx={{ p: { xs: 3, sm: 4, md: 4.5 }, border: 1, borderColor: 'divider', borderRadius: 3.5, boxShadow: '0 10px 35px rgba(15, 60, 70, .055)' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.65fr .85fr' }, gap: { xs: 4, md: 5 } }}>
           <Box component="form" onSubmit={handleSubmit} sx={{ p: { xs: .5, md: 1 }, minWidth: 0 }}>
             <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: .9 }}>SEND US A MESSAGE</Typography>
             <Typography component="h2" variant="h4" sx={{ mt: .25, fontWeight: 800, letterSpacing: '-.035em' }}>Let’s Talk</Typography>
-            <Typography color="text.secondary" variant="body2" sx={{ mt: .75, mb: 3 }}>Fill out the form below and we’ll get back to you as soon as possible.</Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
+            <Typography color="text.secondary" variant="body2" sx={{ mt: 1, mb: 4 }}>Fill out the form below and we’ll get back to you as soon as possible.</Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2.5} sx={{ mb: 2.5 }}>
               <TextField required fullWidth name="fullName" label="Full Name" autoComplete="name" />
               <TextField required fullWidth name="email" type="email" label="Email Address" autoComplete="email" />
             </Stack>
-            <FormControl fullWidth required sx={{ mb: 2 }}>
+            <FormControl fullWidth required sx={{ mb: 2.5 }}>
               <InputLabel id="contact-subject-label">Subject</InputLabel>
               <Select labelId="contact-subject-label" id="contact-subject" value={subject} label="Subject" onChange={(event) => setSubject(event.target.value)}>
                 {subjects.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
@@ -110,21 +110,21 @@ const ContactPage: FC = () => {
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.25 }}>Your email app will open with your message ready to send.</Typography>
           </Box>
 
-          <Stack spacing={2}>
+          <Stack spacing={2.5}>
             <Card elevation={0} sx={{ flex: 1, borderRadius: 3, background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(145deg, #143b3a, #173032)' : 'linear-gradient(145deg, #e9f8f4, #f3fbf8)' }}>
-              <CardContent sx={{ p: { xs: 2.5, md: 3 } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 48, height: 48, mb: 2, borderRadius: 2.5, color: 'primary.main', backgroundColor: 'rgba(255,255,255,.65)' }}><FaqOutlinedIcon /></Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Need Quick Help?</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: .75, mb: 2, lineHeight: 1.6 }}>Check common questions for quick answers to enrollment, payment, and account questions.</Typography><Button component="a" href="#contact-faq" variant="outlined" endIcon={<ArrowForwardRoundedIcon />} sx={{ borderRadius: 5, fontWeight: 700 }}>View FAQ</Button></CardContent>
+              <CardContent sx={{ p: { xs: 3, md: 3.5 } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 48, height: 48, mb: 2.5, borderRadius: 2.5, color: 'primary.main', backgroundColor: 'rgba(255,255,255,.65)' }}><FaqOutlinedIcon /></Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Need Quick Help?</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: .75, mb: 2, lineHeight: 1.6 }}>Check common questions for quick answers to enrollment, payment, and account questions.</Typography><Button component="a" href="#contact-faq" variant="outlined" endIcon={<ArrowForwardRoundedIcon />} sx={{ borderRadius: 5, fontWeight: 700 }}>View FAQ</Button></CardContent>
             </Card>
             <Card elevation={0} sx={{ flex: 1, borderRadius: 3, background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(145deg, #143b3a, #173032)' : 'linear-gradient(145deg, #e9f8f4, #f3fbf8)' }}>
-              <CardContent sx={{ p: { xs: 2.5, md: 3 } }}><Typography variant="subtitle1" sx={{ mb: 1.25, fontWeight: 750 }}>We’re Here to Help</Typography><Stack spacing={1.15}>{['Course enrollment & payments', 'Technical support', 'Account and profile issues', 'General inquiries'].map((item) => <Stack key={item} direction="row" spacing={1} alignItems="center"><CheckCircleRoundedIcon sx={{ color: 'primary.main', fontSize: 17 }} /><Typography variant="body2" color="text.secondary">{item}</Typography></Stack>)}</Stack></CardContent>
+              <CardContent sx={{ p: { xs: 3, md: 3.5 } }}><Typography variant="subtitle1" sx={{ mb: 1.25, fontWeight: 750 }}>We’re Here to Help</Typography><Stack spacing={1.15}>{['Course enrollment & payments', 'Technical support', 'Account and profile issues', 'General inquiries'].map((item) => <Stack key={item} direction="row" spacing={1} alignItems="center"><CheckCircleRoundedIcon sx={{ color: 'primary.main', fontSize: 17 }} /><Typography variant="body2" color="text.secondary">{item}</Typography></Stack>)}</Stack></CardContent>
             </Card>
           </Stack>
         </Box>
       </Paper>
     </Container>
 
-    <Container maxWidth="lg" sx={{ py: { xs: 2, md: 3 } }}>
+    <Container maxWidth="lg" sx={{ py: { xs: 3, md: 4 } }}>
       <Paper elevation={0} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '.8fr 1.2fr' }, overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 3.5, boxShadow: '0 10px 35px rgba(15, 60, 70, .055)' }}>
-        <Box sx={{ p: { xs: 3, sm: 3.5, md: 4 }, alignSelf: 'center' }}>
+        <Box sx={{ p: { xs: 3.5, sm: 4, md: 4.5 }, alignSelf: 'center' }}>
           <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: .9 }}>OUR LOCATION</Typography>
           <Typography component="h2" variant="h5" sx={{ mt: .25, fontWeight: 800 }}>Visit Our Office</Typography>
           <Typography color="text.secondary" variant="body2" sx={{ mt: 1, lineHeight: 1.7 }}>We’re located in Bole, Addis Ababa. Feel free to stop by or reach out to us anytime.</Typography>
@@ -135,9 +135,9 @@ const ContactPage: FC = () => {
       </Paper>
     </Container>
 
-    <Container maxWidth="lg" id="contact-faq" sx={{ pt: { xs: 3, md: 4 }, pb: { xs: 5, md: 7 }, scrollMarginTop: 24 }}>
-      <Box sx={{ mb: 2.5, textAlign: 'center' }}><Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: .9 }}>FAQ</Typography><Typography component="h2" variant="h4" sx={{ mt: .25, fontWeight: 800 }}>Common questions</Typography></Box>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 1.5 }}>{faqs.map((faq) => <Paper key={faq.question} elevation={0} sx={{ p: { xs: 2.5, sm: 3 }, border: 1, borderColor: 'divider', borderRadius: 2.5, backgroundColor: 'background.paper' }}><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>{faq.question}</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: .75, lineHeight: 1.65 }}>{faq.answer}</Typography><Link href={faq.href} onClick={faq.href === '/courses' ? (event) => { event.preventDefault(); navigateTo('/courses') } : undefined} underline="hover" sx={{ display: 'inline-flex', alignItems: 'center', gap: .5, mt: 1.25, fontSize: '.875rem', fontWeight: 700 }}>{faq.action}<ArrowForwardRoundedIcon sx={{ fontSize: 16 }} /></Link></Paper>)}</Box>
+    <Container maxWidth="lg" id="contact-faq" sx={{ pt: { xs: 4, md: 5 }, pb: { xs: 6, md: 8 }, scrollMarginTop: 24 }}>
+      <Box sx={{ mb: 3.5, textAlign: 'center' }}><Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: .9 }}>FAQ</Typography><Typography component="h2" variant="h4" sx={{ mt: .25, fontWeight: 800 }}>Common questions</Typography></Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2 }}>{faqs.map((faq) => <Paper key={faq.question} elevation={0} sx={{ p: { xs: 3, sm: 3.5 }, border: 1, borderColor: 'divider', borderRadius: 2.5, backgroundColor: 'background.paper' }}><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>{faq.question}</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: .75, lineHeight: 1.65 }}>{faq.answer}</Typography><Link href={faq.href} onClick={faq.href === '/courses' ? (event) => { event.preventDefault(); navigateTo('/courses') } : undefined} underline="hover" sx={{ display: 'inline-flex', alignItems: 'center', gap: .5, mt: 1.25, fontSize: '.875rem', fontWeight: 700 }}>{faq.action}<ArrowForwardRoundedIcon sx={{ fontSize: 16 }} /></Link></Paper>)}</Box>
     </Container>
   </Box>
 }
