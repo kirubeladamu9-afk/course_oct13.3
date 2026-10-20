@@ -11,7 +11,6 @@ import PlayArrowRoundedIcon from '@mui/icons-material/PlayArrowRounded'
 import QuizOutlinedIcon from '@mui/icons-material/QuizOutlined'
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
 import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
-import StarRoundedIcon from '@mui/icons-material/StarRounded'
 
 interface OverviewCourse {
   id: number
@@ -20,9 +19,6 @@ interface OverviewCourse {
   level: string
   tutor: string
   progress: number
-  cover?: string | null
-  rating?: number | null
-  ratingCount?: number | null
 }
 
 interface OverviewClass {
@@ -149,28 +145,22 @@ const StudentDashboardOverview = ({ displayName, courses, classes, lessonCount, 
     {readiness}
 
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.55fr) minmax(280px, .9fr)' }, gap: 2.25, alignItems: 'start' }}>
-      <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 0, borderRadius: 3.5, bgcolor: 'transparent', boxShadow: 'none' }}>
+      <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3.5 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 2 }}>
           <Box><Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>Your courses</Typography><Typography variant="body2" color="text.secondary">A quick look at what you’re learning</Typography></Box>
           <Button size="small" endIcon={<ArrowForwardRoundedIcon />} onClick={() => onSelectView('courses')} sx={{ flexShrink: 0 }}>See all</Button>
         </Stack>
-        {courses.length ? <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(4, minmax(0, 1fr))' }, gap: 1.25, alignItems: 'stretch' }}>
-          {courses.slice(0, 4).map((course) => <Box component="button" type="button" key={course.id} onClick={() => onOpenCourse(course.id)} sx={{ minWidth: 0, minHeight: 226, display: 'flex', flexDirection: 'column', p: 1, overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 2.5, bgcolor: 'background.paper', cursor: 'pointer', textAlign: 'left', font: 'inherit', boxShadow: (theme) => `0 3px 12px ${theme.palette.mode === 'dark' ? 'rgba(0,0,0,.18)' : 'rgba(16,24,40,.05)'}`, transition: 'border-color .18s, transform .18s, box-shadow .18s', '&:hover': { borderColor: 'primary.light', transform: 'translateY(-2px)', boxShadow: (theme) => `0 8px 20px ${theme.palette.mode === 'dark' ? 'rgba(0,0,0,.28)' : 'rgba(16,24,40,.1)'}` } }}>
-            <Box sx={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', mb: 1, overflow: 'hidden', borderRadius: 1.75, bgcolor: 'action.hover' }}>
-              {course.cover ? <Box component="img" src={course.cover} alt="" sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : <Box sx={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: 'primary.main' }}><MenuBookOutlinedIcon /></Box>}
+        {courses.length ? <Stack spacing={1}>
+          {courses.slice(0, 3).map((course) => <Box component="button" type="button" key={course.id} onClick={() => onOpenCourse(course.id)} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1.5, p: 1.4, border: 1, borderColor: 'divider', borderRadius: 2.5, bgcolor: 'background.paper', cursor: 'pointer', textAlign: 'left', font: 'inherit', transition: 'border-color .18s, transform .18s', '&:hover': { borderColor: 'primary.main', transform: 'translateY(-1px)' } }}>
+            <Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, flexShrink: 0, borderRadius: 2.25, color: 'primary.main', bgcolor: 'action.hover' }}><MenuBookOutlinedIcon /></Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography noWrap sx={{ fontWeight: 750 }}>{course.title}</Typography>
+              <Typography noWrap variant="caption" color="text.secondary">{course.category} · {course.level}</Typography>
+              <LinearProgress variant="determinate" value={course.progress} sx={{ mt: 1, height: 5, borderRadius: 4 }} />
             </Box>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={.5} sx={{ mb: .5 }}>
-              <Chip label={course.category} size="small" sx={{ maxWidth: '65%', height: 20, fontSize: 10, fontWeight: 700 }} />
-              {course.ratingCount ? <Stack direction="row" spacing={.25} alignItems="center"><Typography variant="caption" sx={{ fontWeight: 800 }}>{course.rating?.toFixed(1)}</Typography><StarRoundedIcon sx={{ color: '#e7a82e', fontSize: 14 }} /><Typography variant="caption" color="text.secondary">({course.ratingCount})</Typography></Stack> : null}
-            </Stack>
-            <Typography variant="body2" sx={{ minHeight: 36, fontSize: 12, fontWeight: 750, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{course.title}</Typography>
-            <Typography variant="caption" color="text.secondary" noWrap sx={{ mt: .35, fontSize: 10 }}>Instructor: {course.tutor}</Typography>
-            <Box sx={{ mt: 'auto', pt: .75 }}>
-              <Stack direction="row" justifyContent="space-between" sx={{ mb: .35 }}><Typography variant="caption" sx={{ fontSize: 10 }}>Progress</Typography><Typography variant="caption" sx={{ fontSize: 10, fontWeight: 800 }}>{course.progress}%</Typography></Stack>
-              <LinearProgress variant="determinate" value={course.progress} sx={{ height: 4, borderRadius: 4 }} />
-            </Box>
+            <Typography variant="body2" color="primary.main" sx={{ fontWeight: 800, whiteSpace: 'nowrap' }}>{course.progress}%</Typography>
           </Box>)}
-        </Box> : <Box sx={{ p: 2.5, textAlign: 'center', borderRadius: 2.5 }}>
+        </Stack> : <Box sx={{ p: 2.5, textAlign: 'center', borderRadius: 2.5, bgcolor: 'action.hover' }}>
           <MenuBookOutlinedIcon color="primary" />
           <Typography sx={{ mt: .75, fontWeight: 700 }}>Your courses will appear here</Typography>
           <Typography variant="body2" color="text.secondary">Browse the catalog when you’re ready to start.</Typography>

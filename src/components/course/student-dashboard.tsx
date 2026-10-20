@@ -826,9 +826,6 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: R
     level: enrollment.course.level,
     tutor: enrollment.course.tutor,
     progress: enrollment.progress,
-    cover: enrollment.course.cover,
-    rating: enrollment.course.rating,
-    ratingCount: enrollment.course.ratingCount,
   }] : [])
   const classes = classEnrollments.flatMap((enrollment) => enrollment.classRecord ? [{
     id: enrollment.classRecord.id,
@@ -1009,7 +1006,7 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
         <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', ml: { md: 'auto' } }}>{filteredCourseEnrollments.length} {filteredCourseEnrollments.length === 1 ? 'course' : 'courses'} found</Typography>
       </Stack>
       {filteredCourseEnrollments.length === 0 ? <EmptyState title="No matching courses" description="Try a different search term or category." /> : <>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.5, md: 2 }, alignItems: 'stretch' }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.5, md: 2 }, alignItems: 'stretch', bgcolor: 'transparent', p: 0, boxShadow: 'none' }}>
       {visibleCourseEnrollments.map((enrollment) => {
         const course = enrollment.course!
         const completed = completedLessons[course.id]
