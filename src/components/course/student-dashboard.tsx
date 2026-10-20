@@ -5,7 +5,6 @@ import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Chip from '@mui/material/Chip'
-import Collapse from '@mui/material/Collapse'
 import Divider from '@mui/material/Divider'
 import Drawer from '@mui/material/Drawer'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
@@ -83,7 +82,7 @@ import StudentDashboardOverview from './student-dashboard-overview'
 import CourseCardItem from './course-card-item'
 import InteractiveDiagramViewer from './interactive-diagram-viewer'
 import SimulationLesson from './simulation-lesson'
-import { type ArticleContentBlock, type SimulationConfig } from '@/components/admin/admin-data'
+import { type AdminCourse, type ArticleContentBlock, type SimulationConfig } from '@/components/admin/admin-data'
 import { getCurriculumTopicKey, getMathTopic, getMathTopicForLesson, STEM_CURRICULUM, type MathTopic } from '@/components/admin/stem-curriculum'
 import { getPlatformEngine, type PlatformEngineId } from '@/components/stem-lab/platform-engine-library'
 import { PlatformEnginePreview } from '@/components/stem-lab/platform-engine-previews'
@@ -91,13 +90,13 @@ import { Logo } from '@/components/logo'
 import EnrollmentModal from './enrollment-modal'
 import AdminDataTable, { type DataColumn } from '@/components/admin/admin-data-table'
 import { toast } from '@/components/toast'
-import { beginQuizAttempt, completeLesson as completeLessonApi, getAuthenticatedUser, getBookstorePurchases, getCourses, getGamification, getMyEnrollments, getMyPayments, getPracticeExam, getPracticePurchases, getPublicClasses, logLiveSessionJoin, recordPracticeLessonAnswer, saveAuthenticatedUser, saveLessonEngagement, saveQuizAnswer, saveQuizViolation, saveStudyPlan, submitQuizAttempt, signOut, updateAuthenticatedProfile, type BookstorePurchase, type GamificationData, type MyEnrollment, type MyPayment, type PublicClass, type QuizAnswerRecord, type QuizAnswerStatus, type QuizAttempt, type QuizQuestionResult, type QuizViolation, type QuizViolationType, type WeakArea } from '@/services/api'
+import { beginQuizAttempt, completeLesson as completeLessonApi, getAuthenticatedUser, getBookstorePurchases, getCourse, getCourses, getGamification, getMyEnrollments, getMyPayments, getPracticeExam, getPracticePurchases, getPublicClasses, logLiveSessionJoin, recordPracticeLessonAnswer, saveAuthenticatedUser, saveLessonEngagement, saveQuizAnswer, saveQuizViolation, saveStudyPlan, submitQuizAttempt, signOut, updateAuthenticatedProfile, type BookstorePurchase, type GamificationData, type MyEnrollment, type MyPayment, type PublicClass, type QuizAnswerRecord, type QuizAnswerStatus, type QuizAttempt, type QuizQuestionResult, type QuizViolation, type QuizViolationType, type WeakArea } from '@/services/api'
 import { navigateTo } from '@/lib/navigation'
 import { SITE_NAME } from '@/lib/site'
 import { calculateOverallGrade } from '@/lib/overall-grade'
 
- type DashboardView = 'overview' | 'calendar' | 'courses' | 'classes' | 'explore-courses' | 'explore-classes' | 'study-planner' | 'quizzes' | 'purchases' | 'profile' | 'payments' | 'course-view'
- const dashboardViewPaths: Record<Exclude<DashboardView, 'course-view'>, string> = {
+ type DashboardView = 'overview' | 'calendar' | 'courses' | 'classes' | 'explore-courses' | 'explore-classes' | 'study-planner' | 'quizzes' | 'purchases' | 'profile' | 'payments' | 'course-view' | 'course-detail' | 'class-detail'
+ const dashboardViewPaths: Record<Exclude<DashboardView, 'course-view' | 'course-detail' | 'class-detail'>, string> = {
   overview: '/dashboard',
   calendar: '/calendar',
   courses: '/enrollments',
@@ -112,7 +111,17 @@ import { calculateOverallGrade } from '@/lib/overall-grade'
  }
  const dashboardViewFromPath = (pathname: string): DashboardView => {
   const route = pathname.replace(/\/+$/, '') || '/dashboard'
+  if (/^\/account\/courses\/\d+$/.test(route)) return 'course-detail'
+  if (/^\/account\/classes\/\d+$/.test(route)) return 'class-detail'
   return (Object.entries(dashboardViewPaths).find(([, path]) => path === route)?.[0] as DashboardView | undefined) ?? 'overview'
+ }
+ const catalogCourseIdFromPath = (pathname: string) => {
+  const match = pathname.match(/^\/account\/courses\/(\d+)\/?$/)
+  return match ? Number(match[1]) : null
+ }
+ const catalogClassIdFromPath = (pathname: string) => {
+  const match = pathname.match(/^\/account\/classes\/(\d+)\/?$/)
+  return match ? Number(match[1]) : null
  }
  type EnrollmentType = 'course' | 'class'
  type EnrollmentStatus = 'active' | 'pending_schedule' | 'completed'
@@ -1237,7 +1246,7 @@ const PurchasesView: FC = () => {
 }
 
 const catalogPageSize = 6
-const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; isLoading: boolean; error: string | null }> = ({ courses, enrolledCourseIds, isLoading, error }) => {
+const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; isLoading: boolean; error: string | null; onOpenCourse: (courseId: number) => void }> = ({ courses, enrolledCourseIds, isLoading, error, onOpenCourse }) => {
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -1299,7 +1308,7 @@ const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; 
             <ToggleButtonGroup exclusive size="small" value={layout} onChange={(_, value: 'grid' | 'list' | null) => { if (value) setLayout(value) }} aria-label="Course catalog layout"><ToggleButton value="grid" aria-label="Show courses as a grid"><GridViewOutlinedIcon fontSize="small" /></ToggleButton><ToggleButton value="list" aria-label="Show courses as a list"><ViewListOutlinedIcon fontSize="small" /></ToggleButton></ToggleButtonGroup>
           </Stack>
           {filteredCourses.length === 0 ? <EmptyState title="No matching courses" description="Try a different search term or category." /> : <>
-            <Box sx={layout === 'grid' ? { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 } : { display: 'grid', gridTemplateColumns: '1fr', gap: 1.5 }}>{visibleCourses.map((course) => layout === 'grid' ? <CourseCardItem key={String(course.id)} item={course} /> : <Card key={String(course.id)} elevation={0} sx={{ border: 1, borderColor: 'divider', display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, overflow: 'hidden' }}><Box component="img" src={course.cover} alt={course.title} sx={{ width: { xs: '100%', sm: 240 }, aspectRatio: '16 / 9', objectFit: 'cover', flexShrink: 0 }} /><CardContent sx={{ display: 'flex', flex: 1, flexDirection: 'column' }}><Chip label={course.category} size="small" color="primary" variant="outlined" sx={{ alignSelf: 'flex-start', mb: 1.5 }} /><Typography variant="h6" sx={{ mb: 0.5 }}>{course.title}</Typography><Typography variant="caption" color="text.secondary" sx={{ mb: 1 }}>★ {course.rating} ({course.ratingCount})</Typography><Typography variant="subtitle1" sx={{ fontWeight: 800 }}>${course.price}</Typography><Stack direction="row" justifyContent="flex-end" alignItems="center" sx={{ mt: 'auto', pt: 2 }}><Button variant="outlined" size="small" onClick={() => navigateTo(`/courses/${course.id}`)}>View course</Button></Stack></CardContent></Card>)}</Box>
+            <Box sx={layout === 'grid' ? { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2 } : { display: 'grid', gridTemplateColumns: '1fr', gap: 1.5 }}>{visibleCourses.map((course) => layout === 'grid' ? <CourseCardItem key={String(course.id)} item={course} onOpen={(item) => onOpenCourse(Number(item.id))} /> : <Card key={String(course.id)} elevation={0} sx={{ border: 1, borderColor: 'divider', display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, overflow: 'hidden' }}><Box component="img" src={course.cover} alt={course.title} sx={{ width: { xs: '100%', sm: 240 }, aspectRatio: '16 / 9', objectFit: 'cover', flexShrink: 0 }} /><CardContent sx={{ display: 'flex', flex: 1, flexDirection: 'column' }}><Chip label={course.category} size="small" color="primary" variant="outlined" sx={{ alignSelf: 'flex-start', mb: 1.5 }} /><Typography variant="h6" sx={{ mb: 0.5 }}>{course.title}</Typography><Typography variant="caption" color="text.secondary" sx={{ mb: 1 }}>★ {course.rating} ({course.ratingCount})</Typography><Typography variant="subtitle1" sx={{ fontWeight: 800 }}>${course.price}</Typography><Stack direction="row" justifyContent="flex-end" alignItems="center" sx={{ mt: 'auto', pt: 2 }}><Button variant="outlined" size="small" onClick={() => onOpenCourse(Number(course.id))}>View course</Button></Stack></CardContent></Card>)}</Box>
             {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="Other courses pages" /></Stack>}
           </>}
         </Box>
@@ -1309,12 +1318,11 @@ const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; 
   </>
 }
 
-const OtherClassCard: FC<{ classRecord: PublicClass; cover?: string; category?: string; description: string; isExpanded: boolean; onToggleDetails: () => void; onEnroll: () => void; layout: 'grid' | 'list' }> = ({ classRecord, cover, category, description, isExpanded, onToggleDetails, onEnroll, layout }) => {
+const OtherClassCard: FC<{ classRecord: PublicClass; cover?: string; category?: string; description: string; onViewDetails: () => void; onEnroll: () => void; layout: 'grid' | 'list' }> = ({ classRecord, cover, category, description, onViewDetails, onEnroll, layout }) => {
   const schedule = { ...classRecord.schedule, date: '', startsAt: '' }
   const statusLabel = classRecord.enrollmentClosed ? 'Enrollment closed' : classRecord.status === 'pending_schedule' ? 'Pending schedule' : classRecord.status === 'open' ? 'Available' : classRecord.status === 'full' ? 'Full' : 'Closed'
   const statusColor = classRecord.enrollmentClosed || classRecord.status === 'closed' ? 'error' : classRecord.status === 'open' ? 'success' : 'warning'
   const canEnroll = !classRecord.enrollmentClosed && (classRecord.status === 'open' || classRecord.status === 'full')
-  const detailsId = `class-details-${classRecord.id}`
   const contentPadding = { xs: 2, md: 2.5, lg: 3 }
 
   return <Card className="class-card" elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3.5, backgroundColor: 'background.paper', boxShadow: (theme) => `0 6px 20px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.25 : 0.05)}`, '&:hover .class-card-description, &:focus-within .class-card-description': { opacity: 1 } }}>
@@ -1342,27 +1350,16 @@ const OtherClassCard: FC<{ classRecord: PublicClass; cover?: string; category?: 
         </Box>
         <Stack spacing={1}>
           <Button fullWidth variant="contained" disabled={!canEnroll} onClick={onEnroll} sx={{ minHeight: 40, borderRadius: 2, fontWeight: 700, boxShadow: 'none', '&:hover': { boxShadow: 'none' } }}>{classRecord.status === 'full' ? 'Join waitlist' : 'Enroll'}</Button>
-          <Button fullWidth variant="outlined" onClick={onToggleDetails} aria-expanded={isExpanded} aria-controls={detailsId} startIcon={<VisibilityOutlinedIcon fontSize="small" />} endIcon={<ArrowForwardRoundedIcon fontSize="small" sx={{ transform: isExpanded ? 'rotate(90deg)' : undefined, transition: 'transform 180ms ease' }} />} sx={{ minHeight: 40, borderRadius: 2, fontWeight: 700 }}>View details</Button>
+          <Button fullWidth variant="outlined" onClick={onViewDetails} startIcon={<VisibilityOutlinedIcon fontSize="small" />} endIcon={<ArrowForwardRoundedIcon fontSize="small" />} sx={{ minHeight: 40, borderRadius: 2, fontWeight: 700 }}>View details</Button>
         </Stack>
       </Stack>
     </Box>
 
-    <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-      <Box id={detailsId} sx={{ px: contentPadding, pb: contentPadding }}>
-        <Stack spacing={0.75} sx={{ pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
-          <Typography variant="body2">Enrollment: {classRecord.enrolledCount}/{classRecord.capacity} seats filled</Typography>
-          <Typography variant="body2">Curriculum: {classRecord.moduleCount ?? 0} modules · {classRecord.lessonCount ?? 0} lessons</Typography>
-          <Typography variant="body2">Starts: {classRecord.schedule.startDate ? formatClassStartDate(schedule) : 'Date to be confirmed'}</Typography>
-          {classRecord.courseTitle && <Typography variant="body2">Course: {classRecord.courseTitle}</Typography>}
-        </Stack>
-      </Box>
-    </Collapse>
   </Card>
 }
 
-const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolledClassIds: Set<number>; isLoading: boolean; error: string | null; onEnroll: (classRecord: PublicClass) => void }> = ({ classes, courses, enrolledClassIds, isLoading, error, onEnroll }) => {
+const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolledClassIds: Set<number>; isLoading: boolean; error: string | null; onEnroll: (classRecord: PublicClass) => void; onOpenClass: (classId: number) => void }> = ({ classes, courses, enrolledClassIds, isLoading, error, onEnroll, onOpenClass }) => {
   const [page, setPage] = useState(1)
-  const [expandedClassId, setExpandedClassId] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [scheduleFilter, setScheduleFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -1443,7 +1440,7 @@ const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolled
           </Stack>
           {filteredClasses.length === 0 ? <EmptyState title="No matching classes" description="Try a different search term or filter." /> : <>
             <Box sx={layout === 'grid' ? { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2, alignItems: 'start' } : { display: 'grid', gridTemplateColumns: '1fr', gap: 2 }}>
-              {visibleClasses.map((classRecord) => { const course = getClassCourse(classRecord); const scheduleDescription = classRecord.schedule.flexible ? 'Flexible schedule.' : `Meets ${classRecord.schedule.days.join(', ')} at ${classRecord.schedule.time}.`; const description = course?.description?.trim() || `${classRecord.courseTitle ? `${classRecord.courseTitle} · ` : ''}Live class with ${classRecord.tutorName}. ${scheduleDescription}`; return <OtherClassCard key={classRecord.id} classRecord={classRecord} cover={classRecord.cover || course?.cover} category={course?.category} description={description} isExpanded={expandedClassId === classRecord.id} onToggleDetails={() => setExpandedClassId((current) => current === classRecord.id ? null : current)} onEnroll={() => onEnroll(classRecord)} layout={layout} /> })}
+              {visibleClasses.map((classRecord) => { const course = getClassCourse(classRecord); const scheduleDescription = classRecord.schedule.flexible ? 'Flexible schedule.' : `Meets ${classRecord.schedule.days.join(', ')} at ${classRecord.schedule.time}.`; const description = course?.description?.trim() || `${classRecord.courseTitle ? `${classRecord.courseTitle} · ` : ''}Live class with ${classRecord.tutorName}. ${scheduleDescription}`; return <OtherClassCard key={classRecord.id} classRecord={classRecord} cover={classRecord.cover || course?.cover} category={course?.category} description={description} onViewDetails={() => onOpenClass(classRecord.id)} onEnroll={() => onEnroll(classRecord)} layout={layout} /> })}
             </Box>
             {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="Other classes pages" /></Stack>}
           </>}
@@ -1451,6 +1448,82 @@ const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolled
       </Stack>
       <Drawer anchor="left" open={filtersOpen} onClose={() => setFiltersOpen(false)} PaperProps={{ sx: { width: 300, p: 2 } }}>{filterPanel}</Drawer>
     </>}
+  </>
+}
+
+const CatalogCourseDetailView: FC<{ courseId: number | null; onBack: () => void; onEnroll: (course: AdminCourse) => void }> = ({ courseId, onBack, onEnroll }) => {
+  const [course, setCourse] = useState<AdminCourse | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    if (courseId === null) {
+      setCourse(null)
+      setIsLoading(false)
+      return
+    }
+    let isCurrent = true
+    setCourse(null)
+    setIsLoading(true)
+    getCourse(courseId).then((record) => { if (isCurrent) setCourse(record) }).catch(() => { if (isCurrent) setCourse(null) }).finally(() => { if (isCurrent) setIsLoading(false) })
+    return () => { isCurrent = false }
+  }, [courseId])
+
+  if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }} aria-live="polite"><CircularProgress aria-label="Loading course details" /></Box>
+  if (!course) return <EmptyState title="Course unavailable" description="This course could not be loaded." actionLabel="Back to Explore Courses" onAction={onBack} />
+
+  const lessons = course.modules.flatMap((module) => module.lessons)
+  return <>
+    <Button onClick={onBack} startIcon={<ArrowBackIcon />} sx={{ mb: 2 }}>Back to Explore Courses</Button>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 320px' }, gap: 3, alignItems: 'start' }}>
+      <Stack spacing={2.5}>
+        <Box>
+          <Chip label={course.category} color="primary" size="small" sx={{ mb: 1.5 }} />
+          <Typography variant="h4" component="h1" sx={{ mb: 1 }}>{course.title}</Typography>
+          <Typography color="text.secondary">{course.description}</Typography>
+        </Box>
+        <Box component="img" src={course.cover} alt={course.title} sx={{ width: '100%', maxHeight: 420, aspectRatio: '16 / 9', objectFit: 'cover', borderRadius: 3 }} />
+        <Box><Typography variant="h5" sx={{ mb: 1 }}>About this course</Typography><Typography color="text.secondary" sx={{ lineHeight: 1.8, whiteSpace: 'pre-line' }}>{course.longDescription || course.description}</Typography></Box>
+        {course.learningOutcomes.length > 0 && <Box><Typography variant="h5" sx={{ mb: 1 }}>What you&apos;ll learn</Typography><Stack spacing={1}>{course.learningOutcomes.map((outcome) => <Typography key={outcome} color="text.secondary">• {outcome}</Typography>)}</Stack></Box>}
+        <Box><Typography variant="h5" sx={{ mb: 1 }}>Course content</Typography><Stack spacing={1.25}>{course.modules.map((module) => <Paper key={module.id} elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider' }}><Typography sx={{ fontWeight: 700, mb: 1 }}>{module.title}</Typography><Stack spacing={0.75}>{module.lessons.map((lesson) => <Typography key={lesson.id} variant="body2" color="text.secondary">{lesson.title}</Typography>)}</Stack></Paper>)}</Stack><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>{course.modules.length} sections · {lessons.length} lessons</Typography></Box>
+      </Stack>
+      <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', position: { lg: 'sticky' }, top: { lg: 20 } }}>
+        <Typography variant="h4" sx={{ mb: 2 }}>${course.price}</Typography>
+        <Button fullWidth variant="contained" size="large" onClick={() => onEnroll(course)}>Enroll in course</Button>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>{course.level} · {course.tutor}</Typography>
+        <Divider sx={{ my: 2 }} />
+        <Typography variant="body2">{course.certificate ? 'Certificate of completion included' : 'Self-paced learning access'}</Typography>
+      </Paper>
+    </Box>
+  </>
+}
+
+const CatalogClassDetailView: FC<{ classRecord?: PublicClass; course?: Course; isLoading: boolean; onBack: () => void; onEnroll: (classRecord: PublicClass) => void }> = ({ classRecord, course, isLoading, onBack, onEnroll }) => {
+  if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }} aria-live="polite"><CircularProgress aria-label="Loading class details" /></Box>
+  if (!classRecord) return <EmptyState title="Class unavailable" description="This class could not be loaded." actionLabel="Back to Explore Classes" onAction={onBack} />
+
+  const schedule = { ...classRecord.schedule, date: '', startsAt: '' }
+  const isAvailable = !classRecord.enrollmentClosed && (classRecord.status === 'open' || classRecord.status === 'full')
+  return <>
+    <Button onClick={onBack} startIcon={<ArrowBackIcon />} sx={{ mb: 2 }}>Back to Explore Classes</Button>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 320px' }, gap: 3, alignItems: 'start' }}>
+      <Stack spacing={2.5}>
+        <Box>
+          <Chip label={course?.category ?? 'Live class'} color="primary" size="small" sx={{ mb: 1.5 }} />
+          <Typography variant="h4" component="h1" sx={{ mb: 1 }}>{classRecord.title}</Typography>
+          <Typography color="text.secondary">{course?.description || `Live class with ${classRecord.tutorName}.`}</Typography>
+        </Box>
+        {(classRecord.cover || course?.cover) && <Box component="img" src={classRecord.cover || course?.cover || ''} alt={classRecord.title} sx={{ width: '100%', maxHeight: 420, aspectRatio: '16 / 9', objectFit: 'cover', borderRadius: 3 }} />}
+        <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider' }}>
+          <Typography variant="h6" sx={{ mb: 1.5 }}>Class details</Typography>
+          <Stack spacing={1}><Typography>Instructor: {classRecord.tutorName}</Typography><Typography>Schedule: {classScheduleLabel(schedule)}</Typography><Typography>Duration: {formatDuration(classRecord.schedule.duration * 60)}</Typography><Typography>Starts: {classRecord.schedule.startDate ? formatClassStartDate(schedule) : 'Date to be confirmed'}</Typography><Typography>Enrollment: {classRecord.enrolledCount}/{classRecord.capacity} seats</Typography><Typography>Curriculum: {classRecord.moduleCount ?? 0} modules · {classRecord.lessonCount ?? 0} lessons</Typography>{classRecord.courseTitle && <Typography>Course: {classRecord.courseTitle}</Typography>}</Stack>
+        </Paper>
+      </Stack>
+      <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', position: { lg: 'sticky' }, top: { lg: 20 } }}>
+        <Typography variant="h4" sx={{ mb: 2 }}>${classRecord.price}</Typography>
+        <Button fullWidth variant="contained" size="large" disabled={!isAvailable} onClick={() => onEnroll(classRecord)}>{classRecord.status === 'full' ? 'Join waitlist' : 'Enroll in class'}</Button>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>{classRecord.status === 'pending_schedule' ? 'Schedule pending' : classRecord.enrollmentClosed ? 'Enrollment closed' : classScheduleLabel(schedule)}</Typography>
+      </Paper>
+    </Box>
   </>
 }
 
@@ -1953,6 +2026,8 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   const currentUser = getAuthenticatedUser()
   const currentUserId = Number(currentUser?.id)
   const [activeView, setActiveView] = useState<DashboardView>(() => dashboardViewFromPath(window.location.pathname))
+  const [selectedCatalogCourseId, setSelectedCatalogCourseId] = useState<number | null>(() => catalogCourseIdFromPath(window.location.pathname))
+  const [selectedCatalogClassId, setSelectedCatalogClassId] = useState<number | null>(() => catalogClassIdFromPath(window.location.pathname))
   const [quizActive, setQuizActive] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [language, setLanguage] = useState('EN')
@@ -1970,6 +2045,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   const [otherCoursesError, setOtherCoursesError] = useState<string | null>(null)
   const [otherClasses, setOtherClasses] = useState<PublicClass[]>([])
   const [classToEnroll, setClassToEnroll] = useState<PublicClass | null>(null)
+  const [courseToEnroll, setCourseToEnroll] = useState<Pick<AdminCourse, 'id' | 'title' | 'price'> | null>(null)
   const [isLoadingOtherClasses, setIsLoadingOtherClasses] = useState(true)
   const [otherClassesError, setOtherClassesError] = useState<string | null>(null)
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null)
@@ -2008,7 +2084,12 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   }, [])
 
   useEffect(() => {
-    const handlePopState = () => setActiveView(dashboardViewFromPath(window.location.pathname))
+    const handlePopState = () => {
+      const pathname = window.location.pathname
+      setActiveView(dashboardViewFromPath(pathname))
+      setSelectedCatalogCourseId(catalogCourseIdFromPath(pathname))
+      setSelectedCatalogClassId(catalogClassIdFromPath(pathname))
+    }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
@@ -2156,7 +2237,9 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   const selectedCourseProgress = selectedCourse ? getCourseProgress(selectedCourse, completedLessons[selectedCourse.id] ?? []) : 0
   const enrolledCourseIds = new Set(enrollments.filter((enrollment) => enrollment.type === 'course').map((enrollment) => String(enrollment.item_id)))
   const enrolledClassIds = new Set(enrollments.filter((enrollment) => enrollment.type === 'class').map((enrollment) => enrollment.item_id))
-  const pageTitle = activeView === 'course-view' ? selectedCourse?.title ?? 'Course view' : activeView === 'overview' ? 'Dashboard' : activeView === 'calendar' ? 'Calendar' : activeView === 'courses' ? 'My Courses' : activeView === 'classes' ? 'My Classes' : activeView === 'explore-courses' ? 'Explore Courses' : activeView === 'explore-classes' ? 'Explore Classes' : activeView === 'study-planner' ? 'Study Planner' : activeView === 'quizzes' ? 'Quizzes & Results' : activeView === 'purchases' ? 'My Purchases' : activeView === 'profile' ? 'Profile' : 'Payment History'
+  const selectedCatalogClass = selectedCatalogClassId === null ? undefined : otherClasses.find((classRecord) => classRecord.id === selectedCatalogClassId)
+  const selectedCatalogCourse = selectedCatalogCourseId === null ? undefined : otherCourses.find((course) => Number(course.id) === selectedCatalogCourseId)
+  const pageTitle = activeView === 'course-view' ? selectedCourse?.title ?? 'Course view' : activeView === 'course-detail' ? selectedCatalogCourse?.title ?? 'Course details' : activeView === 'class-detail' ? selectedCatalogClass?.title ?? 'Class details' : activeView === 'overview' ? 'Dashboard' : activeView === 'calendar' ? 'Calendar' : activeView === 'courses' ? 'My Courses' : activeView === 'classes' ? 'My Classes' : activeView === 'explore-courses' ? 'Explore Courses' : activeView === 'explore-classes' ? 'Explore Classes' : activeView === 'study-planner' ? 'Study Planner' : activeView === 'quizzes' ? 'Quizzes & Results' : activeView === 'purchases' ? 'My Purchases' : activeView === 'profile' ? 'Profile' : 'Payment History'
 
   useEffect(() => {
     const title = quizActive ? (readOnlyQuizResult ? 'Quiz Results' : 'Quiz') : pageTitle
@@ -2164,9 +2247,23 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   }, [pageTitle, quizActive, readOnlyQuizResult])
 
   const selectView = (view: DashboardView) => {
-    if (view !== 'course-view') navigateTo(dashboardViewPaths[view])
+    if (view !== 'course-view' && view !== 'course-detail' && view !== 'class-detail') navigateTo(dashboardViewPaths[view])
     setActiveView(view)
     setProgressError(null)
+    setMobileOpen(false)
+  }
+  const openCatalogCourse = (courseId: number) => {
+    setSelectedCatalogCourseId(courseId)
+    setSelectedCatalogClassId(null)
+    navigateTo(`/account/courses/${courseId}`)
+    setActiveView('course-detail')
+    setMobileOpen(false)
+  }
+  const openCatalogClass = (classId: number) => {
+    setSelectedCatalogClassId(classId)
+    setSelectedCatalogCourseId(null)
+    navigateTo(`/account/classes/${classId}`)
+    setActiveView('class-detail')
     setMobileOpen(false)
   }
   const openCourse = (courseId: number, lessonId?: number, readOnly = false) => {
@@ -2306,8 +2403,10 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
           {activeView === 'calendar' && <StudentCalendarView enrollments={enrollments} now={now} onJoin={(session) => { if (session.lessonId && session.meetingUrl) void joinLiveSession(session.lessonId, session.meetingUrl, session.enrollmentId) }} />}
           {activeView === 'courses' && <Box sx={{ mx: { xs: -2, md: -3.5 }, mt: { xs: -2, md: -3.5 }, px: { xs: 2, md: 3.5 }, pt: { xs: 2, md: 3.5 }, minHeight: 'calc(100vh - 82px)', bgcolor: (theme) => theme.palette.mode === 'dark' ? theme.palette.background.default : '#fff', backgroundImage: 'none' }}><CoursesView enrollments={enrollments} completedLessons={completedLessons} onOpenCourse={openCourse} /></Box>}
           {activeView === 'classes' && <ClassesView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} gamificationData={gamificationData} />}
-          {activeView === 'explore-courses' && <OtherCoursesView courses={otherCourses} enrolledCourseIds={enrolledCourseIds} isLoading={isLoadingOtherCourses} error={otherCoursesError} />}
-          {activeView === 'explore-classes' && <OtherClassesView classes={otherClasses} courses={otherCourses} enrolledClassIds={enrolledClassIds} isLoading={isLoadingOtherClasses} error={otherClassesError} onEnroll={setClassToEnroll} />}
+          {activeView === 'explore-courses' && <OtherCoursesView courses={otherCourses} enrolledCourseIds={enrolledCourseIds} isLoading={isLoadingOtherCourses} error={otherCoursesError} onOpenCourse={openCatalogCourse} />}
+          {activeView === 'explore-classes' && <OtherClassesView classes={otherClasses} courses={otherCourses} enrolledClassIds={enrolledClassIds} isLoading={isLoadingOtherClasses} error={otherClassesError} onEnroll={setClassToEnroll} onOpenClass={openCatalogClass} />}
+          {activeView === 'course-detail' && <CatalogCourseDetailView courseId={selectedCatalogCourseId} onBack={() => selectView('explore-courses')} onEnroll={(course) => setCourseToEnroll({ id: course.id, title: course.title, price: course.price })} />}
+          {activeView === 'class-detail' && <CatalogClassDetailView classRecord={selectedCatalogClass} course={selectedCatalogClass?.courseId === null || selectedCatalogClass?.courseId === undefined ? undefined : otherCourses.find((course) => String(course.id) === String(selectedCatalogClass.courseId))} isLoading={isLoadingOtherClasses} onBack={() => selectView('explore-classes')} onEnroll={setClassToEnroll} />}
           {activeView === 'study-planner' && <StudyPlannerView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} onStudyPlanSaved={(enrollmentId, lessonOrder) => setEnrollments((current) => current.map((enrollment) => enrollment.id === enrollmentId ? { ...enrollment, studyPlanOrder: lessonOrder } : enrollment))} />}
           {activeView === 'quizzes' && <QuizzesView enrollments={enrollments} completedLessons={completedLessons} quizResults={quizResults} now={now} onOpenCourse={openCourse} />}
           {activeView === 'purchases' && <PurchasesView />}
@@ -2318,6 +2417,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
       </Box>
     </Box>
     {classCheckoutCourse && classToEnroll && <EnrollmentModal course={classCheckoutCourse} classId={classToEnroll.id} open={true} onClose={() => setClassToEnroll(null)} onPaid={() => { void getMyEnrollments().then((records) => setEnrollments(mapMyEnrollments(records, currentUserId))).catch(() => undefined) }} />}
+    {courseToEnroll && <EnrollmentModal course={courseToEnroll} open={true} onClose={() => setCourseToEnroll(null)} onPaid={() => { void getMyEnrollments().then((records) => setEnrollments(mapMyEnrollments(records, currentUserId))).catch(() => undefined) }} />}
     {victoryCelebrationId > 0 && <QuizVictoryCelebration key={victoryCelebrationId} />}
   </Box>
 }

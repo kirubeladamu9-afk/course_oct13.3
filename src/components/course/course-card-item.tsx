@@ -9,9 +9,10 @@ import { navigateTo } from '@/lib/navigation'
 
 interface Props {
   item: Course
+  onOpen?: (item: Course) => void
 }
 
-const CourseCardItem: FC<Props> = ({ item }) => {
+const CourseCardItem: FC<Props> = ({ item, onOpen }) => {
   return (
     <Box
       sx={{
@@ -79,7 +80,7 @@ const CourseCardItem: FC<Props> = ({ item }) => {
           <IconButton
             color="primary"
             aria-label={`Open ${item.title} course`}
-            onClick={() => navigateTo(`/courses/${item.id}`)}
+            onClick={() => onOpen ? onOpen(item) : navigateTo(`/courses/${item.id}`)}
             sx={{ '&:hover': { backgroundColor: 'primary.main', color: 'primary.contrastText' } }}
           >
             <ArrowForward />
