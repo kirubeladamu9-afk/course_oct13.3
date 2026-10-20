@@ -1,4 +1,5 @@
 import AddPhotoAlternateOutlinedIcon from '@mui/icons-material/AddPhotoAlternateOutlined'
+import CloseIcon from '@mui/icons-material/Close'
 import CodeOutlinedIcon from '@mui/icons-material/CodeOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import FormatAlignCenterIcon from '@mui/icons-material/FormatAlignCenter'
@@ -78,10 +79,13 @@ const getVideoEmbedUrl = (value: string) => {
 
 const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
   const editorRef = useRef<HTMLDivElement>(null)
+  const editorWrapperRef = useRef<HTMLDivElement>(null)
   const selectionRef = useRef<Range | null>(null)
+  const selectedImageRef = useRef<HTMLImageElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [headerError, setHeaderError] = useState<string | null>(null)
   const [toolbarTab, setToolbarTab] = useState(0)
+  const [imageDeletePosition, setImageDeletePosition] = useState<{ top: number; left: number } | null>(null)
   const initialHtml = useMemo(() => initialArticleHtml(lesson), [lesson.id])
 
   useEffect(() => {
@@ -106,6 +110,27 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
     const articleBody = sanitizeArticleHtml(editorRef.current.innerHTML)
     onChange({ ...lesson, articleBody, articleBlocks: undefined })
     saveSelection()
+  }
+
+  const selectArticleImage = (image: HTMLImageElement) => {
+    const wrapper = editorWrapperRef.current
+    if (!wrapper) return
+    const imageRect = image.getBoundingClientRect()
+    const wrapperRect = wrapper.getBoundingClientRect()
+    selectedImageRef.current = image
+    setImageDeletePosition({ top: imageRect.top - wrapperRect.top + wrapper.scrollTop + 6, left: imageRect.right - wrapperRect.left + wrapper.scrollLeft - 34 })
+  }
+
+  const deleteSelectedImage = () => {
+    const image = selectedImageRef.current
+    if (!image) return
+    const figure = image.closest('figure')
+    if (figure) figure.remove()
+    else image.remove()
+    selectedImageRef.current = null
+    selectionRef.current = null
+    setImageDeletePosition(null)
+    updateArticle()
   }
 
   const runCommand = (command: string, value?: string) => {
@@ -234,45 +259,56 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
           {toolbarButton('Redo', <RedoOutlinedIcon fontSize="small" />, () => runCommand('redo'))}
         </>}
       </Box>
-      <Box
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        role="textbox"
-        aria-label="Article content editor"
-        aria-multiline="true"
-        onInput={updateArticle}
-        onMouseUp={saveSelection}
-        onKeyUp={saveSelection}
-        onBlur={saveSelection}
-        onPaste={(event) => {
-          const html = event.clipboardData.getData('text/html')
-          if (!html) return
-          event.preventDefault()
-          insertHtml(html)
-        }}
-        sx={{
-          minHeight: { xs: 360, md: 520 },
-          p: { xs: 2, sm: 3.5, md: 5 },
-          outline: 0,
-          color: 'text.primary',
-          fontFamily: 'Arial, sans-serif',
-          fontSize: 15,
-          lineHeight: 1.8,
-          overflowWrap: 'anywhere',
-          '&:empty:before': { content: '"Start writing your lesson…"', color: 'text.disabled', pointerEvents: 'none' },
-          '& h1, & h2, & h3, & h4, & h5, & h6': { lineHeight: 1.3, mt: 2.5, mb: 1 },
-          '& p': { my: 1.25 },
-          '& figure': { mx: 0, my: 3, textAlign: 'center' },
-          '& figure img': { display: 'block', width: '100%', maxHeight: 560, objectFit: 'contain', mx: 'auto', borderRadius: 1.5 },
-          '& figcaption': { mt: 1, color: 'text.secondary', fontSize: 13, outline: 0 },
-          '& iframe': { width: '100%', maxWidth: 760, minHeight: 220, border: 0, borderRadius: 1.5 },
-          '& table': { width: '100%', borderCollapse: 'collapse', my: 2 },
-          '& td, & th': { minWidth: 80, border: 1, borderColor: 'divider', p: 1, textAlign: 'left' },
-          '& pre': { p: 2, overflowX: 'auto', borderRadius: 1.5, backgroundColor: 'action.hover', fontFamily: 'monospace', lineHeight: 1.5 },
-          '& blockquote': { mx: 0, my: 2, pl: 2, borderLeft: 3, borderColor: 'primary.main', color: 'text.secondary' },
-        }}
-      />
+      <Box ref={editorWrapperRef} sx={{ position: 'relative' }}>
+        <Box
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-label="Article content editor"
+          aria-multiline="true"
+          onInput={updateArticle}
+          onClick={(event) => {
+            const target = event.target
+            if (target instanceof HTMLImageElement) selectArticleImage(target)
+            else {
+              selectedImageRef.current = null
+              setImageDeletePosition(null)
+            }
+          }}
+          onMouseUp={saveSelection}
+          onKeyUp={saveSelection}
+          onBlur={saveSelection}
+          onPaste={(event) => {
+            const html = event.clipboardData.getData('text/html')
+            if (!html) return
+            event.preventDefault()
+            insertHtml(html)
+          }}
+          sx={{
+            minHeight: { xs: 360, md: 520 },
+            p: { xs: 2, sm: 3.5, md: 5 },
+            outline: 0,
+            color: 'text.primary',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: 15,
+            lineHeight: 1.8,
+            overflowWrap: 'anywhere',
+            '&:empty:before': { content: '"Start writing your lesson…"', color: 'text.disabled', pointerEvents: 'none' },
+            '& h1, & h2, & h3, & h4, & h5, & h6': { lineHeight: 1.3, mt: 2.5, mb: 1 },
+            '& p': { my: 1.25 },
+            '& figure': { mx: 0, my: 3, textAlign: 'center' },
+            '& figure img': { display: 'block', width: '100%', maxHeight: 560, objectFit: 'contain', mx: 'auto', borderRadius: 1.5, cursor: 'pointer' },
+            '& figcaption': { mt: 1, color: 'text.secondary', fontSize: 13, outline: 0 },
+            '& iframe': { width: '100%', maxWidth: 760, minHeight: 220, border: 0, borderRadius: 1.5 },
+            '& table': { width: '100%', borderCollapse: 'collapse', my: 2 },
+            '& td, & th': { minWidth: 80, border: 1, borderColor: 'divider', p: 1, textAlign: 'left' },
+            '& pre': { p: 2, overflowX: 'auto', borderRadius: 1.5, backgroundColor: 'action.hover', fontFamily: 'monospace', lineHeight: 1.5 },
+            '& blockquote': { mx: 0, my: 2, pl: 2, borderLeft: 3, borderColor: 'primary.main', color: 'text.secondary' },
+          }}
+        />
+        {imageDeletePosition && <IconButton aria-label="Delete selected image" title="Delete image" onMouseDown={(event) => event.preventDefault()} onClick={deleteSelectedImage} sx={{ position: 'absolute', top: imageDeletePosition.top, left: imageDeletePosition.left, zIndex: 2, width: 30, height: 30, color: 'common.white', backgroundColor: 'error.main', boxShadow: 2, '&:hover': { backgroundColor: 'error.dark' } }}><CloseIcon fontSize="small" /></IconButton>}
+      </Box>
     </Paper>
   </Stack>
 }
