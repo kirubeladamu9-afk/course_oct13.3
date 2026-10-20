@@ -6,4 +6,5 @@ export interface Course {
   ratingCount: number
   price: number
   category: string
+  description?: string
 }

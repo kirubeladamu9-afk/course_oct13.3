@@ -597,7 +597,8 @@ const courseSummaryColumns = sql.unsafe(`
   rating::FLOAT AS rating,
   rating_count AS "ratingCount",
   price::FLOAT AS price,
-  category
+  category,
+  description
 `)
 
 const tutorColumns = sql.unsafe(`

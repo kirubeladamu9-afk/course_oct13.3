@@ -21,11 +21,15 @@ const CourseCardItem: FC<Props> = ({ item }) => {
       }}
     >
       <Box
+        className="course-card"
         sx={{
           p: 2,
           backgroundColor: 'background.paper',
           borderRadius: 4,
           transition: (theme) => theme.transitions.create(['box-shadow']),
+          '&:hover, &:focus-within': {
+            '& .course-description': { opacity: 1 },
+          },
           '&:hover': {
             boxShadow: 2,
             [`& .${iconButtonClasses.root}`]: {
@@ -38,6 +42,7 @@ const CourseCardItem: FC<Props> = ({ item }) => {
       >
         <Box
           sx={{
+            position: 'relative',
             lineHeight: 0,
             overflow: 'hidden',
             aspectRatio: '16 / 9',
@@ -50,7 +55,8 @@ const CourseCardItem: FC<Props> = ({ item }) => {
             },
           }}
         >
-          <img className="course-cover-image" src={item.cover} width={760} height={760} alt={'Course ' + item.id} loading="lazy" />
+          <img className="course-cover-image" src={item.cover} width={760} height={760} alt={'Course ' + item.title} loading="lazy" />
+          {item.description?.trim() && <Box className="course-description" sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', p: 2, opacity: 0, transition: 'opacity 180ms ease', background: 'linear-gradient(transparent 5%, rgba(0,0,0,.82))' }}><Typography variant="body2" sx={{ color: 'common.white', lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.description}</Typography></Box>}
         </Box>
         <Box sx={{ mb: 2 }}>
           <Typography component="h2" variant="h5" sx={{ mb: 2, height: 56, overflow: 'hidden', fontSize: '1.2rem' }}>

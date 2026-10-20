@@ -1309,7 +1309,7 @@ const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; 
   </>
 }
 
-const OtherClassCard: FC<{ classRecord: PublicClass; cover?: string; category?: string; isExpanded: boolean; onToggleDetails: () => void; onEnroll: () => void; layout: 'grid' | 'list' }> = ({ classRecord, cover, category, isExpanded, onToggleDetails, onEnroll, layout }) => {
+const OtherClassCard: FC<{ classRecord: PublicClass; cover?: string; category?: string; description: string; isExpanded: boolean; onToggleDetails: () => void; onEnroll: () => void; layout: 'grid' | 'list' }> = ({ classRecord, cover, category, description, isExpanded, onToggleDetails, onEnroll, layout }) => {
   const schedule = { ...classRecord.schedule, date: '', startsAt: '' }
   const statusLabel = classRecord.enrollmentClosed ? 'Enrollment closed' : classRecord.status === 'pending_schedule' ? 'Pending schedule' : classRecord.status === 'open' ? 'Available' : classRecord.status === 'full' ? 'Full' : 'Closed'
   const statusColor = classRecord.enrollmentClosed || classRecord.status === 'closed' ? 'error' : classRecord.status === 'open' ? 'success' : 'warning'
@@ -1317,10 +1317,11 @@ const OtherClassCard: FC<{ classRecord: PublicClass; cover?: string; category?: 
   const detailsId = `class-details-${classRecord.id}`
   const contentPadding = { xs: 2, md: 2.5, lg: 3 }
 
-  return <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3.5, backgroundColor: 'background.paper', boxShadow: (theme) => `0 6px 20px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.25 : 0.05)}` }}>
+  return <Card className="class-card" elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3.5, backgroundColor: 'background.paper', boxShadow: (theme) => `0 6px 20px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.25 : 0.05)}`, '&:hover .class-card-description, &:focus-within .class-card-description': { opacity: 1 } }}>
     <Box sx={{ display: 'grid', gridTemplateColumns: layout === 'grid' ? '1fr' : { xs: '1fr', md: '220px minmax(0, 1fr) 210px', lg: '300px minmax(0, 1fr) 240px' }, gap: { xs: 2, md: 2.5, lg: 3 }, p: layout === 'grid' ? 2 : contentPadding }}>
       <Box sx={{ position: 'relative', aspectRatio: layout === 'grid' ? '16 / 9' : { xs: '16 / 10', md: '300 / 216' }, overflow: 'hidden', borderRadius: 2.5, backgroundColor: 'action.hover' }}>
         {cover ? <Box component="img" src={cover} alt={`${classRecord.title} thumbnail`} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /> : <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'primary.main' }}><ClassOutlinedIcon sx={{ fontSize: 48 }} /></Box>}
+        <Box className="class-card-description" sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', p: 2, opacity: 0, transition: 'opacity 180ms ease', background: 'linear-gradient(transparent 5%, rgba(0,0,0,.82))' }}><Typography variant="body2" sx={{ color: 'common.white', lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{description}</Typography></Box>
         <Chip icon={<VideoCallOutlinedIcon />} label="Live Class" size="small" sx={{ position: 'absolute', top: 12, left: 12, fontWeight: 700, color: 'common.white', backgroundColor: 'primary.main', '& .MuiChip-icon': { color: 'inherit' } }} />
         <Box sx={{ position: 'absolute', left: 12, bottom: 12, display: 'grid', placeItems: 'center', width: 36, height: 36, borderRadius: 2, color: 'primary.main', backgroundColor: 'background.paper', boxShadow: 1 }}><MenuBookOutlinedIcon fontSize="small" /></Box>
       </Box>
@@ -1442,7 +1443,7 @@ const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolled
           </Stack>
           {filteredClasses.length === 0 ? <EmptyState title="No matching classes" description="Try a different search term or filter." /> : <>
             <Box sx={layout === 'grid' ? { display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: 2, alignItems: 'start' } : { display: 'grid', gridTemplateColumns: '1fr', gap: 2 }}>
-              {visibleClasses.map((classRecord) => <OtherClassCard key={classRecord.id} classRecord={classRecord} cover={classRecord.cover || getClassCourse(classRecord)?.cover} category={getClassCourse(classRecord)?.category} isExpanded={expandedClassId === classRecord.id} onToggleDetails={() => setExpandedClassId((current) => current === classRecord.id ? null : classRecord.id)} onEnroll={() => onEnroll(classRecord)} layout={layout} />)}
+              {visibleClasses.map((classRecord) => { const course = getClassCourse(classRecord); const scheduleDescription = classRecord.schedule.flexible ? 'Flexible schedule.' : `Meets ${classRecord.schedule.days.join(', ')} at ${classRecord.schedule.time}.`; const description = course?.description?.trim() || `${classRecord.courseTitle ? `${classRecord.courseTitle} · ` : ''}Live class with ${classRecord.tutorName}. ${scheduleDescription}`; return <OtherClassCard key={classRecord.id} classRecord={classRecord} cover={classRecord.cover || course?.cover} category={course?.category} description={description} isExpanded={expandedClassId === classRecord.id} onToggleDetails={() => setExpandedClassId((current) => current === classRecord.id ? null : current)} onEnroll={() => onEnroll(classRecord)} layout={layout} /> })}
             </Box>
             {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="Other classes pages" /></Stack>}
           </>}
