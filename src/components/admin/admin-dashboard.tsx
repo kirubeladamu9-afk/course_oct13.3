@@ -1017,7 +1017,7 @@ const OverviewPage: FC<{ displayName: string }> = ({ displayName }) => {
   }
 
   useEffect(() => {
-    void getAdminClassesWorkspace().then((workspace) => setClasses(workspace.classes)).catch((error) => toast.add({ title: 'Unable to load classes', description: error instanceof Error ? error.message : 'Please try again.', type: 'error' }))
+    void getAdminClassesWorkspace().then((workspace) => setClasses(workspace.classes)).catch((error) => { if (getAuthenticatedUser()) toast.add({ title: 'Unable to load classes', description: error instanceof Error ? error.message : 'Please try again.', type: 'error' }) })
   }, [])
 
   useEffect(() => {
@@ -1790,8 +1790,9 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
     setMobileOpen(false)
   }
 
-  const handleSignOut = () => {
-    void signOut()
+  const handleSignOut = async () => {
+    await signOut()
+    toast.add({ title: 'Signed out', description: 'You have been successfully logged out.', type: 'success' })
     navigateTo('/', true)
   }
 

@@ -37,7 +37,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { type FC, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from '@/components/toast'
 import { navigateTo } from '@/lib/navigation'
-import { assignAdminClass, createAdminClass, deleteAdminClass, getClassLeaderboard, getClassStatistics, getAdminClassesWorkspace, removeAdminClassEnrollment, updateAdminClass, updateAdminClassEnrollment, type ClassLeaderboardEntry, type ClassStatistics } from '@/services/api'
+import { assignAdminClass, createAdminClass, deleteAdminClass, getClassLeaderboard, getClassStatistics, getAdminClassesWorkspace, getAuthenticatedUser, removeAdminClassEnrollment, updateAdminClass, updateAdminClassEnrollment, type ClassLeaderboardEntry, type ClassStatistics } from '@/services/api'
 import { getNextLessonId, type AdminCourse, type AdminLesson, type AdminModule, type LessonType } from './admin-data'
 import { CourseEditor } from './admin-dashboard'
 import AdminDataTable, { type DataColumn } from './admin-data-table'
@@ -521,7 +521,7 @@ const ClassesWorkspace: FC<ClassesWorkspaceProps> = ({ view, classId }) => {
       setClassEnrollments(workspace.enrollments)
       setPendingStudents(workspace.pendingStudents)
     } catch (error) {
-      toast.add({ title: 'Unable to load classes', description: error instanceof Error ? error.message : 'Please try again.', type: 'error' })
+      if (getAuthenticatedUser()) toast.add({ title: 'Unable to load classes', description: error instanceof Error ? error.message : 'Please try again.', type: 'error' })
     } finally {
       setIsLoading(false)
     }

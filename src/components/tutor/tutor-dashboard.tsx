@@ -463,7 +463,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
   const handleSignOut = () => {
     void toast.promise(signOut().then(() => navigateTo('/', true)), {
       loading: 'Signing out...',
-      success: 'Signed out successfully.',
+      success: { title: 'Signed out', description: 'You have been successfully logged out.' },
       error: (signOutError) => signOutError instanceof Error ? signOutError.message : 'Unable to sign out.',
     })
   }
