@@ -292,7 +292,7 @@ export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCou
   const [addingLessonModuleId, setAddingLessonModuleId] = useState<number | null>(null)
   const [lessonPanel, setLessonPanel] = useState<LessonPanelState | null>(null)
   const [videoUploadProgress, setVideoUploadProgress] = useState(0)
-  const [expandedSections, setExpandedSections] = useState<string[]>([])
+  const [expandedSections, setExpandedSections] = useState<string[]>(['details', 'curriculum'])
   const [lessonImportPreview, setLessonImportPreview] = useState<{ moduleId: number; type: ImportableLessonType; result: LessonImportPreview } | null>(null)
   const [isImportingLesson, setIsImportingLesson] = useState(false)
 
@@ -305,7 +305,7 @@ export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCou
     setLessonPanel(null)
     setLessonImportPreview(null)
     setVideoUploadProgress(0)
-    setExpandedSections([])
+    setExpandedSections(['details', 'curriculum'])
   }, [course.id])
 
   const toggleSection = (section: string) => {
