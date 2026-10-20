@@ -49,21 +49,23 @@ const ContactPage: FC = () => {
   }
 
   return <Box component="main" sx={{ backgroundColor: (theme) => theme.palette.mode === 'dark' ? theme.palette.background.default : '#f8fbfb', color: 'text.primary' }}>
-    <Box sx={{ position: 'relative', overflow: 'hidden', backgroundColor: '#e8f7f4' }}>
-      <Box component="img" src={contactHeroImage} alt="" aria-hidden="true" sx={{ display: { xs: 'none', sm: 'block' }, position: 'absolute', top: 0, right: 0, height: '100%', width: 'auto', maxWidth: 'none' }} />
-      <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1, minHeight: { xs: 'auto', sm: 300, md: 300 }, py: { xs: 3, sm: 0 }, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, alignItems: 'center', gap: { xs: 2, sm: 1.5, md: 2 } }}>
-        <Box sx={{ position: 'relative', zIndex: 1, py: { md: 2 }, maxWidth: { sm: 390 } }}>
-          <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1.1 }}>GET IN TOUCH</Typography>
-          <Typography component="h1" sx={{ mt: .75, mb: 1, fontSize: { xs: '2.25rem', sm: '2.4rem', md: '2.6rem' }, lineHeight: 1.05, letterSpacing: '-.045em', fontWeight: 800 }}>Contact Us</Typography>
-          <Typography sx={{ maxWidth: 450, color: 'text.secondary', lineHeight: 1.65, fontSize: { xs: '.9rem', sm: '.82rem', md: '.9rem' } }}>We’d love to hear from you! Whether you have a question, need support, or just want to say hello — we’re here to help.</Typography>
-          <Stack direction="row" spacing={{ xs: 2, sm: 2.5 }} sx={{ mt: { xs: 2.5, sm: 2.25 } }}>
-            <Stack direction="row" spacing={.75} alignItems="center"><MenuBookOutlinedIcon color="primary" fontSize="small" /><Typography variant="caption" sx={{ fontWeight: 600, lineHeight: 1.3 }}>Better Learning<br />Together</Typography></Stack>
-            <Stack direction="row" spacing={.75} alignItems="center"><FavoriteBorderRoundedIcon color="primary" fontSize="small" /><Typography variant="caption" sx={{ fontWeight: 600, lineHeight: 1.3 }}>Your Success<br />Matters</Typography></Stack>
-          </Stack>
+    <Container maxWidth="lg" sx={{ py: { xs: 2.5, md: 3 } }}>
+      <Box sx={{ position: 'relative', overflow: 'hidden', borderRadius: 3, backgroundColor: '#e8f7f4' }}>
+        <Box component="img" src={contactHeroImage} alt="" aria-hidden="true" sx={{ display: { xs: 'none', sm: 'block' }, position: 'absolute', top: 0, right: 0, height: '100%', width: 'auto', maxWidth: 'none' }} />
+        <Box sx={{ position: 'relative', zIndex: 1, minHeight: { xs: 'auto', sm: 300, md: 300 }, px: { xs: 2.5, sm: 3, md: 4 }, py: { xs: 3, sm: 0 }, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, alignItems: 'center', gap: { xs: 2, sm: 1.5, md: 2 } }}>
+          <Box sx={{ position: 'relative', zIndex: 1, py: { md: 2 }, maxWidth: { sm: 390 } }}>
+            <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1.1 }}>GET IN TOUCH</Typography>
+            <Typography component="h1" sx={{ mt: .75, mb: 1, fontSize: { xs: '2.25rem', sm: '2.4rem', md: '2.6rem' }, lineHeight: 1.05, letterSpacing: '-.045em', fontWeight: 800 }}>Contact Us</Typography>
+            <Typography sx={{ maxWidth: 450, color: 'text.secondary', lineHeight: 1.65, fontSize: { xs: '.9rem', sm: '.82rem', md: '.9rem' } }}>We’d love to hear from you! Whether you have a question, need support, or just want to say hello — we’re here to help.</Typography>
+            <Stack direction="row" spacing={{ xs: 2, sm: 2.5 }} sx={{ mt: { xs: 2.5, sm: 2.25 } }}>
+              <Stack direction="row" spacing={.75} alignItems="center"><MenuBookOutlinedIcon color="primary" fontSize="small" /><Typography variant="caption" sx={{ fontWeight: 600, lineHeight: 1.3 }}>Better Learning<br />Together</Typography></Stack>
+              <Stack direction="row" spacing={.75} alignItems="center"><FavoriteBorderRoundedIcon color="primary" fontSize="small" /><Typography variant="caption" sx={{ fontWeight: 600, lineHeight: 1.3 }}>Your Success<br />Matters</Typography></Stack>
+            </Stack>
+          </Box>
+          <Box component="img" src={contactHeroImage} alt="Smiling student holding books with learning illustrations" sx={{ display: { xs: 'block', sm: 'none' }, width: '100%', maxHeight: 180, objectFit: 'contain', objectPosition: 'right center', mt: -1 }} />
         </Box>
-        <Box component="img" src={contactHeroImage} alt="Smiling student holding books with learning illustrations" sx={{ display: { xs: 'block', sm: 'none' }, width: '100%', maxHeight: 180, objectFit: 'contain', objectPosition: 'right center', mt: -1 }} />
-      </Container>
-    </Box>
+      </Box>
+    </Container>
 
     <Container maxWidth="lg" sx={{ py: { xs: 2.5, md: 3 } }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }, gap: { xs: 1.25, sm: 1.5 } }}>
