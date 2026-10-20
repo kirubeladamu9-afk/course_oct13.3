@@ -7,7 +7,7 @@ import { Link as ScrollLink } from 'react-scroll'
 import { navigateTo } from '@/lib/navigation'
 import { navigations } from './navigation.data'
 
-const programPaths = new Set(['popular-course', 'training-programs', '/practice-exams'])
+const programPaths = new Set(['popular-course', 'training-programs', '/courses', '/practice-exams'])
 
 interface Props {
   isAdmin?: boolean
