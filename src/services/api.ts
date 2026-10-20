@@ -1168,8 +1168,8 @@ export const saveStudyPlan = (enrollmentId: number, lessonIds: number[]) => requ
   return response.json() as Promise<{ lessonOrder: number[]; generatedAt: string }>
 })
 
-export const getGamification = async (): Promise<GamificationData> => {
-  const response = await requestApi('/api/gamification')
+export const getGamification = async (signal?: AbortSignal): Promise<GamificationData> => {
+  const response = await requestApi('/api/gamification', { signal })
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
 }
