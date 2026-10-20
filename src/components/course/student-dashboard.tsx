@@ -1023,10 +1023,92 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
   </>
 }
 
+const EnrolledClassCard: FC<{ enrollment: DashboardEnrollment; classRecord: DashboardClass; course: DashboardCourse; now: Date; progress: number; grade: ReturnType<typeof getEnrollmentOverallGrade>; rank?: number; nextLiveLesson?: DashboardLesson; canOpenClass: boolean; bookmarked: boolean; onToggleBookmark: () => void; onContinue: () => void }> = ({ enrollment, classRecord, course, now, progress, grade, rank, nextLiveLesson, canOpenClass, bookmarked, onToggleBookmark, onContinue }) => {
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const closeTimerRef = useRef<number | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const isMobile = useMediaQuery((theme: Theme) => theme.breakpoints.down('sm'))
+  const detailsId = `class-details-${enrollment.id}`
+  const objectives = Array.isArray(course.learningOutcomes) ? course.learningOutcomes.filter((outcome) => typeof outcome === 'string' && outcome.trim()).slice(0, 4) : []
+  const liveSessionAt = nextLiveLesson?.scheduledAt ? new Date(nextLiveLesson.scheduledAt) : null
+  const openDetails = () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+    setDetailsOpen(true)
+  }
+  const delayCloseDetails = () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = window.setTimeout(() => setDetailsOpen(false), 180)
+  }
+  const handleBlur = (event: FocusEvent<HTMLElement>) => {
+    const nextTarget = event.relatedTarget as Node | null
+    if (nextTarget && (cardRef.current?.contains(nextTarget) || panelRef.current?.contains(nextTarget))) return
+    setDetailsOpen(false)
+  }
+
+  useEffect(() => () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+  }, [])
+
+  return <>
+    <Card
+      ref={cardRef}
+      component="article"
+      onMouseEnter={openDetails}
+      onMouseLeave={delayCloseDetails}
+      onFocus={openDetails}
+      onBlur={handleBlur}
+      onClick={(event) => { if (!(event.target as HTMLElement).closest('button, a')) setDetailsOpen((current) => !current) }}
+      aria-describedby={detailsOpen ? detailsId : undefined}
+      sx={{ position: 'relative', overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 3, display: 'flex', flexDirection: 'column', backgroundColor: 'background.paper', boxShadow: (theme) => `0 4px 14px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.2 : 0.06)}`, transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease', '&:hover': { transform: 'translateY(-2px)', borderColor: 'primary.light', boxShadow: (theme) => `0 10px 24px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.3 : 0.1)}` }, '&:focus-within': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 } }}
+    >
+      <Box sx={{ position: 'relative', aspectRatio: '16 / 9', overflow: 'hidden', background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.22)}, ${alpha(theme.palette.info.main, 0.14)})` }}>
+        {course.cover ? <Box component="img" src={course.cover} alt={`${classRecord.title} thumbnail`} sx={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} /> : <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'primary.main' }}><ClassOutlinedIcon sx={{ fontSize: 46, opacity: 0.8 }} /></Box>}
+        <Chip label={classRecord.status === 'pending_schedule' ? 'Pending schedule' : classHasEnded(classRecord.schedule, now) || classRecord.status === 'closed' ? 'Closed' : 'Active class'} size="small" color={canOpenClass ? 'success' : 'warning'} sx={{ position: 'absolute', left: 9, top: 9, height: 24, fontWeight: 700 }} />
+        <IconButton onClick={onToggleBookmark} aria-label={bookmarked ? `Remove ${classRecord.title} from bookmarks` : `Bookmark ${classRecord.title}`} aria-pressed={bookmarked} size="small" sx={{ position: 'absolute', top: 9, right: 9, color: bookmarked ? 'primary.main' : 'text.primary', backgroundColor: 'background.paper', '&:hover': { backgroundColor: 'background.paper', color: 'primary.main' } }}>{bookmarked ? <BookmarkOutlinedIcon fontSize="small" /> : <BookmarkBorderOutlinedIcon fontSize="small" />}</IconButton>
+      </Box>
+      <CardContent sx={{ p: 1.75, display: 'flex', flex: 1, flexDirection: 'column', '&:last-child': { pb: 1.75 } }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 0.9 }}>
+          <Chip label={course.category || 'Live class'} size="small" sx={{ height: 23, borderRadius: 1.5, fontSize: 11, fontWeight: 800, color: 'primary.dark', backgroundColor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.09) }} />
+          <ClassRankValue rank={rank} />
+        </Stack>
+        <Typography variant="subtitle1" sx={{ minHeight: 48, mb: 0.5, fontWeight: 800, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{classRecord.title}</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ mb: 1.2 }}>Tutor: {classRecord.tutorName}</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ mb: 1.2 }}>{nextLiveLesson?.scheduledAt ? `Next session: ${new Date(nextLiveLesson.scheduledAt).toLocaleString()}` : classScheduleLabel(classRecord.schedule)}</Typography>
+        <Box sx={{ py: 1, px: 1.25, mb: 1.25, borderRadius: 2, backgroundColor: 'action.hover' }}><OverallGradeValue grade={grade} /></Box>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.55 }}><Typography variant="caption" sx={{ fontWeight: 700 }}>Progress</Typography><Typography variant="caption" sx={{ fontWeight: 800, color: 'success.dark' }}>{progress}%</Typography></Stack>
+        <LinearProgress variant="determinate" value={progress} color="success" aria-label={`${classRecord.title} progress ${progress}%`} sx={{ height: 6, borderRadius: 4, mb: 1.5, backgroundColor: 'action.hover', '& .MuiLinearProgress-bar': { borderRadius: 4 } }} />
+        <Button fullWidth variant="contained" disabled={!canOpenClass} onClick={onContinue} sx={{ mt: 'auto', minHeight: 40, borderRadius: 2, fontWeight: 800 }}>{classRecord.status === 'closed' || classHasEnded(classRecord.schedule, now) ? 'Class ended' : progress ? 'Continue class' : 'Open class'}</Button>
+        <IconButton onClick={() => setDetailsOpen((current) => !current)} aria-label={`${detailsOpen ? 'Hide' : 'Show'} details for ${classRecord.title}`} aria-expanded={detailsOpen} size="small" sx={{ position: 'absolute', left: 8, top: 8, color: 'common.white', backgroundColor: (theme) => alpha(theme.palette.common.black, 0.48), '&:hover': { backgroundColor: (theme) => alpha(theme.palette.common.black, 0.65) } }}><InfoOutlinedIcon fontSize="small" /></IconButton>
+      </CardContent>
+    </Card>
+    <Popper id={detailsId} open={detailsOpen} anchorEl={cardRef.current} placement={isMobile ? 'bottom-start' : 'right-start'} modifiers={[{ name: 'offset', options: { offset: [0, 12] } }, { name: 'flip', options: { fallbackPlacements: ['left-start', 'top-start', 'bottom-start'] } }, { name: 'preventOverflow', options: { boundary: 'viewport', padding: 12 } }]} sx={{ zIndex: (theme) => theme.zIndex.modal }}>
+      <Paper ref={panelRef} onMouseEnter={openDetails} onMouseLeave={delayCloseDetails} onFocus={openDetails} onBlur={handleBlur} elevation={8} sx={{ width: 340, maxWidth: 'min(340px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 24px)', overflowY: 'auto', p: 2.25, border: 1, borderColor: 'divider', borderRadius: 3, color: 'text.primary', backgroundColor: 'background.paper' }}>
+        <Typography variant="h6" sx={{ mb: 0.75, fontWeight: 800, lineHeight: 1.25 }}>{classRecord.title}</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>Tutor: {classRecord.tutorName}</Typography>
+        <Stack direction="row" flexWrap="wrap" spacing={1} useFlexGap sx={{ mb: 1.5 }}>
+          <Chip size="small" label={classScheduleLabel(classRecord.schedule)} variant="outlined" />
+          <Chip size="small" label={classRecord.status === 'pending_schedule' ? 'Pending schedule' : classHasEnded(classRecord.schedule, now) || classRecord.status === 'closed' ? 'Closed' : 'Active'} variant="outlined" />
+          {classRecord.schedule.duration > 0 && <Chip size="small" label={formatDuration(classRecord.schedule.duration * 60)} variant="outlined" />}
+          {liveSessionAt && Number.isFinite(liveSessionAt.getTime()) && <Chip size="small" label={`Next session ${liveSessionAt.toLocaleDateString()}`} variant="outlined" />}
+        </Stack>
+        <OverallGradeValue grade={grade} />
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.25, mb: objectives.length ? 1.5 : 2, whiteSpace: 'pre-line' }}>{course.description?.trim() || `${course.modules.length} modules · ${getLessons(course).length} lessons in the class curriculum.`}</Typography>
+        {objectives.length > 0 && <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 0.75, fontWeight: 800 }}>What you&apos;ll learn</Typography>
+          <Stack spacing={0.75}>{objectives.map((objective) => <Stack key={objective} direction="row" spacing={0.75} alignItems="flex-start"><CheckCircleOutlineIcon sx={{ mt: '2px', flexShrink: 0, fontSize: 17, color: 'success.main' }} /><Typography variant="body2" color="text.secondary">{objective}</Typography></Stack>)}</Stack>
+        </Box>}
+        <Button fullWidth variant="contained" disabled={!canOpenClass} onClick={onContinue} sx={{ minHeight: 42, borderRadius: 2, fontWeight: 800 }}>Continue class</Button>
+      </Paper>
+    </Popper>
+  </>
+}
+
 const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; now: Date; onOpenCourse: (courseId: number) => void; gamificationData: GamificationData | null }> = ({ enrollments, completedLessons, now, onOpenCourse, gamificationData }) => {
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [bookmarkedClassIds, setBookmarkedClassIds] = useState<number[]>([])
   const classEnrollments = enrollments.filter((enrollment, index) => enrollment.type === 'class' && enrollment.classRecord && enrollments.findIndex((other) => other.type === 'class' && other.classRecord?.id === enrollment.classRecord?.id) === index)
   const normalizedQuery = searchQuery.trim().toLowerCase()
   const filteredClassEnrollments = classEnrollments.filter((enrollment) => {
@@ -1057,22 +1139,12 @@ const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
       const course = classRecord.course!
       const classEnded = classHasEnded(classRecord.schedule, now)
       const canOpenClass = classRecord.status !== 'closed' && classRecord.status !== 'pending_schedule' && !classEnded
-      const progress = getCourseProgress(course, completedLessons[course.id] ?? [])
+      const completed = completedLessons[course.id]
+      const progress = completed === undefined ? enrollment.progress : getCourseProgress(course, completed)
       const classRank = getClassRank(gamificationData, classRecord.id)
       const nextLiveLesson = getLessons(course).find((lesson) => lesson.type === 'live' && lesson.scheduledAt && new Date(lesson.scheduledAt).getTime() >= now.getTime())
-      return <Card key={enrollment.id} elevation={0} sx={{ overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 3.5, display: 'flex', flexDirection: 'column', backgroundColor: 'background.paper', boxShadow: (theme) => `0 5px 18px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.2 : 0.055)}`, transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease', '&:hover': { transform: 'translateY(-3px)', borderColor: 'primary.light', boxShadow: (theme) => `0 12px 28px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.3 : 0.11)}` } }}>
-        <Box sx={{ position: 'relative', aspectRatio: '16 / 7', minHeight: { xs: 150, sm: 140 }, maxHeight: 210, overflow: 'hidden', background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.32)}, ${alpha(theme.palette.info.main, 0.18)})` }}>
-          {course.cover ? <Box component="img" src={course.cover} alt={`${classRecord.title} class`} sx={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} /> : <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'primary.main', background: 'radial-gradient(circle at 75% 22%, rgba(255,255,255,.62), transparent 34%), linear-gradient(135deg, rgba(16,125,111,.18), rgba(31,91,139,.12))' }}><ClassOutlinedIcon sx={{ fontSize: 52, opacity: 0.78 }} /></Box>}
-          <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 42%, rgba(12,24,35,.32))' }} />
-        </Box>
-        <CardContent sx={{ p: { xs: 2, sm: 2.5 }, display: 'flex', flex: 1, flexDirection: 'column', '&:last-child': { pb: { xs: 2, sm: 2.5 } } }}>
-          <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="center" sx={{ mb: 1.25 }}><Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap"><Chip label={classRecord.status === 'pending_schedule' ? 'Pending schedule' : classEnded || classRecord.status === 'closed' ? 'Closed' : 'Active class'} size="small" color={canOpenClass ? 'success' : 'warning'} sx={{ height: 25, borderRadius: 2, fontWeight: 700 }} /><ClassRankValue rank={classRank} /></Stack><Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Class</Typography></Stack>
-          <Typography variant="h6" sx={{ mb: 1.25, minHeight: { sm: 56 }, fontWeight: 800, lineHeight: 1.35, letterSpacing: '-0.02em' }}>{classRecord.title}</Typography>
-          <Stack spacing={0.75} sx={{ mb: 1.5 }}><Stack direction="row" spacing={0.75} alignItems="center"><PersonOutlineIcon sx={{ color: 'text.disabled', fontSize: 17 }} /><Typography color="text.secondary" variant="body2">Tutor: {classRecord.tutorName}</Typography></Stack><Stack direction="row" spacing={0.75} alignItems="center"><AccessTimeOutlinedIcon sx={{ color: 'text.disabled', fontSize: 17 }} /><Typography color="text.secondary" variant="body2">{nextLiveLesson?.scheduledAt ? `Next live session: ${new Date(nextLiveLesson.scheduledAt).toLocaleString()}` : 'No live session scheduled yet'}</Typography></Stack></Stack>
-          <Box sx={{ py: 1.25, px: 1.5, mb: 2, borderRadius: 2.5, backgroundColor: 'action.hover' }}><OverallGradeValue grade={getEnrollmentOverallGrade(enrollment, progress, now)} /></Box>
-          <Box sx={{ mt: 'auto' }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.9 }}><Typography variant="body2" sx={{ fontWeight: 600 }}>Progress</Typography><Typography variant="body2" color="primary.main" sx={{ fontWeight: 800 }}>{progress}%</Typography></Stack><LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4, mb: 2, backgroundColor: 'action.selected', '& .MuiLinearProgress-bar': { borderRadius: 4 } }} /><Button fullWidth variant="contained" disabled={!canOpenClass} onClick={() => { if (canOpenClass) onOpenCourse(course.id) }} sx={{ minHeight: 44, borderRadius: 2.25, fontWeight: 800, boxShadow: 'none', '&:hover': { boxShadow: 2 } }}>{classEnded || classRecord.status === 'closed' ? 'Class ended' : progress ? 'Continue class' : 'Open class'}</Button></Box>
-        </CardContent>
-      </Card>
+      const bookmarked = bookmarkedClassIds.includes(classRecord.id)
+      return <EnrolledClassCard key={enrollment.id} enrollment={enrollment} classRecord={classRecord} course={course} now={now} progress={progress} grade={getEnrollmentOverallGrade(enrollment, progress, now)} rank={classRank} nextLiveLesson={nextLiveLesson} canOpenClass={canOpenClass} bookmarked={bookmarked} onToggleBookmark={() => setBookmarkedClassIds((current) => bookmarked ? current.filter((id) => id !== classRecord.id) : [...current, classRecord.id])} onContinue={() => { if (canOpenClass) onOpenCourse(course.id) }} />
     })}</Box>
       {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="My classes pages" /></Stack>}
       </>}
