@@ -115,6 +115,7 @@ interface BatchCardProps {
 
 const BatchCard: FC<BatchCardProps> = ({ classRecord, curriculum, onEnroll }) => (
   <Card elevation={0} sx={{ border: 1, borderColor: 'divider', backgroundColor: 'background.paper' }}>
+    {classRecord.cover && <Box component="img" src={classRecord.cover} alt={`${classRecord.title} thumbnail`} sx={{ display: 'block', width: '100%', aspectRatio: '16 / 9', objectFit: 'cover' }} />}
     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1} sx={{ mb: 1 }}>
         <Typography component="h4" variant="subtitle1" sx={{ fontWeight: 700 }}>{classRecord.title}</Typography>

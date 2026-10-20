@@ -59,6 +59,7 @@ export interface AdminClass {
   id: number
   program_id: ProgramId
   title: string
+  cover: string
   tutor_id: number
   tutor_name?: string
   capacity: number
@@ -96,6 +97,7 @@ export interface TutorOption {
 
 export interface ClassFormValue {
   title: string
+  cover: string
   program_id: ProgramId
   tutor_id: number
   capacity: number
@@ -257,6 +259,7 @@ const migrateLiveLessonSettings = (modules: AdminModule[], meetingLink: string):
 
 const emptyClassForm = (): ClassFormValue => ({
   title: '',
+  cover: '',
   program_id: 'summer-camp',
   tutor_id: tutors[0]?.id ?? 0,
   capacity: 12,
@@ -290,7 +293,7 @@ export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boole
     }
     if (initializedRef.current) return
     initializedRef.current = true
-    setValues(classRecord ? { title: classRecord.title, program_id: classRecord.program_id, tutor_id: classRecord.tutor_id, capacity: classRecord.capacity, schedule: normalizeSchedule(classRecord.schedule), meeting_link: classRecord.meeting_link, modules: migrateLiveLessonSettings(normalizeModules(classRecord.modules), classRecord.meeting_link), price: classRecord.price, published: classRecord.published, grade_level: classRecord.grade_level, exam_date: classRecord.exam_date } : emptyClassForm())
+    setValues(classRecord ? { title: classRecord.title, cover: classRecord.cover ?? '', program_id: classRecord.program_id, tutor_id: classRecord.tutor_id, capacity: classRecord.capacity, schedule: normalizeSchedule(classRecord.schedule), meeting_link: classRecord.meeting_link, modules: migrateLiveLessonSettings(normalizeModules(classRecord.modules), classRecord.meeting_link), price: classRecord.price, published: classRecord.published, grade_level: classRecord.grade_level, exam_date: classRecord.exam_date } : emptyClassForm())
   }, [classRecord, open])
 
   useEffect(() => {
@@ -300,6 +303,22 @@ export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boole
   const fixedStartDate = classRecord ? normalizeSchedule(classRecord.schedule).startDate : undefined
   const classDateValidation = getDateValidation(values.schedule, fixedStartDate)
   const canSave = Boolean((classRecord || values.grade_level !== null) && (classRecord || values.program_id !== 'ministry-exam-prep' || values.exam_date !== null) && values.title.trim() && values.tutor_id >= 1 && values.capacity >= 1 && values.schedule.startDate && values.schedule.endDate && values.schedule.days.length && !classDateValidation.startInPast && !classDateValidation.endInPast && !classDateValidation.endBeforeStart)
+  const handleThumbnailFile = (file: File) => {
+    const supportedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif']
+    if (!supportedTypes.includes(file.type)) {
+      toast.add({ title: 'Unsupported thumbnail', description: 'Choose a JPG, PNG, GIF, WebP, or AVIF image.', type: 'error' })
+      return
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      toast.add({ title: 'Thumbnail is too large', description: 'Choose an image smaller than 6 MB.', type: 'error' })
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') setValues((current) => ({ ...current, cover: reader.result as string }))
+    }
+    reader.readAsDataURL(file)
+  }
   const selectablePrograms = classRecord ? Object.keys(programLabels) as ProgramId[] : manageablePrograms
   const gradeOptions = getGradeLevelOptions(values.program_id)
   const isOffStandardGrade = values.grade_level !== null && !gradeOptions.includes(values.grade_level)
@@ -312,6 +331,14 @@ export const ClassEditorDialog: FC<{ classRecord: AdminClass | null; open: boole
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField required fullWidth label="Title" value={values.title} onChange={(event) => setValues({ ...values, title: event.target.value })} />
             <FormControl fullWidth required><InputLabel>Program</InputLabel><Select label="Program" value={values.program_id} onChange={(event) => setValues({ ...values, program_id: event.target.value as ProgramId, grade_level: null, exam_date: null })}>{selectablePrograms.map((program) => <MenuItem key={program} value={program}>{programLabels[program]}</MenuItem>)}</Select></FormControl><FormControl fullWidth required error={isOffStandardGrade || (!classRecord && values.grade_level === null)}><InputLabel>Grade Level</InputLabel><Select label="Grade Level" value={values.grade_level ?? ''} onChange={(event) => setValues({ ...values, grade_level: Number(event.target.value) })}>{gradeOptions.map((grade) => <MenuItem key={grade} value={grade}>Grade {grade}</MenuItem>)}{isOffStandardGrade && <MenuItem value={values.grade_level ?? ''}>Grade {values.grade_level} (outside exam grades)</MenuItem>}</Select>{!classRecord && values.grade_level === null && <FormHelperText>Select a grade level for this program</FormHelperText>}{isOffStandardGrade && <FormHelperText>This class has a grade outside the standard exam grades — please update it</FormHelperText>}</FormControl>
+          </Stack>
+          <Stack spacing={1}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Class thumbnail</Typography>
+            <Box component="label" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const [file] = Array.from(event.dataTransfer.files); if (file) handleThumbnailFile(file) }} sx={{ minHeight: 130, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, p: 2, border: 1, borderColor: 'divider', borderStyle: 'dashed', borderRadius: 1, cursor: 'pointer', '&:hover': { borderColor: 'primary.main', backgroundColor: 'action.hover' } }}>
+              {values.cover && <Box component="img" src={values.cover} alt={`${values.title || 'Class'} thumbnail`} sx={{ width: 180, height: 100, objectFit: 'cover', borderRadius: 1 }} />}
+              <Box><Typography variant="body2" sx={{ fontWeight: 600 }}>{values.cover ? 'Replace thumbnail' : 'Drop a thumbnail here or browse'}</Typography><Typography color="text.secondary" variant="caption">JPG, PNG, GIF, WebP, or AVIF · 6 MB maximum</Typography></Box>
+              <input hidden type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/avif" onChange={(event) => { const [file] = Array.from(event.target.files ?? []); if (file) handleThumbnailFile(file); event.target.value = '' }} aria-label="Browse for class thumbnail" />
+            </Box>
           </Stack>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField required fullWidth label="Capacity" type="number" value={values.capacity} onChange={(event) => setValues({ ...values, capacity: Math.max(1, Number(event.target.value)) })} inputProps={{ min: 1 }} />
@@ -449,6 +476,7 @@ const ClassDetail: FC<{ classRecord: AdminClass | undefined; enrollments: ClassE
 
   return (
     <>
+      {classRecord.cover && <Box component="img" src={classRecord.cover} alt={`${classRecord.title} thumbnail`} sx={{ display: 'block', width: '100%', maxHeight: 260, objectFit: 'cover', borderRadius: 2, mb: 2 }} />}
       <WorkspaceHeading title={classRecord.title} description={`${programLabels[classRecord.program_id]} · ${tutorName(classRecord.tutor_id)}`} action={<Stack direction="row" spacing={1}><Button startIcon={<ArrowBackIcon />} onClick={onBack}>Active Classes</Button><Button variant="contained" startIcon={<EditOutlinedIcon />} onClick={onEdit}>Edit class</Button></Stack>} />
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 3 }}>
         <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', flex: 1 }}><Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Enrollment</Typography><Typography variant="h5">{enrolled.length} / {classRecord.capacity}</Typography></Paper>

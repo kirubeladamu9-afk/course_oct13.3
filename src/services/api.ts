@@ -134,6 +134,7 @@ export interface MyEnrollment {
   courseId: number | null
   courseTitle: string | null
   courseCover: string | null
+  classCover: string | null
   category: string | null
   level: string | null
   tutor: string | null
@@ -229,6 +230,7 @@ export interface PublicClass {
   id: number
   title: string
   programId: string
+  cover: string | null
   schedule: { days: string[]; time: string; duration: number; flexible: boolean; startDate: string; endDate: string }
   price: number
   status: 'pending_schedule' | 'open' | 'full' | 'closed'
@@ -257,6 +259,7 @@ export interface TutorClass {
   id: number
   title: string
   programId: string
+  cover: string | null
   tutorId: number
   tutorName: string
   gradeLevel: number | null
@@ -632,6 +635,7 @@ export const updateTutorCourse = (course: AdminCourse): Promise<AdminCourse> => 
 export interface TutorClassUpdate {
   id: number
   title: string
+  cover: string
   program_id: string
   tutor_id: number
   capacity: number
@@ -858,6 +862,7 @@ export interface AdminClass {
   id: number
   program_id: AdminClassProgram
   title: string
+  cover: string
   tutor_id: number
   capacity: number
   schedule: AdminClassSchedule
@@ -973,7 +978,7 @@ export const deleteAdminClass = async (classRecord: AdminClass) => {
   if (!response.ok) throw new Error(await getErrorMessage(response))
 }
 
-export const assignAdminClass = (enrollmentId: number, values: Omit<AdminClass, 'id' | 'status' | 'program_id' | 'modules' | 'published' | 'grade_level' | 'exam_date'>) => requestClasses('/api/admin/classes/assign', {
+export const assignAdminClass = (enrollmentId: number, values: Omit<AdminClass, 'id' | 'status' | 'program_id' | 'modules' | 'published' | 'grade_level' | 'exam_date' | 'cover'>) => requestClasses('/api/admin/classes/assign', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ enrollmentId, ...values }),

@@ -282,7 +282,7 @@ const getPhysicsActivityTopic = (curriculumTopic: string | undefined, title: str
 const mapEnrollmentCourse = (enrollment: MyEnrollment): DashboardCourse => ({
   id: getEnrollmentContentId(enrollment),
   title: enrollment.classTitle || enrollment.courseTitle || 'Enrolled class',
-  cover: enrollment.courseCover,
+  cover: enrollment.classCover || enrollment.courseCover,
   category: enrollment.classId === null ? enrollment.category || 'Course' : 'Class',
   level: enrollment.level || 'Not specified',
   tutor: enrollment.tutor || enrollment.classTutor || 'Tutor to be confirmed',
@@ -1179,7 +1179,7 @@ const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolled
           {visibleClasses.map((classRecord) => <OtherClassCard
             key={classRecord.id}
             classRecord={classRecord}
-            cover={getClassCourse(classRecord)?.cover}
+            cover={classRecord.cover || getClassCourse(classRecord)?.cover}
             category={getClassCourse(classRecord)?.category}
             isExpanded={expandedClassId === classRecord.id}
             onToggleDetails={() => setExpandedClassId((current) => current === classRecord.id ? null : classRecord.id)}

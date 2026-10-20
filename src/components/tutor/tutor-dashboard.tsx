@@ -313,7 +313,7 @@ const TutorDashboard = ({ darkMode, onToggleDarkMode }: { darkMode: boolean; onT
     }
     const classRecord = classes.find((record) => record.id === target.id)
     setCourseDraft(null)
-    setClassDraft(classRecord ? { id: classRecord.id, program_id: classRecord.programId as ProgramId, title: classRecord.title, tutor_id: classRecord.tutorId, tutor_name: classRecord.tutorName, capacity: classRecord.capacity, schedule: { startDate: classRecord.schedule.startDate, endDate: classRecord.schedule.endDate, days: classRecord.schedule.days, time: classRecord.schedule.time, duration: classRecord.schedule.duration }, meeting_link: classRecord.meetingLink, modules: classRecord.modules, price: classRecord.price, status: classRecord.status, published: classRecord.published, grade_level: classRecord.gradeLevel, exam_date: classRecord.examDate } : null)
+    setClassDraft(classRecord ? { id: classRecord.id, program_id: classRecord.programId as ProgramId, title: classRecord.title, cover: classRecord.cover ?? '', tutor_id: classRecord.tutorId, tutor_name: classRecord.tutorName, capacity: classRecord.capacity, schedule: { startDate: classRecord.schedule.startDate, endDate: classRecord.schedule.endDate, days: classRecord.schedule.days, time: classRecord.schedule.time, duration: classRecord.schedule.duration }, meeting_link: classRecord.meetingLink, modules: classRecord.modules, price: classRecord.price, status: classRecord.status, published: classRecord.published, grade_level: classRecord.gradeLevel, exam_date: classRecord.examDate } : null)
   }, [currentPath, courses, classes])
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30000)
