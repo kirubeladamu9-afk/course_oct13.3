@@ -31,6 +31,8 @@ import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
@@ -79,6 +81,7 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
   const selectionRef = useRef<Range | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [headerError, setHeaderError] = useState<string | null>(null)
+  const [toolbarTab, setToolbarTab] = useState(0)
   const initialHtml = useMemo(() => initialArticleHtml(lesson), [lesson.id])
 
   useEffect(() => {
@@ -170,8 +173,8 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
     insertHtml(`<pre><code>${language ? `// ${escapeHtml(language)}\n` : ''}Write or paste code here…</code></pre><p><br></p>`)
   }
 
-  const toolbarButton = (label: string, icon: ReactElement, action: () => void) => <Tooltip key={label} title={label}><IconButton size="small" aria-label={label} onMouseDown={(event) => event.preventDefault()} onClick={action} sx={{ width: 26, height: 26, p: 0.25, borderRadius: 1, color: 'text.secondary' }}>{icon}</IconButton></Tooltip>
-  const separators = <Box aria-hidden="true" sx={{ width: 1, height: 20, mx: 0.25, bgcolor: 'divider', flexShrink: 0 }} />
+  const toolbarButton = (label: string, icon: ReactElement, action: () => void) => <Tooltip key={label} title={label}><IconButton size="small" aria-label={label} onMouseDown={(event) => event.preventDefault()} onClick={action} sx={{ width: 30, height: 30, p: 0.5, borderRadius: 1, color: 'text.secondary' }}>{icon}</IconButton></Tooltip>
+  const separators = <Box aria-hidden="true" sx={{ width: 1, height: 22, mx: 0.5, bgcolor: 'divider', flexShrink: 0 }} />
 
   return <Stack spacing={1.5}>
     <Paper elevation={0} sx={{ p: { xs: 1.25, sm: 1.75 }, border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper' }}>
@@ -187,38 +190,50 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
     </Paper>
 
     <Paper elevation={0} sx={{ overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper' }}>
-      <Stack direction="row" alignItems="center" spacing={0} sx={{ minWidth: 0, p: 0.25, flexWrap: 'nowrap', overflowX: 'auto', overflowY: 'hidden', borderBottom: 1, borderColor: 'divider', backgroundColor: 'background.default', scrollbarWidth: 'thin', '& > *': { flexShrink: 0 }, '&::-webkit-scrollbar': { height: 5 }, '&::-webkit-scrollbar-thumb': { borderRadius: 4, backgroundColor: 'divider' } }} onMouseUp={saveSelection}>
-        <FormControl size="small" sx={{ width: 84, minWidth: 0 }}><Select value="p" inputProps={{ 'aria-label': 'Paragraph style' }} onChange={(event) => runCommand('formatBlock', `<${event.target.value}>`)} sx={{ width: '100%', height: 28, minWidth: 0, fontSize: 11, '& .MuiSelect-select': { py: 0.5, pl: 0.75, pr: '18px !important' }, '& .MuiSelect-icon': { right: 1, width: 16 } }}><MenuItem value="p">Paragraph</MenuItem><MenuItem value="h1">Heading 1</MenuItem><MenuItem value="h2">Heading 2</MenuItem><MenuItem value="h3">Heading 3</MenuItem><MenuItem value="blockquote">Quote</MenuItem><MenuItem value="pre">Code block</MenuItem></Select></FormControl>
-        <FormControl size="small" sx={{ width: 72, minWidth: 0 }}><Select value="Arial" inputProps={{ 'aria-label': 'Font family' }} onChange={(event) => runCommand('fontName', event.target.value)} sx={{ width: '100%', height: 28, minWidth: 0, fontSize: 11, '& .MuiSelect-select': { py: 0.5, pl: 0.75, pr: '18px !important' }, '& .MuiSelect-icon': { right: 1, width: 16 } }}><MenuItem value="Arial">Arial</MenuItem><MenuItem value="Georgia">Georgia</MenuItem><MenuItem value="Times New Roman">Times New Roman</MenuItem><MenuItem value="Verdana">Verdana</MenuItem><MenuItem value="monospace">Monospace</MenuItem></Select></FormControl>
-        <FormControl size="small" sx={{ width: 54, minWidth: 0 }}><Select value="3" inputProps={{ 'aria-label': 'Font size' }} onChange={(event) => runCommand('fontSize', event.target.value)} sx={{ width: '100%', height: 28, minWidth: 0, fontSize: 11, '& .MuiSelect-select': { py: 0.5, pl: 0.75, pr: '18px !important' }, '& .MuiSelect-icon': { right: 1, width: 16 } }}>{[['2', '10 pt'], ['3', '12 pt'], ['4', '14 pt'], ['5', '18 pt'], ['6', '24 pt'], ['7', '36 pt']].map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}</Select></FormControl>
-        {separators}
-        {toolbarButton('Bold', <FormatBoldIcon fontSize="small" />, () => runCommand('bold'))}
-        {toolbarButton('Italic', <FormatItalicIcon fontSize="small" />, () => runCommand('italic'))}
-        {toolbarButton('Underline', <FormatUnderlinedIcon fontSize="small" />, () => runCommand('underline'))}
-        {toolbarButton('Strikethrough', <StrikethroughSIcon fontSize="small" />, () => runCommand('strikeThrough'))}
-        <Tooltip title="Text color"><Box component="label" sx={{ display: 'inline-flex', width: 26, height: 26, alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer', color: 'text.secondary' }}><FormatColorTextIcon fontSize="small" /><input aria-label="Text color" type="color" defaultValue="#17324d" onMouseDown={saveSelection} onChange={(event) => runCommand('foreColor', event.target.value)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} /></Box></Tooltip>
-        <Tooltip title="Highlight color"><Box component="label" sx={{ display: 'inline-flex', width: 26, height: 26, alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer', color: 'text.secondary' }}><FormatColorFillIcon fontSize="small" /><input aria-label="Highlight color" type="color" defaultValue="#fff2a8" onMouseDown={saveSelection} onChange={(event) => runCommand('hiliteColor', event.target.value)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} /></Box></Tooltip>
-        {separators}
-        {toolbarButton('Align left', <FormatAlignLeftIcon fontSize="small" />, () => runCommand('justifyLeft'))}
-        {toolbarButton('Align center', <FormatAlignCenterIcon fontSize="small" />, () => runCommand('justifyCenter'))}
-        {toolbarButton('Align right', <FormatAlignRightIcon fontSize="small" />, () => runCommand('justifyRight'))}
-        {toolbarButton('Justify', <FormatAlignJustifyIcon fontSize="small" />, () => runCommand('justifyFull'))}
-        {toolbarButton('Numbered list', <FormatListNumberedIcon fontSize="small" />, () => runCommand('insertOrderedList'))}
-        {toolbarButton('Bulleted list', <FormatListBulletedIcon fontSize="small" />, () => runCommand('insertUnorderedList'))}
-        {toolbarButton('Decrease indent', <FormatIndentDecreaseIcon fontSize="small" />, () => runCommand('outdent'))}
-        {toolbarButton('Increase indent', <FormatIndentIncreaseIcon fontSize="small" />, () => runCommand('indent'))}
-        {separators}
-        {toolbarButton('Insert hyperlink', <InsertLinkOutlinedIcon fontSize="small" />, insertLink)}
-        {toolbarButton('Insert equation', <FunctionsIcon fontSize="small" />, insertEquation)}
-        {toolbarButton('Insert table', <TableChartOutlinedIcon fontSize="small" />, insertTable)}
-        {toolbarButton('Insert image', <ImageOutlinedIcon fontSize="small" />, () => imageInputRef.current?.click())}
-        <input ref={imageInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload inline lesson image" onChange={(event) => { const [file] = Array.from(event.target.files ?? []); void insertInlineImage(file); event.target.value = '' }} />
-        {toolbarButton('Embed video', <VideoLibraryOutlinedIcon fontSize="small" />, insertVideo)}
-        {toolbarButton('Insert code block', <CodeOutlinedIcon fontSize="small" />, insertCode)}
-        {separators}
-        {toolbarButton('Undo', <UndoOutlinedIcon fontSize="small" />, () => runCommand('undo'))}
-        {toolbarButton('Redo', <RedoOutlinedIcon fontSize="small" />, () => runCommand('redo'))}
-      </Stack>
+      <Tabs value={toolbarTab} onChange={(_, value: number) => setToolbarTab(value)} aria-label="Article formatting tools" variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile sx={{ minHeight: 40, borderBottom: 1, borderColor: 'divider', backgroundColor: 'background.default', '& .MuiTab-root': { minHeight: 40, minWidth: 72, px: 1.5, fontSize: 12, textTransform: 'none' } }}>
+        <Tab id="article-toolbar-tab-0" aria-controls="article-toolbar-panel-0" label="Text" />
+        <Tab id="article-toolbar-tab-1" aria-controls="article-toolbar-panel-1" label="Layout" />
+        <Tab id="article-toolbar-tab-2" aria-controls="article-toolbar-panel-2" label="Insert" />
+        <Tab id="article-toolbar-tab-3" aria-controls="article-toolbar-panel-3" label="History" />
+      </Tabs>
+      <Box role="tabpanel" id={`article-toolbar-panel-${toolbarTab}`} aria-labelledby={`article-toolbar-tab-${toolbarTab}`} onMouseUp={saveSelection} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: 42, p: 0.75, flexWrap: 'wrap' }}>
+        {toolbarTab === 0 && <>
+          <FormControl size="small" sx={{ width: 100, minWidth: 0 }}><Select value="p" inputProps={{ 'aria-label': 'Paragraph style' }} onChange={(event) => runCommand('formatBlock', `<${event.target.value}>`)} sx={{ width: '100%', height: 30, minWidth: 0, fontSize: 11, '& .MuiSelect-select': { py: 0.5, pl: 0.75, pr: '18px !important' }, '& .MuiSelect-icon': { right: 1, width: 16 } }}><MenuItem value="p">Paragraph</MenuItem><MenuItem value="h1">Heading 1</MenuItem><MenuItem value="h2">Heading 2</MenuItem><MenuItem value="h3">Heading 3</MenuItem><MenuItem value="blockquote">Quote</MenuItem><MenuItem value="pre">Code block</MenuItem></Select></FormControl>
+          <FormControl size="small" sx={{ width: 88, minWidth: 0 }}><Select value="Arial" inputProps={{ 'aria-label': 'Font family' }} onChange={(event) => runCommand('fontName', event.target.value)} sx={{ width: '100%', height: 30, minWidth: 0, fontSize: 11, '& .MuiSelect-select': { py: 0.5, pl: 0.75, pr: '18px !important' }, '& .MuiSelect-icon': { right: 1, width: 16 } }}><MenuItem value="Arial">Arial</MenuItem><MenuItem value="Georgia">Georgia</MenuItem><MenuItem value="Times New Roman">Times New Roman</MenuItem><MenuItem value="Verdana">Verdana</MenuItem><MenuItem value="monospace">Monospace</MenuItem></Select></FormControl>
+          <FormControl size="small" sx={{ width: 64, minWidth: 0 }}><Select value="3" inputProps={{ 'aria-label': 'Font size' }} onChange={(event) => runCommand('fontSize', event.target.value)} sx={{ width: '100%', height: 30, minWidth: 0, fontSize: 11, '& .MuiSelect-select': { py: 0.5, pl: 0.75, pr: '18px !important' }, '& .MuiSelect-icon': { right: 1, width: 16 } }}>{[['2', '10 pt'], ['3', '12 pt'], ['4', '14 pt'], ['5', '18 pt'], ['6', '24 pt'], ['7', '36 pt']].map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}</Select></FormControl>
+          {separators}
+          {toolbarButton('Bold', <FormatBoldIcon fontSize="small" />, () => runCommand('bold'))}
+          {toolbarButton('Italic', <FormatItalicIcon fontSize="small" />, () => runCommand('italic'))}
+          {toolbarButton('Underline', <FormatUnderlinedIcon fontSize="small" />, () => runCommand('underline'))}
+          {toolbarButton('Strikethrough', <StrikethroughSIcon fontSize="small" />, () => runCommand('strikeThrough'))}
+          <Tooltip title="Text color"><Box component="label" sx={{ display: 'inline-flex', width: 30, height: 30, alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer', color: 'text.secondary' }}><FormatColorTextIcon fontSize="small" /><input aria-label="Text color" type="color" defaultValue="#17324d" onMouseDown={saveSelection} onChange={(event) => runCommand('foreColor', event.target.value)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} /></Box></Tooltip>
+          <Tooltip title="Highlight color"><Box component="label" sx={{ display: 'inline-flex', width: 30, height: 30, alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer', color: 'text.secondary' }}><FormatColorFillIcon fontSize="small" /><input aria-label="Highlight color" type="color" defaultValue="#fff2a8" onMouseDown={saveSelection} onChange={(event) => runCommand('hiliteColor', event.target.value)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} /></Box></Tooltip>
+        </>}
+        {toolbarTab === 1 && <>
+          {toolbarButton('Align left', <FormatAlignLeftIcon fontSize="small" />, () => runCommand('justifyLeft'))}
+          {toolbarButton('Align center', <FormatAlignCenterIcon fontSize="small" />, () => runCommand('justifyCenter'))}
+          {toolbarButton('Align right', <FormatAlignRightIcon fontSize="small" />, () => runCommand('justifyRight'))}
+          {toolbarButton('Justify', <FormatAlignJustifyIcon fontSize="small" />, () => runCommand('justifyFull'))}
+          {separators}
+          {toolbarButton('Numbered list', <FormatListNumberedIcon fontSize="small" />, () => runCommand('insertOrderedList'))}
+          {toolbarButton('Bulleted list', <FormatListBulletedIcon fontSize="small" />, () => runCommand('insertUnorderedList'))}
+          {toolbarButton('Decrease indent', <FormatIndentDecreaseIcon fontSize="small" />, () => runCommand('outdent'))}
+          {toolbarButton('Increase indent', <FormatIndentIncreaseIcon fontSize="small" />, () => runCommand('indent'))}
+        </>}
+        {toolbarTab === 2 && <>
+          {toolbarButton('Insert hyperlink', <InsertLinkOutlinedIcon fontSize="small" />, insertLink)}
+          {toolbarButton('Insert equation', <FunctionsIcon fontSize="small" />, insertEquation)}
+          {toolbarButton('Insert table', <TableChartOutlinedIcon fontSize="small" />, insertTable)}
+          {toolbarButton('Insert image', <ImageOutlinedIcon fontSize="small" />, () => imageInputRef.current?.click())}
+          <input ref={imageInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload inline lesson image" onChange={(event) => { const [file] = Array.from(event.target.files ?? []); void insertInlineImage(file); event.target.value = '' }} />
+          {toolbarButton('Embed video', <VideoLibraryOutlinedIcon fontSize="small" />, insertVideo)}
+          {toolbarButton('Insert code block', <CodeOutlinedIcon fontSize="small" />, insertCode)}
+        </>}
+        {toolbarTab === 3 && <>
+          {toolbarButton('Undo', <UndoOutlinedIcon fontSize="small" />, () => runCommand('undo'))}
+          {toolbarButton('Redo', <RedoOutlinedIcon fontSize="small" />, () => runCommand('redo'))}
+        </>}
+      </Box>
       <Box
         ref={editorRef}
         contentEditable
