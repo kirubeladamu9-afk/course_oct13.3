@@ -826,6 +826,9 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: R
     level: enrollment.course.level,
     tutor: enrollment.course.tutor,
     progress: enrollment.progress,
+    cover: enrollment.course.cover,
+    rating: enrollment.course.rating,
+    ratingCount: enrollment.course.ratingCount,
   }] : [])
   const classes = classEnrollments.flatMap((enrollment) => enrollment.classRecord ? [{
     id: enrollment.classRecord.id,
