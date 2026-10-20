@@ -81,11 +81,11 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
   const editorRef = useRef<HTMLDivElement>(null)
   const editorWrapperRef = useRef<HTMLDivElement>(null)
   const selectionRef = useRef<Range | null>(null)
-  const selectedImageRef = useRef<HTMLImageElement | null>(null)
+  const selectedMediaRef = useRef<HTMLElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [headerError, setHeaderError] = useState<string | null>(null)
   const [toolbarTab, setToolbarTab] = useState(0)
-  const [imageDeletePosition, setImageDeletePosition] = useState<{ top: number; left: number } | null>(null)
+  const [mediaDeletePosition, setMediaDeletePosition] = useState<{ top: number; left: number } | null>(null)
   const initialHtml = useMemo(() => initialArticleHtml(lesson), [lesson.id])
 
   useEffect(() => {
@@ -112,24 +112,24 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
     saveSelection()
   }
 
-  const selectArticleImage = (image: HTMLImageElement) => {
+  const selectArticleMedia = (media: HTMLImageElement | HTMLIFrameElement) => {
     const wrapper = editorWrapperRef.current
     if (!wrapper) return
-    const imageRect = image.getBoundingClientRect()
+    const mediaRect = media.getBoundingClientRect()
     const wrapperRect = wrapper.getBoundingClientRect()
-    selectedImageRef.current = image
-    setImageDeletePosition({ top: imageRect.top - wrapperRect.top + wrapper.scrollTop + 6, left: imageRect.right - wrapperRect.left + wrapper.scrollLeft - 34 })
+    selectedMediaRef.current = media
+    setMediaDeletePosition({ top: mediaRect.top - wrapperRect.top + wrapper.scrollTop + 6, left: mediaRect.right - wrapperRect.left + wrapper.scrollLeft - 34 })
   }
 
-  const deleteSelectedImage = () => {
-    const image = selectedImageRef.current
-    if (!image) return
-    const figure = image.closest('figure')
+  const deleteSelectedMedia = () => {
+    const media = selectedMediaRef.current
+    if (!media) return
+    const figure = media.closest('figure')
     if (figure) figure.remove()
-    else image.remove()
-    selectedImageRef.current = null
+    else media.remove()
+    selectedMediaRef.current = null
     selectionRef.current = null
-    setImageDeletePosition(null)
+    setMediaDeletePosition(null)
     updateArticle()
   }
 
@@ -259,7 +259,7 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
           {toolbarButton('Redo', <RedoOutlinedIcon fontSize="small" />, () => runCommand('redo'))}
         </>}
       </Box>
-      <Box ref={editorWrapperRef} sx={{ position: 'relative' }}>
+      <Box ref={editorWrapperRef} onFocusCapture={(event) => { if (event.target instanceof HTMLIFrameElement) selectArticleMedia(event.target) }} sx={{ position: 'relative' }}>
         <Box
           ref={editorRef}
           contentEditable
@@ -270,10 +270,10 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
           onInput={updateArticle}
           onClick={(event) => {
             const target = event.target
-            if (target instanceof HTMLImageElement) selectArticleImage(target)
+            if (target instanceof HTMLImageElement || target instanceof HTMLIFrameElement) selectArticleMedia(target)
             else {
-              selectedImageRef.current = null
-              setImageDeletePosition(null)
+              selectedMediaRef.current = null
+              setMediaDeletePosition(null)
             }
           }}
           onMouseUp={saveSelection}
@@ -300,14 +300,14 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
             '& figure': { mx: 0, my: 3, textAlign: 'center' },
             '& figure img': { display: 'block', width: '100%', maxHeight: 560, objectFit: 'contain', mx: 'auto', borderRadius: 1.5, cursor: 'pointer' },
             '& figcaption': { mt: 1, color: 'text.secondary', fontSize: 13, outline: 0 },
-            '& iframe': { width: '100%', maxWidth: 760, minHeight: 220, border: 0, borderRadius: 1.5 },
+            '& iframe': { width: '100%', maxWidth: 760, minHeight: 220, border: 0, borderRadius: 1.5, cursor: 'pointer' },
             '& table': { width: '100%', borderCollapse: 'collapse', my: 2 },
             '& td, & th': { minWidth: 80, border: 1, borderColor: 'divider', p: 1, textAlign: 'left' },
             '& pre': { p: 2, overflowX: 'auto', borderRadius: 1.5, backgroundColor: 'action.hover', fontFamily: 'monospace', lineHeight: 1.5 },
             '& blockquote': { mx: 0, my: 2, pl: 2, borderLeft: 3, borderColor: 'primary.main', color: 'text.secondary' },
           }}
         />
-        {imageDeletePosition && <IconButton aria-label="Delete selected image" title="Delete image" onMouseDown={(event) => event.preventDefault()} onClick={deleteSelectedImage} sx={{ position: 'absolute', top: imageDeletePosition.top, left: imageDeletePosition.left, zIndex: 2, width: 30, height: 30, color: 'common.white', backgroundColor: 'error.main', boxShadow: 2, '&:hover': { backgroundColor: 'error.dark' } }}><CloseIcon fontSize="small" /></IconButton>}
+        {mediaDeletePosition && <IconButton aria-label="Delete selected image or video" title="Delete embedded media" onMouseDown={(event) => event.preventDefault()} onClick={deleteSelectedMedia} sx={{ position: 'absolute', top: mediaDeletePosition.top, left: mediaDeletePosition.left, zIndex: 2, width: 30, height: 30, color: 'common.white', backgroundColor: 'error.main', boxShadow: 2, '&:hover': { backgroundColor: 'error.dark' } }}><CloseIcon fontSize="small" /></IconButton>}
       </Box>
     </Paper>
   </Stack>
