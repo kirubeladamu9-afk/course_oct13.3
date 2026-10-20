@@ -30,7 +30,7 @@ const ContactForm: React.FC = () => (
     <CardContent sx={{ p: { xs: 2.5, md: 3.5 } }}>
       <Typography variant="h5" sx={{ mb: .5, fontWeight: 800 }}>Get in Touch</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>You can reach us anytime</Typography>
-      <Box component="form" onSubmit={(event) => { event.preventDefault(); window.location.href = 'mailto:support@coursespace.com' }} sx={{ display: 'grid', gap: 1.5 }}>
+      <Box component="form" onSubmit={(event) => { event.preventDefault(); window.location.href = 'mailto:support@coursesharp.com' }} sx={{ display: 'grid', gap: 1.5 }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}><TextField required fullWidth size="small" label="First name" /><TextField required fullWidth size="small" label="Last name" /></Stack>
         <TextField required fullWidth size="small" type="email" label="Email address" />
         <TextField fullWidth size="small" label="Phone number" />

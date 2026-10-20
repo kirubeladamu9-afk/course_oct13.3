@@ -56,8 +56,8 @@ const FooterNavigation: FC = () => (
       <Typography color="text.secondary" variant="body2" sx={{ mb: 1.5, lineHeight: 1.6 }}>
         Questions about a course or practice exam?
       </Typography>
-      <MuiLink href="mailto:support@coursespace.com" underline="hover" sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
-        support@coursespace.com
+      <MuiLink href="mailto:support@coursesharp.com" underline="hover" sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
+        support@coursesharp.com
       </MuiLink>
     </Grid>
   </Grid>

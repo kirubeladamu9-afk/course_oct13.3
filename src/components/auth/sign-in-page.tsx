@@ -106,7 +106,7 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
                     }}
                   />
                   {!isSignUp && <Typography variant="body2" sx={{ mt: -0.75, color: 'text.secondary' }}>
-                    Forgot your password? <Link href="mailto:support@coursespace.com" underline="hover">Contact support@coursespace.com</Link> for help.
+                    Forgot your password? <Link href="mailto:support@coursesharp.com" underline="hover">Contact support@coursesharp.com</Link> for help.
                   </Typography>}
                   <Box sx={{ mt: { xs: 0.25, md: 0.5 }, '& button': { width: '100%', justifyContent: 'center', borderRadius: 999, py: 1.1 } }}>
                     <StyledButton type="submit" color="primary">{isSignUp ? 'Sign Up' : 'Sign In'}</StyledButton>
