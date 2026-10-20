@@ -1,0 +1,145 @@
+import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
+import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
+import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded'
+import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined'
+import FaqOutlinedIcon from '@mui/icons-material/QuizOutlined'
+import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined'
+import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined'
+import PhoneOutlinedIcon from '@mui/icons-material/PhoneOutlined'
+import SendRoundedIcon from '@mui/icons-material/SendRounded'
+import SupportAgentOutlinedIcon from '@mui/icons-material/SupportAgentOutlined'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Card from '@mui/material/Card'
+import CardContent from '@mui/material/CardContent'
+import Container from '@mui/material/Container'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import Link from '@mui/material/Link'
+import MenuItem from '@mui/material/MenuItem'
+import Paper from '@mui/material/Paper'
+import Select from '@mui/material/Select'
+import Stack from '@mui/material/Stack'
+import TextField from '@mui/material/TextField'
+import Typography from '@mui/material/Typography'
+import { useState, type FC, type FormEvent } from 'react'
+import { navigateTo } from '@/lib/navigation'
+
+const emailAddress = 'support@coursesharp.com'
+const officeAddress = 'Bole, Addis Ababa, Ethiopia'
+const subjects = ['Course enrollment & payments', 'Technical support', 'Account & profile issues', 'General inquiry']
+const faqs = [
+  { question: 'How do I enroll in a course?', answer: 'Browse the course catalog, open a course to review its details, and choose Enroll to get started.', action: 'Browse courses', href: '/courses' },
+  { question: 'Where can I get help with a payment?', answer: 'Email our support team with your course name and payment question. We will help you review the next steps.', action: 'Email support', href: `mailto:${emailAddress}?subject=Payment%20support` },
+  { question: 'I need help with my account. What should I do?', answer: 'Send us a message with the email address on your account. Please do not include your password.', action: 'Contact support', href: `mailto:${emailAddress}?subject=Account%20support` },
+]
+
+const ContactPage: FC = () => {
+  const [subject, setSubject] = useState('')
+  const [message, setMessage] = useState('')
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    const name = String(formData.get('fullName') ?? '')
+    const email = String(formData.get('email') ?? '')
+    const body = `Name: ${name}\nEmail: ${email}\nSubject: ${subject}\n\n${message}`
+    window.location.href = `mailto:${emailAddress}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  }
+
+  return <Box component="main" sx={{ backgroundColor: 'background.default', color: 'text.primary' }}>
+    <Box sx={{ position: 'relative', overflow: 'hidden', background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(110deg, #102c38 0%, #163f42 100%)' : 'linear-gradient(110deg, #effaf7 0%, #e7f7f3 56%, #dff2ed 100%)' }}>
+      <Container maxWidth="lg" sx={{ position: 'relative', minHeight: { md: 350 }, py: { xs: 6, md: 5 }, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.05fr .95fr' }, alignItems: 'center', gap: { xs: 4, md: 2 } }}>
+        <Box sx={{ position: 'relative', zIndex: 1, py: { md: 2 } }}>
+          <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1.1 }}>GET IN TOUCH</Typography>
+          <Typography component="h1" sx={{ mt: 1, mb: 1.25, fontSize: { xs: '2.75rem', sm: '3.25rem', md: '3.8rem' }, lineHeight: 1.05, letterSpacing: '-.045em', fontWeight: 800 }}>Contact Us</Typography>
+          <Typography sx={{ maxWidth: 510, color: 'text.secondary', lineHeight: 1.75 }}>We’d love to hear from you. Whether you have a question, need support, or just want to say hello — we’re here to help.</Typography>
+          <Stack direction="row" spacing={3} sx={{ mt: 3.5 }}>
+            <Stack direction="row" spacing={1} alignItems="center"><MenuBookOutlinedIcon color="primary" /><Typography variant="body2" sx={{ fontWeight: 600 }}>Better Learning<br />Together</Typography></Stack>
+            <Stack direction="row" spacing={1} alignItems="center"><CheckCircleRoundedIcon color="primary" /><Typography variant="body2" sx={{ fontWeight: 600 }}>Your Success<br />Matters</Typography></Stack>
+          </Stack>
+        </Box>
+        <Box sx={{ position: 'relative', height: { xs: 270, sm: 330, md: 350 }, alignSelf: 'end', overflow: 'hidden', borderRadius: { xs: 4, md: '46% 46% 0 0' }, backgroundColor: 'rgba(24, 142, 127, .08)' }}>
+          <Box aria-hidden="true" sx={{ position: 'absolute', width: 300, height: 300, right: -24, top: 16, border: '1px solid rgba(25, 135, 122, .22)', borderRadius: '50%', boxShadow: '0 0 0 25px rgba(25, 135, 122, .05), 0 0 0 52px rgba(25, 135, 122, .035)' }} />
+          <Box component="img" src="https://images.pexels.com/photos/8199200/pexels-photo-8199200.jpeg" alt="Smiling student with a book, ready to learn" sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 36%', mixBlendMode: 'multiply' }} />
+          <Box aria-hidden="true" sx={{ position: 'absolute', top: 33, left: 28, width: 13, height: 13, borderRadius: '50%', backgroundColor: 'primary.main', opacity: .55 }} />
+          <Box aria-hidden="true" sx={{ position: 'absolute', bottom: 36, right: 24, width: 9, height: 9, borderRadius: '50%', backgroundColor: 'primary.main', opacity: .45 }} />
+        </Box>
+      </Container>
+    </Box>
+
+    <Container maxWidth="lg" sx={{ py: { xs: 3, md: 3.5 } }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 2 }}>
+        <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, boxShadow: '0 8px 26px rgba(15, 60, 70, .055)', transition: 'transform .2s, box-shadow .2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 14px 32px rgba(15, 60, 70, .1)' } }}>
+          <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 1.5, borderRadius: 2, color: '#168c7d', backgroundColor: '#e4f6f1' }}><PhoneOutlinedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Phone</Typography><Link href="tel:+25121297831" underline="hover" color="text.primary" sx={{ display: 'inline-block', mt: .5, fontSize: '.9rem', fontWeight: 650 }}>+251 212 97831</Link><Typography display="block" variant="caption" color="text.secondary" sx={{ mt: .75 }}>Mon – Fri, 8:00 AM – 5:00 PM (EAT)</Typography></CardContent>
+        </Card>
+        <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, boxShadow: '0 8px 26px rgba(15, 60, 70, .055)', transition: 'transform .2s, box-shadow .2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 14px 32px rgba(15, 60, 70, .1)' } }}>
+          <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 1.5, borderRadius: 2, color: '#2782b4', backgroundColor: '#e8f3fb' }}><EmailOutlinedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Email</Typography><Link href={`mailto:${emailAddress}`} underline="hover" color="primary.main" sx={{ display: 'inline-block', mt: .5, fontSize: '.9rem', fontWeight: 650 }}>{emailAddress}</Link><Typography display="block" variant="caption" color="text.secondary" sx={{ mt: .75 }}>We usually reply within 24 hours.</Typography></CardContent>
+        </Card>
+        <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, boxShadow: '0 8px 26px rgba(15, 60, 70, .055)', transition: 'transform .2s, box-shadow .2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 14px 32px rgba(15, 60, 70, .1)' } }}>
+          <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 1.5, borderRadius: 2, color: '#7455b5', backgroundColor: '#f0ebfa' }}><LocationOnOutlinedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Office Address</Typography><Typography sx={{ mt: .5, fontSize: '.9rem', fontWeight: 600 }}>{officeAddress}</Typography><Typography display="block" variant="caption" color="text.secondary" sx={{ mt: .75 }}>Near Bole International Airport</Typography></CardContent>
+        </Card>
+        <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, boxShadow: '0 8px 26px rgba(15, 60, 70, .055)', transition: 'transform .2s, box-shadow .2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 14px 32px rgba(15, 60, 70, .1)' } }}>
+          <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 1.5, borderRadius: 2, color: '#b27c12', backgroundColor: '#fff4dc' }}><ChatBubbleOutlineRoundedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Live Chat</Typography><Typography sx={{ mt: .5, fontSize: '.9rem', fontWeight: 600 }}>Live chat isn’t available yet.</Typography><Link href={`mailto:${emailAddress}?subject=Support%20request`} underline="hover" color="text.secondary" sx={{ display: 'inline-block', mt: .75, fontSize: '.8rem' }}>Email our support team instead</Link></CardContent>
+        </Card>
+      </Box>
+    </Container>
+
+    <Container maxWidth="lg" sx={{ pb: { xs: 4, md: 5 } }}>
+      <Paper elevation={0} sx={{ p: { xs: 2, sm: 3, md: 3.25 }, border: 1, borderColor: 'divider', borderRadius: 3.5, boxShadow: '0 10px 35px rgba(15, 60, 70, .055)' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.65fr .85fr' }, gap: { xs: 3, md: 3.5 } }}>
+          <Box component="form" onSubmit={handleSubmit} sx={{ p: { xs: .5, md: 1 }, minWidth: 0 }}>
+            <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: .9 }}>SEND US A MESSAGE</Typography>
+            <Typography component="h2" variant="h4" sx={{ mt: .25, fontWeight: 800, letterSpacing: '-.035em' }}>Let’s Talk</Typography>
+            <Typography color="text.secondary" variant="body2" sx={{ mt: .5, mb: 2.5 }}>Fill out the form below and we’ll get back to you as soon as possible.</Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 1.5 }}>
+              <TextField required fullWidth name="fullName" label="Full Name" autoComplete="name" />
+              <TextField required fullWidth name="email" type="email" label="Email Address" autoComplete="email" />
+            </Stack>
+            <FormControl fullWidth required sx={{ mb: 1.5 }}>
+              <InputLabel id="contact-subject-label">Subject</InputLabel>
+              <Select labelId="contact-subject-label" id="contact-subject" value={subject} label="Subject" onChange={(event) => setSubject(event.target.value)}>
+                {subjects.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <TextField required fullWidth multiline minRows={5} name="message" label="Message" value={message} onChange={(event) => setMessage(event.target.value.slice(0, 1000))} inputProps={{ maxLength: 1000 }} />
+            <Stack direction={{ xs: 'column-reverse', sm: 'row' }} alignItems={{ sm: 'center' }} justifyContent="space-between" spacing={1.5} sx={{ mt: 1.75 }}>
+              <Button type="submit" variant="contained" endIcon={<SendRoundedIcon />} sx={{ alignSelf: { xs: 'stretch', sm: 'flex-start' }, px: 2.75, py: 1.1, borderRadius: 6, fontWeight: 700, boxShadow: 'none' }}>Send Message</Button>
+              <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>{message.length}/1000</Typography>
+            </Stack>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.25 }}>Your email app will open with your message ready to send.</Typography>
+          </Box>
+
+          <Stack spacing={1.5}>
+            <Card elevation={0} sx={{ flex: 1, borderRadius: 3, background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(145deg, #143b3a, #173032)' : 'linear-gradient(145deg, #e9f8f4, #f3fbf8)' }}>
+              <CardContent sx={{ p: 2.5 }}><Box sx={{ display: 'grid', placeItems: 'center', width: 48, height: 48, mb: 1.75, borderRadius: 2.5, color: 'primary.main', backgroundColor: 'rgba(255,255,255,.65)' }}><FaqOutlinedIcon /></Box><Typography variant="h6" sx={{ fontWeight: 750 }}>Need Quick Help?</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: .75, mb: 2, lineHeight: 1.6 }}>Check common questions for quick answers to enrollment, payment, and account questions.</Typography><Button component="a" href="#contact-faq" variant="outlined" endIcon={<ArrowForwardRoundedIcon />} sx={{ borderRadius: 5, fontWeight: 700 }}>View FAQ</Button></CardContent>
+            </Card>
+            <Card elevation={0} sx={{ flex: 1, borderRadius: 3, background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(145deg, #143b3a, #173032)' : 'linear-gradient(145deg, #e9f8f4, #f3fbf8)' }}>
+              <CardContent sx={{ p: 2.5 }}><Typography variant="subtitle1" sx={{ mb: 1.25, fontWeight: 750 }}>We’re Here to Help</Typography><Stack spacing={1.15}>{['Course enrollment & payments', 'Technical support', 'Account and profile issues', 'General inquiries'].map((item) => <Stack key={item} direction="row" spacing={1} alignItems="center"><CheckCircleRoundedIcon sx={{ color: 'primary.main', fontSize: 17 }} /><Typography variant="body2" color="text.secondary">{item}</Typography></Stack>)}</Stack></CardContent>
+            </Card>
+          </Stack>
+        </Box>
+      </Paper>
+    </Container>
+
+    <Container maxWidth="lg" sx={{ pb: { xs: 4, md: 5 } }}>
+      <Paper elevation={0} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '.8fr 1.2fr' }, overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 3.5, boxShadow: '0 10px 35px rgba(15, 60, 70, .055)' }}>
+        <Box sx={{ p: { xs: 2.5, md: 3.25 }, alignSelf: 'center' }}>
+          <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: .9 }}>OUR LOCATION</Typography>
+          <Typography component="h2" variant="h5" sx={{ mt: .25, fontWeight: 800 }}>Visit Our Office</Typography>
+          <Typography color="text.secondary" variant="body2" sx={{ mt: .75, lineHeight: 1.7 }}>We’re located in Bole, Addis Ababa. Feel free to stop by or reach out to us anytime.</Typography>
+          <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ mt: 2 }}><LocationOnOutlinedIcon color="primary" fontSize="small" sx={{ mt: .15 }} /><Box><Typography variant="body2" sx={{ fontWeight: 700 }}>{officeAddress}</Typography><Typography variant="caption" color="text.secondary">Near Bole International Airport</Typography></Box></Stack>
+          <Button component="a" href="https://www.google.com/maps/search/?api=1&query=Bole%2C%20Addis%20Ababa%2C%20Ethiopia" target="_blank" rel="noreferrer" variant="outlined" endIcon={<ArrowForwardRoundedIcon />} sx={{ mt: 2, borderRadius: 5, fontWeight: 700 }}>Get Directions</Button>
+        </Box>
+        <Box component="iframe" title="Map showing Bole, Addis Ababa" src="https://maps.google.com/maps?q=Bole%2C%20Addis%20Ababa%2C%20Ethiopia&z=14&output=embed" loading="lazy" referrerPolicy="no-referrer-when-downgrade" sx={{ display: 'block', width: '100%', height: { xs: 280, md: '100%' }, minHeight: { md: 320 }, border: 0 }} />
+      </Paper>
+    </Container>
+
+    <Container maxWidth="md" id="contact-faq" sx={{ pb: { xs: 6, md: 8 }, scrollMarginTop: 24 }}>
+      <Box sx={{ mb: 2.5, textAlign: 'center' }}><Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: .9 }}>FAQ</Typography><Typography component="h2" variant="h4" sx={{ mt: .25, fontWeight: 800 }}>Common questions</Typography></Box>
+      <Stack spacing={1.25}>{faqs.map((faq) => <Paper key={faq.question} elevation={0} sx={{ p: 2.25, border: 1, borderColor: 'divider', borderRadius: 2.5 }}><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>{faq.question}</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: .75, lineHeight: 1.65 }}>{faq.answer}</Typography><Link href={faq.href} onClick={faq.href === '/courses' ? (event) => { event.preventDefault(); navigateTo('/courses') } : undefined} underline="hover" sx={{ display: 'inline-flex', alignItems: 'center', gap: .5, mt: 1.25, fontSize: '.875rem', fontWeight: 700 }}>{faq.action}<ArrowForwardRoundedIcon sx={{ fontSize: 16 }} /></Link></Paper>)}</Stack>
+    </Container>
+  </Box>
+}
+
+export default ContactPage
