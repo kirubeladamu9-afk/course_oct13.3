@@ -17,6 +17,7 @@ import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Pagination from '@mui/material/Pagination'
+import Popper from '@mui/material/Popper'
 import FormControl from '@mui/material/FormControl'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import FormLabel from '@mui/material/FormLabel'
@@ -64,11 +65,14 @@ import GpsFixedOutlinedIcon from '@mui/icons-material/GpsFixedOutlined'
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined'
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
+import BookmarkBorderOutlinedIcon from '@mui/icons-material/BookmarkBorderOutlined'
+import BookmarkOutlinedIcon from '@mui/icons-material/BookmarkOutlined'
+import StarRoundedIcon from '@mui/icons-material/StarRounded'
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
 import { buildStudyPlan, getDaysBetween, prioritizePlannerTopics, toDateKey, type PlannerTopic } from '@/components/course/study-planner'
 import { countMasteryLevels, getLessonMastery, MASTERY_LABELS, type MasteryAttempt, type MasteryLevel } from '@/components/course/study-mastery'
 import { getExamReadiness, READINESS_TIER_LABELS, type ExamReadiness, type ReadinessTier } from '@/components/course/exam-readiness'
-import { type FC, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type FC, type FocusEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type Course } from '@/interfaces/course'
 import ScheduleCalendar, { type ScheduleSession } from '@/components/schedule-calendar'
 import GamificationWidgets from './gamification-widgets'
@@ -111,6 +115,7 @@ import { calculateOverallGrade } from '@/lib/overall-grade'
   status: EnrollmentStatus
   progress: number
   timeSpentSeconds: number
+  lastActivityAt: string | null
   quizResults: Record<number, DashboardQuizResult>
   quizAttempts: MasteryAttempt[]
   weakAreas: WeakArea[]
@@ -176,6 +181,11 @@ const formatQuizCountdown = (seconds: number) => `${Math.floor(seconds / 60)}:${
   category: string
   level: string
   tutor: string
+  description?: string
+  learningOutcomes?: string[]
+  durationSeconds?: number
+  rating?: number | null
+  ratingCount?: number | null
   certificate: boolean
   modules: DashboardModule[]
   meetingLink?: string
@@ -286,6 +296,11 @@ const mapEnrollmentCourse = (enrollment: MyEnrollment): DashboardCourse => ({
   category: enrollment.classId === null ? enrollment.category || 'Course' : 'Class',
   level: enrollment.level || 'Not specified',
   tutor: enrollment.tutor || enrollment.classTutor || 'Tutor to be confirmed',
+  description: enrollment.courseDescription || enrollment.courseLongDescription || undefined,
+  learningOutcomes: enrollment.learningOutcomes ?? [],
+  durationSeconds: enrollment.modules.flatMap((module) => module.lessons).reduce((total, lesson) => total + (lesson.duration ?? 0), 0),
+  rating: enrollment.courseRating,
+  ratingCount: enrollment.courseRatingCount,
   certificate: enrollment.certificate ?? false,
   modules: enrollment.modules.map((module) => ({
     id: module.id,
@@ -361,9 +376,9 @@ const mapMyEnrollments = (records: MyEnrollment[], userId: number): DashboardEnr
     ...record.quizAttempts.filter((attempt) => attempt.passed === true).map((attempt) => attempt.submittedAt ?? attempt.startedAt),
     ...Object.entries(record.attendance ?? {}).filter(([, status]) => status === 'Present').map(([lessonId]) => lessonById.get(Number(lessonId))?.scheduledAt),
   ].filter((date): date is string => Boolean(date))
-  const courseEnrollment: DashboardEnrollment = { id: record.id, user_id: userId, type: 'course', item_id: getEnrollmentContentId(record), status: 'active', progress: record.progressPercentage, timeSpentSeconds: record.timeSpentSeconds, quizResults, quizAttempts, weakAreas: record.weakAreas ?? [], attendance: record.attendance ?? {}, sessionJoinClicks: record.sessionJoinClicks ?? {}, activityDates, studyPlanOrder: null, course }
+  const courseEnrollment: DashboardEnrollment = { id: record.id, user_id: userId, type: 'course', item_id: getEnrollmentContentId(record), status: 'active', progress: record.progressPercentage, timeSpentSeconds: record.timeSpentSeconds, lastActivityAt: record.lastActivityAt, quizResults, quizAttempts, weakAreas: record.weakAreas ?? [], attendance: record.attendance ?? {}, sessionJoinClicks: record.sessionJoinClicks ?? {}, activityDates, studyPlanOrder: null, course }
   if (!classRecord) return [courseEnrollment]
-  return [{ id: record.id, user_id: userId, type: 'class', item_id: classRecord.id, status: classRecord.status === 'pending_schedule' ? 'pending_schedule' : 'active', progress: record.progressPercentage, timeSpentSeconds: record.timeSpentSeconds, quizResults, quizAttempts, weakAreas: record.weakAreas ?? [], attendance: record.attendance ?? {}, sessionJoinClicks: record.sessionJoinClicks ?? {}, activityDates, studyPlanOrder: record.studyPlanOrder ?? null, classRecord }]
+  return [{ id: record.id, user_id: userId, type: 'class', item_id: classRecord.id, status: classRecord.status === 'pending_schedule' ? 'pending_schedule' : 'active', progress: record.progressPercentage, timeSpentSeconds: record.timeSpentSeconds, lastActivityAt: record.lastActivityAt, quizResults, quizAttempts, weakAreas: record.weakAreas ?? [], attendance: record.attendance ?? {}, sessionJoinClicks: record.sessionJoinClicks ?? {}, activityDates, studyPlanOrder: record.studyPlanOrder ?? null, classRecord }]
 })
 const getCourseProgress = (course: DashboardCourse, completedLessonIds: number[]) => Math.round((completedLessonIds.filter((lessonId) => getCompletionLessons(course).some((lesson) => lesson.id === lessonId)).length / Math.max(1, getCompletionLessons(course).length)) * 100)
 const getEnrollmentCourse = (enrollment: DashboardEnrollment) => enrollment.course ?? enrollment.classRecord?.course
@@ -395,8 +410,8 @@ const iconForLesson = (type: DashboardLesson['type']) => {
   return <PlayCircleOutlineIcon fontSize="small" />
 }
 
-const ViewHeading: FC<{ eyebrow?: string; title: string; description: string; action?: ReactNode }> = ({ eyebrow, title, description, action }) => (
-  <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', gap: 2, mb: 4, flexDirection: { xs: 'column', sm: 'row' } }}>
+const ViewHeading: FC<{ eyebrow?: string; title: string; description: string; action?: ReactNode; compact?: boolean }> = ({ eyebrow, title, description, action, compact = false }) => (
+  <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', gap: 2, mb: compact ? 2.5 : 4, flexDirection: { xs: 'column', sm: 'row' } }}>
     <Box>
       {eyebrow && <Typography color="primary.main" variant="overline" sx={{ fontWeight: 700, letterSpacing: 1 }}>{eyebrow}</Typography>}
       <Typography component="h1" variant="h4" sx={{ mb: 0.5 }}>{title}</Typography>
@@ -868,10 +883,97 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: R
 
 const CourseMiniRow: FC<{ course: DashboardCourse; enrollment: DashboardEnrollment; onOpenCourse: (courseId: number) => void }> = ({ course, enrollment, onOpenCourse }) => <Box component="button" type="button" onClick={() => onOpenCourse(course.id)} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1.5, p: 1.25, border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper', cursor: 'pointer', textAlign: 'left', font: 'inherit', '&:hover': { borderColor: 'primary.main' } }}><Box sx={{ display: 'flex', p: 1, borderRadius: 2, color: 'primary.main', backgroundColor: 'action.hover' }}><PlayCircleOutlineIcon /></Box><Box sx={{ flex: 1, minWidth: 0 }}><Typography noWrap sx={{ fontWeight: 600 }}>{course.title}</Typography><LinearProgress variant="determinate" value={enrollment.progress} sx={{ mt: 1, height: 6, borderRadius: 4 }} /></Box><Typography color="primary.main" variant="body2" sx={{ fontWeight: 700 }}>{enrollment.progress}%</Typography></Box>
 
+const EnrolledCourseCard: FC<{ enrollment: DashboardEnrollment; course: DashboardCourse; progress: number; grade: ReturnType<typeof getEnrollmentOverallGrade>; bookmarked: boolean; onToggleBookmark: () => void; onContinue: () => void }> = ({ enrollment, course, progress, grade, bookmarked, onToggleBookmark, onContinue }) => {
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const closeTimerRef = useRef<number | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const isMobile = useMediaQuery((theme: Theme) => theme.breakpoints.down('sm'))
+  const completionStatus = progress === 100 ? 'Completed' : progress > 0 ? 'In progress' : 'Not started'
+  const objectives = (course.learningOutcomes ?? []).filter((objective) => objective.trim()).slice(0, 4)
+  const durationSeconds = course.durationSeconds ?? 0
+  const lastActivity = enrollment.lastActivityAt ? new Date(enrollment.lastActivityAt) : null
+  const showLastActivity = lastActivity !== null && Number.isFinite(lastActivity.getTime())
+  const openDetails = () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+    setDetailsOpen(true)
+  }
+  const delayCloseDetails = () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = window.setTimeout(() => setDetailsOpen(false), 180)
+  }
+  const handleBlur = (event: FocusEvent<HTMLElement>) => {
+    const nextTarget = event.relatedTarget as Node | null
+    if (nextTarget && (cardRef.current?.contains(nextTarget) || panelRef.current?.contains(nextTarget))) return
+    setDetailsOpen(false)
+  }
+
+  useEffect(() => () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+  }, [])
+
+  return <>
+    <Card
+      ref={cardRef}
+      component="article"
+      onMouseEnter={openDetails}
+      onMouseLeave={delayCloseDetails}
+      onFocus={openDetails}
+      onBlur={handleBlur}
+      onClick={(event) => { if (!(event.target as HTMLElement).closest('button, a')) setDetailsOpen((current) => !current) }}
+      aria-describedby={detailsOpen ? `course-details-${course.id}` : undefined}
+      sx={{ position: 'relative', overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 3, display: 'flex', flexDirection: 'column', backgroundColor: 'background.paper', boxShadow: (theme) => `0 4px 14px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.2 : 0.06)}`, transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease', '&:hover': { transform: 'translateY(-2px)', borderColor: 'primary.light', boxShadow: (theme) => `0 10px 24px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.3 : 0.1)}` }, '&:focus-within': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 } }}
+    >
+      <Box sx={{ position: 'relative', aspectRatio: '16 / 9', overflow: 'hidden', background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.22)}, ${alpha(theme.palette.info.main, 0.14)})` }}>
+        {course.cover ? <Box component="img" src={course.cover} alt={`${course.title} thumbnail`} sx={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} /> : <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'primary.main' }}><MenuBookOutlinedIcon sx={{ fontSize: 46, opacity: 0.8 }} /></Box>}
+        <IconButton onClick={onToggleBookmark} aria-label={bookmarked ? `Remove ${course.title} from bookmarks` : `Bookmark ${course.title}`} aria-pressed={bookmarked} size="small" sx={{ position: 'absolute', top: 9, right: 9, color: bookmarked ? 'primary.main' : 'text.primary', backgroundColor: 'background.paper', '&:hover': { backgroundColor: 'background.paper', color: 'primary.main' } }}>{bookmarked ? <BookmarkOutlinedIcon fontSize="small" /> : <BookmarkBorderOutlinedIcon fontSize="small" />}</IconButton>
+      </Box>
+      <CardContent sx={{ p: 1.75, display: 'flex', flex: 1, flexDirection: 'column', '&:last-child': { pb: 1.75 } }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 0.9 }}>
+          <Chip label={course.category} size="small" sx={{ height: 23, borderRadius: 1.5, fontSize: 11, fontWeight: 800, color: 'primary.dark', backgroundColor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.09) }} />
+          {course.ratingCount ? <Stack direction="row" spacing={0.25} alignItems="center" aria-label={`${course.rating} out of 5 stars, ${course.ratingCount} ratings`}><Typography variant="body2" sx={{ fontWeight: 800 }}>{course.rating?.toFixed(1)}</Typography><StarRoundedIcon sx={{ color: '#e7a82e', fontSize: 17 }} /><Typography variant="caption" color="text.secondary">({course.ratingCount})</Typography></Stack> : <Chip size="small" label={grade.letter} color={grade.letter === 'F' ? 'error' : grade.letter === 'D' ? 'warning' : 'success'} sx={{ height: 23, fontWeight: 800 }} />}
+        </Stack>
+        <Typography variant="subtitle1" sx={{ minHeight: 48, mb: 0.5, fontWeight: 800, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{course.title}</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ mb: 1.2 }}>Instructor: {course.tutor}</Typography>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.55 }}><Typography variant="caption" sx={{ fontWeight: 700 }}>Progress</Typography><Typography variant="caption" sx={{ fontWeight: 800, color: 'success.dark' }}>{progress}%</Typography></Stack>
+        <LinearProgress variant="determinate" value={progress} color="success" aria-label={`${course.title} progress ${progress}%`} sx={{ height: 6, borderRadius: 4, mb: 1.5, backgroundColor: 'action.hover', '& .MuiLinearProgress-bar': { borderRadius: 4 } }} />
+        <Button fullWidth variant="contained" onClick={onContinue} sx={{ mt: 'auto', minHeight: 40, borderRadius: 2, fontWeight: 800, backgroundColor: '#6d28d9', '&:hover': { backgroundColor: '#5b21b6' } }}>Continue Course</Button>
+        <IconButton onClick={() => setDetailsOpen((current) => !current)} aria-label={`${detailsOpen ? 'Hide' : 'Show'} details for ${course.title}`} aria-expanded={detailsOpen} size="small" sx={{ position: 'absolute', left: 8, top: 8, color: 'common.white', backgroundColor: (theme) => alpha(theme.palette.common.black, 0.48), '&:hover': { backgroundColor: (theme) => alpha(theme.palette.common.black, 0.65) } }}><InfoOutlinedIcon fontSize="small" /></IconButton>
+      </CardContent>
+    </Card>
+    <Popper
+      id={`course-details-${course.id}`}
+      open={detailsOpen}
+      anchorEl={cardRef.current}
+      placement={isMobile ? 'bottom-start' : 'right-start'}
+      modifiers={[{ name: 'offset', options: { offset: [0, 12] } }, { name: 'flip', options: { fallbackPlacements: ['left-start', 'top-start', 'bottom-start'] } }, { name: 'preventOverflow', options: { boundary: 'viewport', padding: 12 } }]}
+      sx={{ zIndex: (theme) => theme.zIndex.modal }}
+    >
+      <Paper ref={panelRef} onMouseEnter={openDetails} onMouseLeave={delayCloseDetails} onFocus={openDetails} onBlur={handleBlur} elevation={8} sx={{ width: 340, maxWidth: 'min(340px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 24px)', overflowY: 'auto', p: 2.25, border: 1, borderColor: 'divider', borderRadius: 3, color: 'text.primary', backgroundColor: 'background.paper' }}>
+        <Typography variant="h6" sx={{ mb: 0.75, fontWeight: 800, lineHeight: 1.25 }}>{course.title}</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>Instructor: {course.tutor}</Typography>
+        {(course.level && course.level !== 'Not specified' || durationSeconds > 0 || showLastActivity) && <Stack direction="row" flexWrap="wrap" spacing={1} useFlexGap sx={{ mb: 1.5 }}>
+          {course.level && course.level !== 'Not specified' && <Chip size="small" label={course.level} variant="outlined" />}
+          {durationSeconds > 0 && <Chip size="small" label={formatDuration(durationSeconds)} variant="outlined" />}
+          {showLastActivity && <Chip size="small" label={`Last active ${lastActivity!.toLocaleDateString()}`} variant="outlined" />}
+        </Stack>}
+        <Chip size="small" label={completionStatus} color={progress === 100 ? 'success' : 'primary'} sx={{ mb: 1.5 }} />
+        {course.description?.trim() && <Typography variant="body2" color="text.secondary" sx={{ mb: objectives.length ? 1.5 : 2, whiteSpace: 'pre-line' }}>{course.description}</Typography>}
+        {objectives.length > 0 && <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 0.75, fontWeight: 800 }}>What you&apos;ll learn</Typography>
+          <Stack spacing={0.75}>{objectives.map((objective) => <Stack key={objective} direction="row" spacing={0.75} alignItems="flex-start"><CheckCircleOutlineIcon sx={{ mt: '2px', flexShrink: 0, fontSize: 17, color: 'success.main' }} /><Typography variant="body2" color="text.secondary">{objective}</Typography></Stack>)}</Stack>
+        </Box>}
+        <Button fullWidth variant="contained" onClick={onContinue} sx={{ minHeight: 42, borderRadius: 2, fontWeight: 800, backgroundColor: '#6d28d9', '&:hover': { backgroundColor: '#5b21b6' } }}>Continue Course</Button>
+      </Paper>
+    </Popper>
+  </>
+}
+
 const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Record<number, number[]>; onOpenCourse: (courseId: number) => void }> = ({ enrollments, completedLessons, onOpenCourse }) => {
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
+  const [bookmarkedCourseIds, setBookmarkedCourseIds] = useState<number[]>([])
   const courseEnrollments = enrollments.filter((enrollment) => enrollment.type === 'course' && enrollment.course)
   const categories = Array.from(new Set(courseEnrollments.map((enrollment) => enrollment.course!.category)))
   const normalizedQuery = searchQuery.trim().toLowerCase()
@@ -885,7 +987,7 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
   useEffect(() => setPage(1), [courseEnrollments.length, normalizedQuery, categoryFilter])
 
   return <>
-    <ViewHeading title="My Courses" description="Build momentum with the self-paced courses in your learning plan." />
+    <ViewHeading title="My Courses" description="Build momentum with the self-paced courses in your learning plan." compact />
     {courseEnrollments.length === 0 ? <EmptyState title="No courses yet" description="Your paid course enrollments will appear here." actionLabel="Browse courses" onAction={() => navigateTo('/')} /> : <>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', md: 'center' }} sx={{ mb: 2.5 }}>
         <TextField size="small" placeholder="Search my courses..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} inputProps={{ 'aria-label': 'Search my courses' }} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} /></InputAdornment> }} sx={{ flex: 1, minWidth: 0, backgroundColor: 'background.paper', '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }} />
@@ -896,25 +998,14 @@ const CoursesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
         <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', ml: { md: 'auto' } }}>{filteredCourseEnrollments.length} {filteredCourseEnrollments.length === 1 ? 'course' : 'courses'} found</Typography>
       </Stack>
       {filteredCourseEnrollments.length === 0 ? <EmptyState title="No matching courses" description="Try a different search term or category." /> : <>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: { xs: 2, md: 2.5 }, alignItems: 'stretch' }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.5, md: 2 }, alignItems: 'stretch' }}>
       {visibleCourseEnrollments.map((enrollment) => {
         const course = enrollment.course!
         const completed = completedLessons[course.id]
         const progress = completed === undefined ? enrollment.progress : getCourseProgress(course, completed)
         const grade = getEnrollmentOverallGrade(enrollment, progress)
-        return <Card key={enrollment.id} elevation={0} sx={{ overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 3.5, display: 'flex', flexDirection: 'column', backgroundColor: 'background.paper', boxShadow: (theme) => `0 5px 18px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.2 : 0.055)}`, transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease', '&:hover': { transform: 'translateY(-3px)', borderColor: 'primary.light', boxShadow: (theme) => `0 12px 28px ${alpha(theme.palette.common.black, theme.palette.mode === 'dark' ? 0.3 : 0.11)}` } }}>
-          <Box sx={{ position: 'relative', aspectRatio: '16 / 7', minHeight: { xs: 150, sm: 140 }, maxHeight: 210, overflow: 'hidden', background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.32)}, ${alpha(theme.palette.info.main, 0.18)})` }}>
-            {course.cover ? <Box component="img" src={course.cover} alt={`${course.title} course`} sx={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} /> : <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'primary.main', background: 'radial-gradient(circle at 75% 22%, rgba(255,255,255,.62), transparent 34%), linear-gradient(135deg, rgba(16,125,111,.18), rgba(31,91,139,.12))' }}><MenuBookOutlinedIcon sx={{ fontSize: 52, opacity: 0.78 }} /></Box>}
-            <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 42%, rgba(12,24,35,.32))' }} />
-          </Box>
-          <CardContent sx={{ p: { xs: 2, sm: 2.5 }, display: 'flex', flex: 1, flexDirection: 'column', '&:last-child': { pb: { xs: 2, sm: 2.5 } } }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.25} sx={{ mb: 1.25 }}><Chip label={course.category} size="small" sx={{ height: 25, borderRadius: 2, fontWeight: 700, color: 'primary.dark', backgroundColor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.2 : 0.09), '& .MuiChip-label': { px: 1.15 } }} /><Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{course.level}</Typography></Stack>
-            <Typography variant="h6" sx={{ mb: 1.25, minHeight: { sm: 56 }, fontWeight: 800, lineHeight: 1.35, letterSpacing: '-0.02em' }}>{course.title}</Typography>
-            <Stack spacing={0.75} sx={{ mb: 1.5 }}><Stack direction="row" spacing={0.75} alignItems="center"><PersonOutlineIcon sx={{ color: 'text.disabled', fontSize: 17 }} /><Typography color="text.secondary" variant="body2">Tutor: {course.tutor}</Typography></Stack><Stack direction="row" spacing={0.75} alignItems="center"><AccessTimeOutlinedIcon sx={{ color: 'text.disabled', fontSize: 17 }} /><Typography color="text.secondary" variant="body2">Time spent: {formatTimeSpent(enrollment.timeSpentSeconds)}</Typography></Stack></Stack>
-            <Box sx={{ py: 1.25, px: 1.5, mb: 2, borderRadius: 2.5, backgroundColor: 'action.hover' }}><OverallGradeValue grade={grade} />{progress === 100 && grade.letter === 'F' && <Alert severity="warning" sx={{ mt: 1 }}>Course complete, but your grade needs improvement — review quiz results to raise it.</Alert>}</Box>
-            <Box sx={{ mt: 'auto' }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.9 }}><Typography variant="body2" sx={{ fontWeight: 600 }}>Progress</Typography><Typography variant="body2" color="primary.main" sx={{ fontWeight: 800 }}>{progress}%</Typography></Stack><LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4, mb: 2, backgroundColor: 'action.selected', '& .MuiLinearProgress-bar': { borderRadius: 4 } }} /><Button fullWidth variant="contained" onClick={() => onOpenCourse(course.id)} sx={{ minHeight: 44, borderRadius: 2.25, fontWeight: 800, boxShadow: 'none', '&:hover': { boxShadow: 2 } }}>{progress ? 'Continue course' : 'Start course'}</Button></Box>
-          </CardContent>
-        </Card>
+        const bookmarked = bookmarkedCourseIds.includes(course.id)
+        return <EnrolledCourseCard key={enrollment.id} enrollment={enrollment} course={course} progress={progress} grade={grade} bookmarked={bookmarked} onToggleBookmark={() => setBookmarkedCourseIds((current) => bookmarked ? current.filter((id) => id !== course.id) : [...current, course.id])} onContinue={() => onOpenCourse(course.id)} />
       })}
       </Box>
       {pageCount > 1 && <Stack alignItems="center" sx={{ mt: 3 }}><Pagination count={pageCount} page={page} onChange={(_, nextPage) => setPage(nextPage)} color="primary" aria-label="My courses pages" /></Stack>}

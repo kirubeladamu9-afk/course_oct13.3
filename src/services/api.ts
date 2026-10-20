@@ -136,6 +136,11 @@ export interface MyEnrollment {
   courseTitle: string | null
   courseCover: string | null
   classCover: string | null
+  courseDescription: string | null
+  courseLongDescription: string | null
+  learningOutcomes: string[]
+  courseRating: number | null
+  courseRatingCount: number | null
   category: string | null
   level: string | null
   tutor: string | null
