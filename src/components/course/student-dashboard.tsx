@@ -1075,7 +1075,6 @@ const EnrolledClassCard: FC<{ enrollment: DashboardEnrollment; classRecord: Dash
         <Typography variant="caption" color="text.secondary" sx={{ mb: 0.75 }}>Tutor: {classRecord.tutorName}</Typography>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.55 }}><Typography variant="caption" sx={{ fontWeight: 700 }}>Progress</Typography><Typography variant="caption" sx={{ fontWeight: 800, color: 'success.dark' }}>{progress}%</Typography></Stack>
         <LinearProgress variant="determinate" value={progress} color="success" aria-label={`${classRecord.title} progress ${progress}%`} sx={{ height: 6, borderRadius: 4, mb: 1.5, backgroundColor: 'action.hover', '& .MuiLinearProgress-bar': { borderRadius: 4 } }} />
-        <Button fullWidth variant="contained" disabled={!canOpenClass} onClick={onContinue} sx={{ mt: 'auto', minHeight: 40, borderRadius: 2, fontWeight: 800, backgroundColor: 'primary.main', '&:hover': { backgroundColor: 'primary.dark' } }}>{classRecord.status === 'closed' || classHasEnded(classRecord.schedule, now) ? 'Class ended' : progress ? 'Continue class' : 'Open class'}</Button>
         <IconButton onClick={() => setDetailsOpen((current) => !current)} aria-label={`${detailsOpen ? 'Hide' : 'Show'} details for ${classRecord.title}`} aria-expanded={detailsOpen} size="small" sx={{ position: 'absolute', left: 8, top: 8, color: 'common.white', backgroundColor: (theme) => alpha(theme.palette.common.black, 0.48), '&:hover': { backgroundColor: (theme) => alpha(theme.palette.common.black, 0.65) } }}><InfoOutlinedIcon fontSize="small" /></IconButton>
       </CardContent>
     </Card>
@@ -1131,7 +1130,7 @@ const ClassesView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: Re
         <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap', ml: { md: 'auto' } }}>{filteredClassEnrollments.length} {filteredClassEnrollments.length === 1 ? 'class' : 'classes'} found</Typography>
       </Stack>
       {filteredClassEnrollments.length === 0 ? <EmptyState title="No matching classes" description="Try a different search term or status." /> : <>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))', lg: 'repeat(3, minmax(0, 1fr))' }, gap: { xs: 1.5, md: 2 }, alignItems: 'stretch' }}>{visibleClassEnrollments.map((enrollment) => {
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.5, md: 2 }, alignItems: 'stretch' }}>{visibleClassEnrollments.map((enrollment) => {
       const classRecord = enrollment.classRecord!
       const course = classRecord.course!
       const classEnded = classHasEnded(classRecord.schedule, now)
