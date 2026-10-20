@@ -232,6 +232,28 @@ export interface GamificationData {
   classTitle: string | null
 }
 
+export interface CourseReview {
+  id: number
+  rating: number
+  comment: string
+  studentName: string
+  createdAt: string
+}
+
+export interface StudentReviewData {
+  reviews: CourseReview[]
+  ownReview: { id: number; rating: number; comment: string; isHidden: boolean } | null
+  canReview: boolean
+}
+
+export interface AdminReview extends CourseReview {
+  targetType: 'course' | 'class'
+  targetId: number
+  targetTitle: string
+  studentEmail: string
+  isHidden: boolean
+}
+
 export interface PublicClass {
   id: number
   title: string
@@ -250,6 +272,8 @@ export interface PublicClass {
   gradeLevel: number | null
   moduleCount: number | null
   lessonCount: number | null
+  rating: number
+  ratingCount: number
 }
 
 export interface TutorOverview {
@@ -1172,6 +1196,28 @@ export const getGamification = async (signal?: AbortSignal): Promise<Gamificatio
   const response = await requestApi('/api/gamification', { signal })
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
+}
+
+export const getStudentReviews = async (type: 'course' | 'class', id: number): Promise<StudentReviewData> => {
+  const response = await requestApi(`/api/reviews?type=${type}&id=${id}`)
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const submitStudentReview = async (type: 'course' | 'class', id: number, rating: number, comment: string): Promise<void> => {
+  const response = await requestApi('/api/reviews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, id, rating, comment }) })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const getAdminReviews = async (): Promise<AdminReview[]> => {
+  const response = await requestApi('/api/admin/reviews')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const setAdminReviewHidden = async (type: 'course' | 'class', id: number, isHidden: boolean): Promise<void> => {
+  const response = await requestApi(`/api/admin/reviews/${type}/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isHidden }) })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
 }
 
 const requestLearningProgress = async <T>(url: string, init: RequestInit): Promise<T> => {

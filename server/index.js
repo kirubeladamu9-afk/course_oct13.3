@@ -349,6 +349,34 @@ const initializeDatabase = async () => {
     grade_level: 'SMALLINT CHECK (grade_level BETWEEN 1 AND 12)',
     exam_date: 'DATE',
   })
+  await sql`
+    CREATE TABLE IF NOT EXISTS course_reviews (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      course_id BIGINT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      rating SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      comment TEXT NOT NULL DEFAULT '' CHECK (char_length(comment) <= 1000),
+      is_hidden BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (course_id, user_id)
+    )
+  `
+  await sql`
+    CREATE TABLE IF NOT EXISTS class_reviews (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      class_id BIGINT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      rating SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      comment TEXT NOT NULL DEFAULT '' CHECK (char_length(comment) <= 1000),
+      is_hidden BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (class_id, user_id)
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS course_reviews_visible_idx ON course_reviews (course_id, created_at DESC) WHERE is_hidden = false`
+  await sql`CREATE INDEX IF NOT EXISTS class_reviews_visible_idx ON class_reviews (class_id, created_at DESC) WHERE is_hidden = false`
   await ensureColumns('enrollments', {
     class_id: 'BIGINT REFERENCES classes(id) ON DELETE SET NULL',
     class_status: "TEXT CHECK (class_status IN ('enrolled', 'waitlisted'))",
@@ -573,8 +601,8 @@ const courseColumns = sql.unsafe(`
   id::INTEGER AS id,
   title,
   cover,
-  rating::FLOAT AS rating,
-  rating_count AS "ratingCount",
+  COALESCE((SELECT AVG(reviews.rating) FROM course_reviews reviews WHERE reviews.course_id = courses.id AND reviews.is_hidden = false), 0)::FLOAT AS rating,
+  (SELECT COUNT(*)::INTEGER FROM course_reviews reviews WHERE reviews.course_id = courses.id AND reviews.is_hidden = false) AS "ratingCount",
   price::FLOAT AS price,
   category,
   level,
@@ -594,8 +622,8 @@ const courseSummaryColumns = sql.unsafe(`
   id::INTEGER AS id,
   title,
   cover,
-  rating::FLOAT AS rating,
-  rating_count AS "ratingCount",
+  COALESCE((SELECT AVG(reviews.rating) FROM course_reviews reviews WHERE reviews.course_id = courses.id AND reviews.is_hidden = false), 0)::FLOAT AS rating,
+  (SELECT COUNT(*)::INTEGER FROM course_reviews reviews WHERE reviews.course_id = courses.id AND reviews.is_hidden = false) AS "ratingCount",
   price::FLOAT AS price,
   category,
   description
@@ -1487,6 +1515,128 @@ app.use(express.json({ limit: '30mb' }))
 app.get('/api/health', async (_request, response) => {
   await sql`SELECT 1`
   response.json({ status: 'ok' })
+})
+
+app.get('/api/reviews', requireAuthenticated, async (request, response) => {
+  const targetType = request.query.type
+  const targetId = parseCourseId(String(request.query.id ?? ''))
+  if (!['course', 'class'].includes(targetType) || targetId === null) return response.status(400).json({ message: 'A valid review target is required.' })
+
+  if (targetType === 'course') {
+    const reviews = await sql`
+      SELECT reviews.id::INTEGER AS id,
+             reviews.rating::INTEGER AS rating,
+             reviews.comment,
+             COALESCE(NULLIF(users.name, ''), 'Learner') AS "studentName",
+             reviews.created_at AS "createdAt"
+      FROM course_reviews reviews
+      INNER JOIN users ON users.id = reviews.user_id
+      WHERE reviews.course_id = ${targetId} AND reviews.is_hidden = false
+      ORDER BY reviews.created_at DESC, reviews.id DESC
+    `
+    const [ownReview] = await sql`SELECT id::INTEGER AS id, rating::INTEGER AS rating, comment, is_hidden AS "isHidden" FROM course_reviews WHERE course_id = ${targetId} AND user_id = ${request.userId}`
+    const [eligibility] = await sql`
+      SELECT EXISTS (
+        SELECT 1 FROM enrollments
+        INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+        LEFT JOIN course_progress ON course_progress.user_id = enrollments.user_id AND course_progress.course_id = enrollments.course_id
+        WHERE enrollments.user_id = ${request.userId} AND enrollments.course_id = ${targetId} AND enrollments.class_id IS NULL
+          AND (course_progress.started = true OR EXISTS (SELECT 1 FROM student_lesson_progress WHERE student_lesson_progress.enrollment_id = enrollments.id))
+      ) AS eligible
+    `
+    return response.json({ reviews, ownReview: ownReview ?? null, canReview: Boolean(eligibility?.eligible) })
+  }
+
+  const reviews = await sql`
+    SELECT reviews.id::INTEGER AS id,
+           reviews.rating::INTEGER AS rating,
+           reviews.comment,
+           COALESCE(NULLIF(users.name, ''), 'Learner') AS "studentName",
+           reviews.created_at AS "createdAt"
+    FROM class_reviews reviews
+    INNER JOIN users ON users.id = reviews.user_id
+    WHERE reviews.class_id = ${targetId} AND reviews.is_hidden = false
+    ORDER BY reviews.created_at DESC, reviews.id DESC
+  `
+  const [ownReview] = await sql`SELECT id::INTEGER AS id, rating::INTEGER AS rating, comment, is_hidden AS "isHidden" FROM class_reviews WHERE class_id = ${targetId} AND user_id = ${request.userId}`
+  const [eligibility] = await sql`
+    SELECT EXISTS (
+      SELECT 1 FROM enrollments
+      INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+      WHERE enrollments.user_id = ${request.userId} AND enrollments.class_id = ${targetId} AND enrollments.class_status = 'enrolled'
+        AND (EXISTS (SELECT 1 FROM student_lesson_progress WHERE student_lesson_progress.enrollment_id = enrollments.id)
+          OR EXISTS (SELECT 1 FROM class_attendance WHERE class_attendance.enrollment_id = enrollments.id AND class_attendance.status = 'Present'))
+    ) AS eligible
+  `
+  return response.json({ reviews, ownReview: ownReview ?? null, canReview: Boolean(eligibility?.eligible) })
+})
+
+app.post('/api/reviews', requireAuthenticated, async (request, response) => {
+  const { type: targetType, id: rawTargetId, rating, comment = '' } = request.body ?? {}
+  const targetId = parseCourseId(String(rawTargetId ?? ''))
+  if (!['course', 'class'].includes(targetType) || targetId === null) return response.status(400).json({ message: 'A valid review target is required.' })
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return response.status(400).json({ message: 'Choose a rating from 1 to 5 stars.' })
+  if (typeof comment !== 'string' || comment.trim().length > 1000) return response.status(400).json({ message: 'Reviews must be 1000 characters or fewer.' })
+
+  const eligibility = targetType === 'course'
+    ? await sql`
+      SELECT EXISTS (
+        SELECT 1 FROM enrollments
+        INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+        LEFT JOIN course_progress ON course_progress.user_id = enrollments.user_id AND course_progress.course_id = enrollments.course_id
+        WHERE enrollments.user_id = ${request.userId} AND enrollments.course_id = ${targetId} AND enrollments.class_id IS NULL
+          AND (course_progress.started = true OR EXISTS (SELECT 1 FROM student_lesson_progress WHERE student_lesson_progress.enrollment_id = enrollments.id))
+      ) AS eligible
+    `
+    : await sql`
+      SELECT EXISTS (
+        SELECT 1 FROM enrollments
+        INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+        WHERE enrollments.user_id = ${request.userId} AND enrollments.class_id = ${targetId} AND enrollments.class_status = 'enrolled'
+          AND (EXISTS (SELECT 1 FROM student_lesson_progress WHERE student_lesson_progress.enrollment_id = enrollments.id)
+            OR EXISTS (SELECT 1 FROM class_attendance WHERE class_attendance.enrollment_id = enrollments.id AND class_attendance.status = 'Present'))
+      ) AS eligible
+    `
+  if (!eligibility[0]?.eligible) return response.status(403).json({ message: 'Start a lesson in your enrolled course or class before leaving a review.' })
+
+  const [review] = targetType === 'course'
+    ? await sql`
+      INSERT INTO course_reviews (course_id, user_id, rating, comment)
+      VALUES (${targetId}, ${request.userId}, ${rating}, ${comment.trim()})
+      ON CONFLICT (course_id, user_id) DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, updated_at = NOW()
+      RETURNING id::INTEGER AS id, rating::INTEGER AS rating, comment, is_hidden AS "isHidden"
+    `
+    : await sql`
+      INSERT INTO class_reviews (class_id, user_id, rating, comment)
+      VALUES (${targetId}, ${request.userId}, ${rating}, ${comment.trim()})
+      ON CONFLICT (class_id, user_id) DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, updated_at = NOW()
+      RETURNING id::INTEGER AS id, rating::INTEGER AS rating, comment, is_hidden AS "isHidden"
+    `
+  return response.json(review)
+})
+
+app.get('/api/admin/reviews', requireAdmin, async (_request, response) => {
+  const reviews = await sql`
+    SELECT course_reviews.id::INTEGER AS id, 'course' AS "targetType", course_reviews.course_id::INTEGER AS "targetId", courses.title AS "targetTitle", users.name AS "studentName", users.email AS "studentEmail", course_reviews.rating::INTEGER AS rating, course_reviews.comment, course_reviews.is_hidden AS "isHidden", course_reviews.created_at AS "createdAt"
+    FROM course_reviews INNER JOIN courses ON courses.id = course_reviews.course_id INNER JOIN users ON users.id = course_reviews.user_id
+    UNION ALL
+    SELECT class_reviews.id::INTEGER AS id, 'class' AS "targetType", class_reviews.class_id::INTEGER AS "targetId", classes.title AS "targetTitle", users.name AS "studentName", users.email AS "studentEmail", class_reviews.rating::INTEGER AS rating, class_reviews.comment, class_reviews.is_hidden AS "isHidden", class_reviews.created_at AS "createdAt"
+    FROM class_reviews INNER JOIN classes ON classes.id = class_reviews.class_id INNER JOIN users ON users.id = class_reviews.user_id
+    ORDER BY "createdAt" DESC, 1 DESC
+  `
+  return response.json(reviews)
+})
+
+app.patch('/api/admin/reviews/:type/:id', requireAdmin, async (request, response) => {
+  const targetId = parseCourseId(request.params.id)
+  const targetType = request.params.type
+  const { isHidden } = request.body ?? {}
+  if (targetId === null || !['course', 'class'].includes(targetType) || typeof isHidden !== 'boolean') return response.status(400).json({ message: 'A review and visibility status are required.' })
+  const rows = targetType === 'course'
+    ? await sql`UPDATE course_reviews SET is_hidden = ${isHidden}, updated_at = NOW() WHERE id = ${targetId} RETURNING id::INTEGER AS id`
+    : await sql`UPDATE class_reviews SET is_hidden = ${isHidden}, updated_at = NOW() WHERE id = ${targetId} RETURNING id::INTEGER AS id`
+  if (!rows.length) return response.status(404).json({ message: 'Review not found.' })
+  return response.json({ success: true })
 })
 
 app.get('/api/courses', async (_request, response) => {
@@ -2618,6 +2768,8 @@ app.get('/api/classes', async (_request, response) => {
            COALESCE(tutors.name, 'Tutor to be confirmed') AS "tutorName",
            classes.capacity,
            COALESCE(enrollment_counts.enrolled_count, 0)::INTEGER AS "enrolledCount",
+           COALESCE(class_reviews.average_rating, 0)::FLOAT AS rating,
+           COALESCE(class_reviews.rating_count, 0)::INTEGER AS "ratingCount",
            classes.published,
            classes.grade_level AS "gradeLevel",
            jsonb_array_length(CASE WHEN jsonb_typeof(classes.modules) = 'array' THEN classes.modules ELSE '[]'::jsonb END)::INTEGER AS "moduleCount",
@@ -2631,6 +2783,12 @@ app.get('/api/classes', async (_request, response) => {
       WHERE class_id IS NOT NULL
       GROUP BY class_id
     ) AS enrollment_counts ON enrollment_counts.class_id = classes.id
+    LEFT JOIN (
+      SELECT class_id, AVG(rating)::FLOAT AS average_rating, COUNT(*)::INTEGER AS rating_count
+      FROM class_reviews
+      WHERE is_hidden = false
+      GROUP BY class_id
+    ) AS class_reviews ON class_reviews.class_id = classes.id
     WHERE classes.published = true
       AND classes.status IN ('open', 'full')
     ORDER BY classes.created_at DESC, classes.id DESC

@@ -65,8 +65,8 @@ const CourseCardItem: FC<Props> = ({ item, onOpen }) => {
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <Rating name="rating-course" value={item.rating} max={5} sx={{ color: '#ffce31', mr: 1 }} readOnly />
-            <Typography component="span" variant="h5">
-              ({item.ratingCount})
+            <Typography component="span" variant="body2" color="text.secondary">
+              {item.ratingCount ? `(${item.ratingCount})` : 'No reviews yet'}
             </Typography>
           </Box>
         </Box>

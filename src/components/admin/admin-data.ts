@@ -106,6 +106,8 @@ export interface AdminCourse {
   students: number
   price: number
   cover: string
+  rating?: number
+  ratingCount?: number
   description: string
   longDescription: string
   learningOutcomes: string[]

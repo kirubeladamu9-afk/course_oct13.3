@@ -77,6 +77,8 @@ import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined'
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import { type FormEvent, type ReactElement, useEffect, useState } from 'react'
+import ReviewsPage from './reviews-page'
+import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined'
 import { toast } from '@/components/toast'
 import { Logo } from '@/components/logo'
 import { StyledButton } from '@/components/styled-button'
@@ -101,7 +103,7 @@ import { STEM_TOOL_LIBRARY, STEM_TOOL_PICKER_COMING_SOON, type StemToolDefinitio
 
 const drawerWidth = 272
 
-type Section = 'overview' | 'courses' | 'registrations' | 'classes' | 'tutors' | 'blog' | 'practice-exams' | 'syllabus' | 'payments' | 'reports' | 'violations' | 'users'
+type Section = 'overview' | 'courses' | 'registrations' | 'classes' | 'tutors' | 'blog' | 'practice-exams' | 'syllabus' | 'payments' | 'reports' | 'violations' | 'reviews' | 'users'
 
 type AdminNavigationItem = {
   key: Section
@@ -121,6 +123,7 @@ const navigation: AdminNavigationItem[] = [
   { key: 'payments', label: 'Payments', icon: <PaymentsOutlinedIcon /> },
   { key: 'reports', label: 'Reports', icon: <AssessmentOutlinedIcon /> },
   { key: 'violations', label: 'Violations', icon: <BlockIcon /> },
+  { key: 'reviews', label: 'Learner Reviews', icon: <RateReviewOutlinedIcon /> },
   { key: 'users', label: 'Users', icon: <GroupOutlinedIcon /> },
 ]
 
@@ -1838,6 +1841,7 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
       case 'payments': return <PaymentsPage />
       case 'reports': return <ReportsPage />
       case 'violations': return <ViolationsPage />
+      case 'reviews': return <ReviewsPage />
       case 'users': return <UsersPage />
       default: return <OverviewPage displayName={adminUser?.name || 'Admin'} />
     }

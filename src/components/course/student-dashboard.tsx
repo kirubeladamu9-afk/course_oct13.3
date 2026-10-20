@@ -15,6 +15,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
+import Rating from '@mui/material/Rating'
 import Pagination from '@mui/material/Pagination'
 import Popper from '@mui/material/Popper'
 import FormControl from '@mui/material/FormControl'
@@ -80,6 +81,7 @@ import ScheduleCalendar, { type ScheduleSession } from '@/components/schedule-ca
 import GamificationWidgets from './gamification-widgets'
 import StudentDashboardOverview from './student-dashboard-overview'
 import CourseCardItem from './course-card-item'
+import StudentReviews from './student-reviews'
 import InteractiveDiagramViewer from './interactive-diagram-viewer'
 import SimulationLesson from './simulation-lesson'
 import { type AdminCourse, type ArticleContentBlock, type SimulationConfig } from '@/components/admin/admin-data'
@@ -1355,6 +1357,7 @@ const OtherClassCard: FC<{ classRecord: PublicClass; cover?: string; category?: 
         <Stack spacing={1}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}><PersonOutlineIcon sx={{ color: 'text.disabled', fontSize: 18 }} /><Typography variant="body2" color="text.secondary" noWrap>Tutor: {classRecord.tutorName}</Typography></Stack>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}><CalendarTodayOutlinedIcon sx={{ color: 'text.disabled', fontSize: 18 }} /><Typography variant="body2" color="text.secondary" noWrap>{classScheduleLabel(schedule)}</Typography></Stack>
+          <Stack direction="row" spacing={0.75} alignItems="center"><Rating value={classRecord.rating} precision={0.1} readOnly size="small" /><Typography variant="caption" color="text.secondary">{classRecord.ratingCount ? `${classRecord.rating.toFixed(1)} (${classRecord.ratingCount})` : 'No reviews yet'}</Typography></Stack>
         </Stack>
       </Box>
 
@@ -1379,6 +1382,7 @@ const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolled
   const [scheduleFilter, setScheduleFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [gradeFilter, setGradeFilter] = useState('all')
+  const [ratingFilter, setRatingFilter] = useState('all')
   const [sortBy, setSortBy] = useState('popular')
   const [layout, setLayout] = useState<'grid' | 'list'>('grid')
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -1397,13 +1401,14 @@ const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolled
     const matchesSchedule = scheduleFilter === 'all' || (scheduleFilter === 'flexible' ? classRecord.schedule.flexible : classRecord.schedule.days.includes(scheduleFilter))
     const matchesCategory = categoryFilter === 'all' || getClassCourse(classRecord)?.category === categoryFilter
     const matchesGrade = gradeFilter === 'all' || classRecord.gradeLevel === Number(gradeFilter)
-    return matchesSearch && matchesSchedule && matchesCategory && matchesGrade
+    const matchesRating = ratingFilter === 'all' || classRecord.rating >= Number(ratingFilter)
+    return matchesSearch && matchesSchedule && matchesCategory && matchesGrade && matchesRating
   })
   const sortedClasses = [...filteredClasses].sort((left, right) => sortBy === 'price' ? left.price - right.price : sortBy === 'title' ? left.title.localeCompare(right.title) : right.enrolledCount - left.enrolledCount)
   const pageCount = Math.ceil(sortedClasses.length / catalogPageSize)
   const visibleClasses = sortedClasses.slice((page - 1) * catalogPageSize, page * catalogPageSize)
 
-  useEffect(() => setPage(1), [classes.length, enrolledClassIds.size, normalizedQuery, scheduleFilter, categoryFilter, gradeFilter, sortBy])
+  useEffect(() => setPage(1), [classes.length, enrolledClassIds.size, normalizedQuery, scheduleFilter, categoryFilter, gradeFilter, ratingFilter, sortBy])
 
   const filterPanel = <Paper elevation={0} sx={{ p: 2.25, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper' }}>
     <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 800 }}>Filter classes</Typography>
@@ -1435,6 +1440,16 @@ const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolled
           </RadioGroup>
         </FormControl>
       </>}
+      <Divider />
+      <FormControl>
+        <FormLabel sx={{ mb: 0.75, color: 'text.primary', fontWeight: 700 }}>Rating</FormLabel>
+        <RadioGroup value={ratingFilter} onChange={(event) => { setRatingFilter(event.target.value); setFiltersOpen(false) }}>
+          <FormControlLabel value="all" control={<Radio size="small" />} label="Any rating" />
+          <FormControlLabel value="4.5" control={<Radio size="small" />} label="4.5 & up" />
+          <FormControlLabel value="4" control={<Radio size="small" />} label="4.0 & up" />
+          <FormControlLabel value="3" control={<Radio size="small" />} label="3.0 & up" />
+        </RadioGroup>
+      </FormControl>
     </Stack>
   </Paper>
 
@@ -1494,6 +1509,7 @@ const CatalogCourseDetailView: FC<{ courseId: number | null; onBack: () => void;
         <Box>
           <Chip label={course.category} color="primary" size="small" sx={{ mb: 1.5 }} />
           <Typography variant="h4" component="h1" sx={{ mb: 1 }}>{course.title}</Typography>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><Rating value={course.rating ?? 0} precision={0.1} readOnly /><Typography variant="body2" color="text.secondary">{course.ratingCount ? `${course.rating?.toFixed(1)} (${course.ratingCount} reviews)` : 'No reviews yet'}</Typography></Stack>
           <Typography color="text.secondary">{course.description}</Typography>
         </Box>
         <Box component="img" src={course.cover} alt={course.title} sx={{ width: '100%', maxHeight: 420, aspectRatio: '16 / 9', objectFit: 'cover', borderRadius: 3 }} />
@@ -1509,6 +1525,7 @@ const CatalogCourseDetailView: FC<{ courseId: number | null; onBack: () => void;
         <Typography variant="body2">{course.certificate ? 'Certificate of completion included' : 'Self-paced learning access'}</Typography>
       </Paper>
     </Box>
+    <Box sx={{ mt: 4 }}><StudentReviews targetType="course" targetId={course.id} /></Box>
   </>
 }
 
@@ -1525,6 +1542,7 @@ const CatalogClassDetailView: FC<{ classRecord?: PublicClass; course?: Course; i
         <Box>
           <Chip label={course?.category ?? 'Live class'} color="primary" size="small" sx={{ mb: 1.5 }} />
           <Typography variant="h4" component="h1" sx={{ mb: 1 }}>{classRecord.title}</Typography>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><Rating value={classRecord.rating} precision={0.1} readOnly /><Typography variant="body2" color="text.secondary">{classRecord.ratingCount ? `${classRecord.rating.toFixed(1)} (${classRecord.ratingCount} reviews)` : 'No reviews yet'}</Typography></Stack>
           <Typography color="text.secondary">{course?.description || `Live class with ${classRecord.tutorName}.`}</Typography>
         </Box>
         {(classRecord.cover || course?.cover) && <Box component="img" src={classRecord.cover || course?.cover || ''} alt={classRecord.title} sx={{ width: '100%', maxHeight: 420, aspectRatio: '16 / 9', objectFit: 'cover', borderRadius: 3 }} />}
@@ -1539,6 +1557,7 @@ const CatalogClassDetailView: FC<{ classRecord?: PublicClass; course?: Course; i
         <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>{classRecord.status === 'pending_schedule' ? 'Schedule pending' : classRecord.enrollmentClosed ? 'Enrollment closed' : classScheduleLabel(schedule)}</Typography>
       </Paper>
     </Box>
+    <Box sx={{ mt: 4 }}><StudentReviews targetType="class" targetId={classRecord.id} /></Box>
   </>
 }
 
@@ -1916,7 +1935,7 @@ const PracticeLessonView: FC<{ questions: NonNullable<DashboardLesson['practiceQ
   return <Paper elevation={0} sx={{ p: { xs: 2.5, md: 4 }, border: 1, borderColor: 'divider' }}><Stack spacing={2}><Stack direction="row" justifyContent="space-between"><Typography variant="overline" color="primary.main">Practice question {questionIndex + 1} of {questions.length}</Typography><Chip size="small" label="Unlimited practice" /></Stack><Typography variant="h5">{question.question}</Typography><Stack spacing={1} role="radiogroup" aria-label="Practice answer options">{question.options.filter(Boolean).map((option) => <Button key={option} variant={selectedAnswer === option ? 'contained' : 'outlined'} color={answered ? option === question.correctAnswer ? 'success' : selectedAnswer === option ? 'error' : 'inherit' : 'inherit'} disabled={answered} onClick={() => { setSelectedAnswer(option); onAnswer(question.id, option) }} sx={{ justifyContent: 'flex-start', textAlign: 'left' }}>{option}</Button>)}</Stack>{answered && <Paper elevation={0} sx={{ p: 2, backgroundColor: isCorrect ? 'success.light' : 'error.light' }}><Typography sx={{ fontWeight: 700, mb: 0.5 }}>{isCorrect ? 'Correct' : `Not quite. The correct answer is ${question.correctAnswer}.`}</Typography><Typography variant="body2">{question.explanation}</Typography></Paper>}{answered && <Button variant="contained" onClick={() => { setQuestionIndex((index) => isLast ? 0 : index + 1); setSelectedAnswer(null) }}>{isLast ? 'Practice again' : 'Next question'}</Button>}</Stack></Paper>
 }
 
-const CourseViewer: FC<{ course: DashboardCourse; progress: number; completedLessonIds: number[]; started: boolean; timeSpentSeconds: number; quizResults: Record<number, DashboardQuizResult>; weakAreas: WeakArea[]; attendance: Record<number, 'Present' | 'Absent'>; isClass: boolean; now: Date; initialLessonId?: number; onBack: () => void; onStart: () => void; onCompleteLesson: (lessonId: number) => void | Promise<void>; onQuizStart: (lessonId: number) => Promise<QuizAttempt | null>; onQuizAnswer: (lessonId: number, attemptId: number, questionId: number, answer: QuizAnswerRecord) => Promise<void>; onQuizSubmit: (lessonId: number, attemptId: number, answers: Record<number, QuizAnswerRecord>, disqualified?: boolean) => Promise<DashboardQuizResult | null>; onQuizViolation: (lessonId: number, attemptId: number, violation: QuizViolation) => Promise<void>; onQuizActiveChange: (active: boolean) => void; onPracticeAnswer: (lessonId: number, questionId: number, answer: string) => void; sessionJoinClicks: Record<number, string>; closedLiveSessionIds: number[]; onJoinLiveSession: (lessonId: number, meetingUrl: string) => Promise<void>; readOnly?: boolean }> = ({ course, progress, completedLessonIds, started, timeSpentSeconds, quizResults, weakAreas, attendance = {}, isClass, now, initialLessonId, onBack, onStart, onCompleteLesson, onQuizStart, onQuizAnswer, onQuizSubmit, onQuizViolation, onQuizActiveChange, onPracticeAnswer, sessionJoinClicks, closedLiveSessionIds, onJoinLiveSession, readOnly = false }) => {
+const CourseViewer: FC<{ course: DashboardCourse; progress: number; completedLessonIds: number[]; started: boolean; timeSpentSeconds: number; quizResults: Record<number, DashboardQuizResult>; weakAreas: WeakArea[]; attendance: Record<number, 'Present' | 'Absent'>; isClass: boolean; now: Date; initialLessonId?: number; onBack: () => void; reviewTargetId: number; onStart: () => void; onCompleteLesson: (lessonId: number) => void | Promise<void>; onQuizStart: (lessonId: number) => Promise<QuizAttempt | null>; onQuizAnswer: (lessonId: number, attemptId: number, questionId: number, answer: QuizAnswerRecord) => Promise<void>; onQuizSubmit: (lessonId: number, attemptId: number, answers: Record<number, QuizAnswerRecord>, disqualified?: boolean) => Promise<DashboardQuizResult | null>; onQuizViolation: (lessonId: number, attemptId: number, violation: QuizViolation) => Promise<void>; onQuizActiveChange: (active: boolean) => void; onPracticeAnswer: (lessonId: number, questionId: number, answer: string) => void; sessionJoinClicks: Record<number, string>; closedLiveSessionIds: number[]; onJoinLiveSession: (lessonId: number, meetingUrl: string) => Promise<void>; readOnly?: boolean }> = ({ course, progress, completedLessonIds, started, timeSpentSeconds, quizResults, weakAreas, attendance = {}, isClass, now, initialLessonId, onBack, reviewTargetId, onStart, onCompleteLesson, onQuizStart, onQuizAnswer, onQuizSubmit, onQuizViolation, onQuizActiveChange, onPracticeAnswer, sessionJoinClicks, closedLiveSessionIds, onJoinLiveSession, readOnly = false }) => {
   const lessons = getLessons(course)
   const [selectedLessonId, setSelectedLessonId] = useState(initialLessonId ?? lessons[0]?.id)
   const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({})
@@ -1999,6 +2018,7 @@ const CourseViewer: FC<{ course: DashboardCourse; progress: number; completedLes
         </Button>}
         <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'hidden' }}><Box sx={{ minHeight: { xs: 220, md: 340 }, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, rgba(16, 125, 111, 0.18), rgba(16, 125, 111, 0.04))' }}>{selectedLesson.type === 'live' ? <Box sx={{ minHeight: { xs: 220, md: 340 }, p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}><VideoCallOutlinedIcon color="primary" sx={{ fontSize: 72 }} /><Typography color="text.secondary">Live lesson · {selectedLesson.scheduledAt ? new Date(selectedLesson.scheduledAt).toLocaleString() : 'Schedule pending'}</Typography><Button variant="contained" disabled={!canJoinLiveSession} aria-disabled={!canJoinLiveSession} onClick={() => { if (liveMeetingUrl) void onJoinLiveSession(selectedLesson.id, liveMeetingUrl) }} startIcon={<VideoCallOutlinedIcon />}>{liveAttendanceStatus === 'Present' ? 'Attendance confirmed' : liveAttendanceStatus === 'Absent' ? 'Marked absent' : hasJoinedLiveSession ? 'Joined — attendance pending' : serverClosedLiveSession || now.getTime() >= liveJoinWindowEnd || now.getTime() >= liveSessionEnd ? 'Join window closed' : now.getTime() < liveSessionStart ? 'Available at scheduled time' : liveMeetingUrl ? 'Join Class' : 'Meeting link unavailable'}</Button>{hasJoinedLiveSession && <Typography variant="caption" color="text.secondary">Join recorded {new Date(sessionJoinClicks[selectedLesson.id]).toLocaleString()}. Attendance is confirmed by your tutor.</Typography>}</Box> : selectedLesson.type === 'video' ? <LessonVideoPlayer src={selectedLesson.videoUrl} poster={selectedLesson.thumbnailUrl} fallbackDuration={selectedLesson.duration} /> : selectedLesson.type === 'simulation' ? (selectedLesson.simulation ? <SimulationLesson config={selectedLesson.simulation} onValidated={() => setSimulationValidated(true)} /> : selectedLesson.platformEngineId && getPlatformEngine(selectedLesson.platformEngineId as PlatformEngineId) ? <PlatformEnginePreview engineId={selectedLesson.platformEngineId as PlatformEngineId} mathTopic={selectedLesson.mathTopic} topicTitle={selectedLesson.topicTitle} onComplete={() => setSimulationValidated(true)} /> : <EmptyState title="Simulation unavailable" description="This simulation has not been configured yet." />) : selectedLesson.type === 'interactive' ? <InteractiveDiagramViewer key={selectedLesson.id} imageUrl={selectedLesson.baseImageUrl} hotspots={selectedLesson.interactiveHotspots ?? []} onViewed={() => setInteractiveViewed(true)} /> : selectedLesson.type === 'article' ? <Box sx={{ minHeight: { xs: 220, md: 340 }, width: '100%', p: { xs: 2, sm: 3, md: 4 }, display: 'flex', alignItems: 'stretch', justifyContent: 'center', background: 'linear-gradient(145deg, rgba(242, 247, 243, 0.9), rgba(231, 242, 237, 0.72))' }}><Box sx={{ width: '100%', p: { xs: 3, sm: 4, md: 6 }, backgroundColor: 'background.paper', border: 1, borderColor: 'rgba(16, 125, 111, 0.16)', borderRadius: 2, boxShadow: '0 12px 30px rgba(15, 55, 48, 0.08)' }}><ArticleIllustration title={selectedLesson.title} description={selectedLesson.description} imageUrl={selectedLesson.articleHeaderImageUrl || selectedLesson.thumbnailUrl} /><Typography variant="overline" color="primary.main" sx={{ fontWeight: 700, letterSpacing: 1.4 }}>Article lesson</Typography><Typography variant="h4" sx={{ mt: 0.5, mb: 1 }}>{selectedLesson.title}</Typography><Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 4, color: 'text.secondary' }}><Typography variant="body2">A guided lesson from {course.tutor}</Typography><Typography variant="body2" aria-hidden="true">·</Typography><AccessTimeOutlinedIcon sx={{ fontSize: 17 }} /><Typography variant="body2">{Math.max(1, Math.ceil(selectedLesson.description.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length / 200))} min read</Typography></Stack><ArticleLessonContent description={selectedLesson.description} blocks={selectedLesson.articleBlocks} onFinalPageChange={setArticleFinalPage} /></Box></Box> : <Box sx={{ minHeight: { xs: 220, md: 340 }, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, rgba(16, 125, 111, 0.18), rgba(16, 125, 111, 0.04))' }}><QuizOutlinedIcon color="primary" sx={{ fontSize: 72 }} /></Box>}</Box><Box sx={{ p: { xs: 2.5, md: 3 } }}><Stack direction="row" justifyContent="space-between" spacing={2} sx={{ mb: 1 }}>{selectedLesson.type !== 'article' && <Typography variant="overline" color="primary.main" sx={{ fontWeight: 700 }}>{selectedLesson.type}</Typography>}{selectedLesson.duration !== 'Article' && <Typography variant="body2" color="text.secondary">{selectedLesson.duration}</Typography>}</Stack>{selectedLesson.type !== 'article' && <><Typography variant="h5" sx={{ mb: 1 }}>{selectedLesson.title}</Typography><Typography color="text.secondary" sx={{ lineHeight: 1.7 }}>{selectedLesson.description}</Typography></>}{selectedLesson.type === 'article' && <Paper elevation={0} sx={{ mt: 2, p: 2, borderRadius: 1.5, borderLeft: 3, borderColor: articleFinalPage ? 'success.main' : 'primary.light', backgroundColor: articleFinalPage ? (theme) => alpha(theme.palette.success.main, theme.palette.mode === 'dark' ? 0.16 : 0.08) : 'action.hover' }}><Typography sx={{ lineHeight: 1.8, color: articleFinalPage ? 'success.dark' : 'text.secondary', fontWeight: articleFinalPage ? 600 : 400 }}>{articleFinalPage ? 'You made it to the final page—take a moment to enjoy how far you’ve come, then celebrate by marking this lesson complete.' : 'Enjoy the journey—each page brings a fresh perspective.'}</Typography></Paper>}{selectedLesson.type === 'quiz' && <Box sx={{ mt: 3 }}><Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>Knowledge check</Typography><Typography color="text.secondary" variant="body2" sx={{ mb: 2 }}>Answer every question, then submit the quiz. You need at least {passingScore}% to pass.</Typography>{quizQuestions.length === 0 ? <Alert severity="info">No questions have been added to this quiz yet. You can still mark this lesson complete.</Alert> : <Stack spacing={2.5}>{quizQuestions.map((question, questionIndex) => <FormControl key={question.id} component="fieldset"><FormLabel component="legend">{questionIndex + 1}. {question.question}</FormLabel><RadioGroup value={quizAnswers[question.id] === undefined ? '' : String(quizAnswers[question.id])} onChange={(event) => { setQuizAnswers((current) => ({ ...current, [question.id]: Number(event.target.value) })) }} sx={{ mt: 0.5 }}>{question.options.map((option, optionIndex) => <FormControlLabel key={question.id + '-' + optionIndex} value={optionIndex} control={<Radio />} label={option} disabled={isQuizFinished} />)}</RadioGroup></FormControl>)}</Stack>}{quizQuestions.length > 0 && <Button variant="contained" onClick={submitQuiz} disabled={isQuizFinished || !hasAnsweredQuiz} startIcon={<QuizOutlinedIcon />} sx={{ mt: 2 }}>Submit quiz</Button>}{quizResult ? <Alert severity={quizResult.passed ? 'success' : 'error'} sx={{ mt: 2 }}>Score: {quizResult.score}% · Grade: {getQuizGrade(quizResult.score)} — {quizResult.passed ? 'Passed' : 'Not passed. You need at least ' + passingScore + '% to pass.'}</Alert> : isCompleted && <Alert severity="info" sx={{ mt: 2 }}>Quiz completed. Score not available for this completion.</Alert>}</Box>}{selectedLesson.type !== 'quiz' && selectedLesson.type !== 'article' && <Typography sx={{ mt: 3, lineHeight: 1.8 }}>Mark this lesson complete when you are ready to continue.</Typography>}<Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}><Button variant="contained" color={isCompleted ? 'success' : 'primary'} onClick={() => onCompleteLesson(selectedLesson.id)} disabled={isCompleted || !canCompleteLesson} startIcon={<CheckCircleOutlineIcon />}>{isCompleted ? 'Lesson completed' : 'Mark lesson complete'}</Button></Box></Box></Paper><LessonResources resources={selectedLesson.resources} /></Stack>
     </Box>
+    {started && <Box sx={{ mt: 4 }}><StudentReviews targetType={isClass ? 'class' : 'course'} targetId={reviewTargetId} /></Box>}
   </>
 }
 
@@ -2429,7 +2449,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
           {activeView === 'purchases' && <PurchasesView />}
           {activeView === 'profile' && <ProfileView onUpdateProfile={updateProfile} />}
           {activeView === 'payments' && <PaymentHistoryView payments={payments} isLoading={isLoadingPayments} error={paymentError} />}
-          {activeView === 'course-view' && selectedCourse && selectedCourseEnrollment && <CourseViewer course={selectedCourse} progress={selectedCourseProgress} completedLessonIds={completedLessons[selectedCourse.id] ?? []} started={Boolean(startedCourses[selectedCourse.id] || completedLessons[selectedCourse.id]?.length)} timeSpentSeconds={timeSpent[selectedCourse.id] ?? 0} quizResults={quizResults[selectedCourse.id] ?? {}} now={now} initialLessonId={selectedLessonId} onBack={() => selectView(selectedCourseEnrollment.type === 'class' ? 'classes' : 'courses')} onStart={() => startCourse(selectedCourse.id)} onCompleteLesson={completeLesson} onQuizStart={startQuizAttempt} onQuizAnswer={saveQuizAnswerForAttempt} onQuizSubmit={submitQuiz} onQuizViolation={saveQuizViolationForAttempt} onQuizActiveChange={setQuizActive} onPracticeAnswer={recordPracticeAnswer} attendance={selectedCourseEnrollment.attendance} sessionJoinClicks={selectedCourseEnrollment.sessionJoinClicks} onJoinLiveSession={joinLiveSession} closedLiveSessionIds={closedLiveSessionIds} isClass={selectedCourseEnrollment.type === 'class'} weakAreas={selectedCourseEnrollment.weakAreas} readOnly={readOnlyQuizResult} />}
+          {activeView === 'course-view' && selectedCourse && selectedCourseEnrollment && <CourseViewer course={selectedCourse} reviewTargetId={selectedCourseEnrollment.item_id} progress={selectedCourseProgress} completedLessonIds={completedLessons[selectedCourse.id] ?? []} started={Boolean(startedCourses[selectedCourse.id] || completedLessons[selectedCourse.id]?.length)} timeSpentSeconds={timeSpent[selectedCourse.id] ?? 0} quizResults={quizResults[selectedCourse.id] ?? {}} now={now} initialLessonId={selectedLessonId} onBack={() => selectView(selectedCourseEnrollment.type === 'class' ? 'classes' : 'courses')} onStart={() => startCourse(selectedCourse.id)} onCompleteLesson={completeLesson} onQuizStart={startQuizAttempt} onQuizAnswer={saveQuizAnswerForAttempt} onQuizSubmit={submitQuiz} onQuizViolation={saveQuizViolationForAttempt} onQuizActiveChange={setQuizActive} onPracticeAnswer={recordPracticeAnswer} attendance={selectedCourseEnrollment.attendance} sessionJoinClicks={selectedCourseEnrollment.sessionJoinClicks} onJoinLiveSession={joinLiveSession} closedLiveSessionIds={closedLiveSessionIds} isClass={selectedCourseEnrollment.type === 'class'} weakAreas={selectedCourseEnrollment.weakAreas} readOnly={readOnlyQuizResult} />}
         </>}
       </Box>
     </Box>
