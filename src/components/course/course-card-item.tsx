@@ -1,16 +1,10 @@
-import React, { FC, useState } from 'react'
+import React, { FC } from 'react'
 import Box from '@mui/material/Box'
 import Rating from '@mui/material/Rating'
 import Typography from '@mui/material/Typography'
 import IconButton, { iconButtonClasses } from '@mui/material/IconButton'
 import ArrowForward from '@mui/icons-material/ArrowForward'
-import ExpandLessIcon from '@mui/icons-material/ExpandLess'
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import Button from '@mui/material/Button'
-import Collapse from '@mui/material/Collapse'
-import { type AdminCourse } from '@/components/admin/admin-data'
 import { Course } from '@/interfaces/course'
-import { getCourse } from '@/services/api'
 import { navigateTo } from '@/lib/navigation'
 
 interface Props {
@@ -19,21 +13,6 @@ interface Props {
 }
 
 const CourseCardItem: FC<Props> = ({ item, onOpen }) => {
-  const [courseDetails, setCourseDetails] = useState<Pick<AdminCourse, 'longDescription' | 'learningOutcomes' | 'requirements'> | null>(null)
-  const [isLoadingDetails, setIsLoadingDetails] = useState(false)
-  const [hasRequestedDetails, setHasRequestedDetails] = useState(false)
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
-
-  const loadCourseDetails = () => {
-    if (hasRequestedDetails) return
-    setHasRequestedDetails(true)
-    setIsLoadingDetails(true)
-    void getCourse(item.id)
-      .then(({ longDescription, learningOutcomes, requirements }) => setCourseDetails({ longDescription, learningOutcomes, requirements }))
-      .catch(() => setCourseDetails(null))
-      .finally(() => setIsLoadingDetails(false))
-  }
-
   return (
     <Box
       sx={{
@@ -106,26 +85,6 @@ const CourseCardItem: FC<Props> = ({ item, onOpen }) => {
             <ArrowForward />
           </IconButton>
         </Box>
-        <Button fullWidth variant="text" endIcon={isDetailsOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />} onClick={() => {
-          const shouldOpen = !isDetailsOpen
-          setIsDetailsOpen(shouldOpen)
-          if (shouldOpen) loadCourseDetails()
-        }} aria-expanded={isDetailsOpen} sx={{ mt: 1, justifyContent: 'space-between', textTransform: 'none' }}>Course details</Button>
-        <Collapse in={isDetailsOpen} unmountOnExit>
-          <Box sx={{ pt: 1.5, maxHeight: 420, overflowY: 'auto' }}>
-            <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 700 }}>Description</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, lineHeight: 1.55 }}>{courseDetails?.longDescription || item.description || 'Full course details are available on the course page.'}</Typography>
-            {isLoadingDetails && <Typography variant="caption" color="text.secondary">Loading course details…</Typography>}
-            {!!courseDetails?.learningOutcomes.length && <Box sx={{ mb: 1.5 }}>
-              <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 700 }}>What you’ll learn</Typography>
-              <Box component="ul" sx={{ m: 0, pl: 2.5, color: 'text.secondary' }}>{courseDetails.learningOutcomes.map((outcome) => <Typography component="li" variant="body2" key={outcome} sx={{ mb: 0.5, lineHeight: 1.5 }}>{outcome}</Typography>)}</Box>
-            </Box>}
-            {!!courseDetails?.requirements.length && <Box>
-              <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 700 }}>Requirements</Typography>
-              <Box component="ul" sx={{ m: 0, pl: 2.5, color: 'text.secondary' }}>{courseDetails.requirements.map((requirement) => <Typography component="li" variant="body2" key={requirement} sx={{ mb: 0.5, lineHeight: 1.5 }}>{requirement}</Typography>)}</Box>
-            </Box>}
-          </Box>
-        </Collapse>
       </Box>
     </Box>
   )

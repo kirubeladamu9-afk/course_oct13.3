@@ -161,8 +161,8 @@ const CourseMarketplacePage: FC<CourseMarketplacePageProps> = ({ courses, darkMo
                 <Typography variant="body2" color="text.secondary">Showing <Box component="span" sx={{ color: 'text.primary', fontWeight: 700 }}>{visibleCourses.length}</Box> {visibleCourses.length === 1 ? 'course' : 'courses'}</Typography>
                 {(hasFilters || search) && <Button size="small" onClick={clearFilters}>Clear filters</Button>}
               </Stack>
-              <Grid container spacing={{ xs: 2, md: 2.5 }}>
-                {visibleCourses.map((course) => <Grid item xs={12} sm={6} lg={4} key={course.id}><CourseCardItem item={course} /></Grid>)}
+              <Grid container spacing={0}>
+                {visibleCourses.map((course) => <Grid item xs={12} sm={6} md={4} key={course.id}><CourseCardItem item={course} /></Grid>)}
               </Grid>
             </> : <Paper variant="outlined" sx={{ p: { xs: 4, md: 6 }, textAlign: 'center', borderRadius: 3, backgroundColor: 'background.paper' }}>
               <SearchRoundedIcon color="disabled" sx={{ fontSize: 38 }} />
