@@ -28,7 +28,10 @@ const Navigation: FC<Props> = ({ isAdmin = false, onNavigate }) => {
 
   const handleDestinationClick = (destination: string, event: React.MouseEvent<HTMLElement>) => {
     setActiveDestination(destination)
-    if (destination.startsWith('/')) {
+    if (destination === 'hero' && window.location.pathname !== '/') {
+      event.preventDefault()
+      navigateTo('/')
+    } else if (destination.startsWith('/')) {
       event.preventDefault()
       navigateTo(destination)
     }
