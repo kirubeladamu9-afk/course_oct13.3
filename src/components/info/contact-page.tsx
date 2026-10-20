@@ -2,6 +2,7 @@ import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
 import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded'
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined'
+import FavoriteBorderRoundedIcon from '@mui/icons-material/FavoriteBorderRounded'
 import FaqOutlinedIcon from '@mui/icons-material/QuizOutlined'
 import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined'
 import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined'
@@ -49,21 +50,21 @@ const ContactPage: FC = () => {
 
   return <Box component="main" sx={{ backgroundColor: 'background.default', color: 'text.primary' }}>
     <Box sx={{ position: 'relative', overflow: 'hidden', background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(110deg, #102c38 0%, #163f42 100%)' : 'linear-gradient(110deg, #effaf7 0%, #e7f7f3 56%, #dff2ed 100%)' }}>
-      <Container maxWidth="lg" sx={{ position: 'relative', minHeight: { md: 350 }, py: { xs: 6, md: 5 }, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.05fr .95fr' }, alignItems: 'center', gap: { xs: 4, md: 2 } }}>
+      <Container maxWidth="lg" sx={{ position: 'relative', minHeight: { xs: 'auto', sm: 220, md: 250 }, py: { xs: 4, sm: 0 }, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, alignItems: 'center', gap: { xs: 2.5, sm: 1.5, md: 2 } }}>
         <Box sx={{ position: 'relative', zIndex: 1, py: { md: 2 } }}>
           <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1.1 }}>GET IN TOUCH</Typography>
-          <Typography component="h1" sx={{ mt: 1, mb: 1.25, fontSize: { xs: '2.75rem', sm: '3.25rem', md: '3.8rem' }, lineHeight: 1.05, letterSpacing: '-.045em', fontWeight: 800 }}>Contact Us</Typography>
-          <Typography sx={{ maxWidth: 510, color: 'text.secondary', lineHeight: 1.75 }}>We’d love to hear from you. Whether you have a question, need support, or just want to say hello — we’re here to help.</Typography>
-          <Stack direction="row" spacing={3} sx={{ mt: 3.5 }}>
-            <Stack direction="row" spacing={1} alignItems="center"><MenuBookOutlinedIcon color="primary" /><Typography variant="body2" sx={{ fontWeight: 600 }}>Better Learning<br />Together</Typography></Stack>
-            <Stack direction="row" spacing={1} alignItems="center"><CheckCircleRoundedIcon color="primary" /><Typography variant="body2" sx={{ fontWeight: 600 }}>Your Success<br />Matters</Typography></Stack>
+          <Typography component="h1" sx={{ mt: .75, mb: 1, fontSize: { xs: '2.4rem', sm: '2.35rem', md: '2.8rem' }, lineHeight: 1.05, letterSpacing: '-.045em', fontWeight: 800 }}>Contact Us</Typography>
+          <Typography sx={{ maxWidth: 450, color: 'text.secondary', lineHeight: 1.65, fontSize: { xs: '.9rem', sm: '.82rem', md: '.9rem' } }}>We’d love to hear from you! Whether you have a question, need support, or just want to say hello — we’re here to help.</Typography>
+          <Stack direction="row" spacing={{ xs: 2, sm: 2.5 }} sx={{ mt: { xs: 2.5, sm: 2.25 } }}>
+            <Stack direction="row" spacing={.75} alignItems="center"><MenuBookOutlinedIcon color="primary" fontSize="small" /><Typography variant="caption" sx={{ fontWeight: 600, lineHeight: 1.3 }}>Better Learning<br />Together</Typography></Stack>
+            <Stack direction="row" spacing={.75} alignItems="center"><FavoriteBorderRoundedIcon color="primary" fontSize="small" /><Typography variant="caption" sx={{ fontWeight: 600, lineHeight: 1.3 }}>Your Success<br />Matters</Typography></Stack>
           </Stack>
         </Box>
-        <Box sx={{ position: 'relative', height: { xs: 270, sm: 330, md: 350 }, alignSelf: 'end', overflow: 'hidden', borderRadius: { xs: 4, md: '46% 46% 0 0' }, backgroundColor: 'rgba(24, 142, 127, .08)' }}>
-          <Box aria-hidden="true" sx={{ position: 'absolute', width: 300, height: 300, right: -24, top: 16, border: '1px solid rgba(25, 135, 122, .22)', borderRadius: '50%', boxShadow: '0 0 0 25px rgba(25, 135, 122, .05), 0 0 0 52px rgba(25, 135, 122, .035)' }} />
-          <Box component="img" src="https://images.pexels.com/photos/8199200/pexels-photo-8199200.jpeg" alt="Smiling student with a book, ready to learn" sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 36%', mixBlendMode: 'multiply' }} />
-          <Box aria-hidden="true" sx={{ position: 'absolute', top: 33, left: 28, width: 13, height: 13, borderRadius: '50%', backgroundColor: 'primary.main', opacity: .55 }} />
-          <Box aria-hidden="true" sx={{ position: 'absolute', bottom: 36, right: 24, width: 9, height: 9, borderRadius: '50%', backgroundColor: 'primary.main', opacity: .45 }} />
+        <Box sx={{ position: 'relative', height: { xs: 205, sm: 220, md: 250 }, alignSelf: 'stretch', overflow: 'hidden', borderRadius: { xs: 3, sm: '46% 46% 0 0' }, backgroundColor: 'rgba(24, 142, 127, .08)' }}>
+          <Box aria-hidden="true" sx={{ position: 'absolute', width: { xs: 230, sm: 260 }, height: { xs: 230, sm: 260 }, right: -38, top: 8, border: '1px solid rgba(25, 135, 122, .22)', borderRadius: '50%', boxShadow: '0 0 0 20px rgba(25, 135, 122, .05), 0 0 0 42px rgba(25, 135, 122, .035)' }} />
+          <Box component="img" src="https://images.pexels.com/photos/8199200/pexels-photo-8199200.jpeg" alt="Smiling student with a book, ready to learn" sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 32%', mixBlendMode: 'multiply' }} />
+          <SendRoundedIcon aria-hidden="true" sx={{ position: 'absolute', top: { xs: 12, sm: 22 }, left: { xs: 8, sm: 16 }, color: 'primary.main', fontSize: { xs: 27, sm: 34 }, transform: 'rotate(-20deg)' }} />
+          <Typography aria-hidden="true" sx={{ position: 'absolute', top: { xs: 58, sm: 55 }, right: { xs: 2, sm: 3 }, color: 'primary.dark', fontSize: { xs: '.7rem', sm: '.8rem' }, fontWeight: 800, lineHeight: 1.15, textAlign: 'center', transform: 'rotate(-7deg)', textDecoration: 'underline', textDecorationColor: 'primary.main', textUnderlineOffset: 4 }}>We’re here<br />for you!</Typography>
         </Box>
       </Container>
     </Box>
