@@ -946,7 +946,6 @@ const EnrolledCourseCard: FC<{ enrollment: DashboardEnrollment; course: Dashboar
         <Typography variant="caption" color="text.secondary" sx={{ mb: 1.2 }}>Instructor: {course.tutor}</Typography>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.55 }}><Typography variant="caption" sx={{ fontWeight: 700 }}>Progress</Typography><Typography variant="caption" sx={{ fontWeight: 800, color: 'success.dark' }}>{progress}%</Typography></Stack>
         <LinearProgress variant="determinate" value={progress} color="success" aria-label={`${course.title} progress ${progress}%`} sx={{ height: 6, borderRadius: 4, mb: 1.5, backgroundColor: 'action.hover', '& .MuiLinearProgress-bar': { borderRadius: 4 } }} />
-        <Button fullWidth variant="contained" onClick={onContinue} sx={{ mt: 'auto', minHeight: 40, borderRadius: 2, fontWeight: 800, backgroundColor: 'primary.main', '&:hover': { backgroundColor: 'primary.dark' } }}>Continue Course</Button>
         <IconButton onClick={() => setDetailsOpen((current) => !current)} aria-label={`${detailsOpen ? 'Hide' : 'Show'} details for ${course.title}`} aria-expanded={detailsOpen} size="small" sx={{ position: 'absolute', left: 8, top: 8, color: 'common.white', backgroundColor: (theme) => alpha(theme.palette.common.black, 0.48), '&:hover': { backgroundColor: (theme) => alpha(theme.palette.common.black, 0.65) } }}><InfoOutlinedIcon fontSize="small" /></IconButton>
       </CardContent>
     </Card>
