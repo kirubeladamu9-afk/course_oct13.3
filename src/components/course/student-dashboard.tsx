@@ -297,7 +297,7 @@ const mapEnrollmentCourse = (enrollment: MyEnrollment): DashboardCourse => ({
   level: enrollment.level || 'Not specified',
   tutor: enrollment.tutor || enrollment.classTutor || 'Tutor to be confirmed',
   description: enrollment.courseDescription || enrollment.courseLongDescription || undefined,
-  learningOutcomes: enrollment.learningOutcomes ?? [],
+  learningOutcomes: Array.isArray(enrollment.learningOutcomes) ? enrollment.learningOutcomes.filter((outcome): outcome is string => typeof outcome === 'string') : [],
   durationSeconds: enrollment.modules.flatMap((module) => module.lessons).reduce((total, lesson) => total + (lesson.duration ?? 0), 0),
   rating: enrollment.courseRating,
   ratingCount: enrollment.courseRatingCount,

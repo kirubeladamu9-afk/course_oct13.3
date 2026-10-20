@@ -1067,6 +1067,7 @@ const getAdminWeakAreas = async (classId = null) => {
 
 const serializeEnrollment = (enrollment) => {
   const modules = deserializeJson(enrollment.modules)
+  const learningOutcomes = deserializeJson(enrollment.learningOutcomes)
   const rawLessonProgress = deserializeJson(enrollment.lessonProgress)
   const rawQuizAttempts = deserializeJson(enrollment.quizAttempts)
   const quizAttempts = Array.isArray(rawQuizAttempts) ? rawQuizAttempts.map((attempt) => ({ ...attempt, questionResults: getQuestionResults(modules, attempt) })) : []
@@ -1076,6 +1077,7 @@ const serializeEnrollment = (enrollment) => {
 
   return {
     ...enrollment,
+    learningOutcomes: Array.isArray(learningOutcomes) ? learningOutcomes.filter((outcome) => typeof outcome === 'string') : [],
     modules: sanitizeModulesForLearner(modules),
     classSchedule: isPlainObject(deserializeJson(enrollment.classSchedule)) ? deserializeJson(enrollment.classSchedule) : null,
     lessonProgress,
