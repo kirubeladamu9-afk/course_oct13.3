@@ -5,17 +5,12 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
-import IconButton from '@mui/material/IconButton'
-import InputAdornment from '@mui/material/InputAdornment'
 import LinearProgress from '@mui/material/LinearProgress'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
-import MailOutlineIcon from '@mui/icons-material/MailOutline'
-import SearchIcon from '@mui/icons-material/Search'
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined'
 import { alpha } from '@mui/material/styles'
 import type { AtRiskStudent } from '@/services/api'
@@ -66,12 +61,9 @@ const sortStudents = (students: AtRiskStudent[], sortBy: SortKey) => [...student
 })
 
 const StudentRow = ({ student }: { student: AtRiskStudent }) => {
-  const [expanded, setExpanded] = useState(false)
   const level = getRiskLevel(student.reasons.length)
   const { color } = riskMeta[level]
   const progress = Math.max(0, Math.min(100, student.progressPercentage))
-  const className = student.classTitle ?? 'Class enrollment'
-  const detailsId = `at-risk-details-${student.id}`
 
   return (
     <Box sx={{ border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: `${color}.main`, borderRadius: 2.5, backgroundColor: 'background.paper', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.035)' }}>
@@ -102,52 +94,18 @@ const StudentRow = ({ student }: { student: AtRiskStudent }) => {
           <LinearProgress variant="determinate" value={progress} sx={{ height: 5, borderRadius: 5, backgroundColor: 'action.hover', '& .MuiLinearProgress-bar': { borderRadius: 5 } }} />
         </Box>
 
-        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0, ml: 'auto' }}>
-          <IconButton size="small" href={`mailto:${student.studentEmail}`} aria-label={`Email ${student.studentName}`}>
-            <MailOutlineIcon fontSize="small" />
-          </IconButton>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => setExpanded((value) => !value)}
-            aria-expanded={expanded}
-            aria-controls={detailsId}
-            endIcon={<KeyboardArrowDownIcon sx={{ transition: 'transform 150ms', transform: expanded ? 'rotate(180deg)' : 'none' }} />}
-            sx={{ fontWeight: 700, whiteSpace: 'nowrap', borderRadius: 2 }}
-          >
-            {expanded ? 'Hide' : 'Details'}
-          </Button>
-        </Stack>
       </Box>
-
-      {expanded && (
-        <Box id={detailsId} sx={{ mx: { xs: 1.25, md: 1.75 }, mb: 1.25, p: 1.5, borderRadius: 2, backgroundColor: 'action.hover', display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' }, gap: 1.5 }}>
-          <Box>
-            <Typography variant="caption" color="text.secondary">Class</Typography>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>{className}</Typography>
-          </Box>
-          <Box>
-            <Typography variant="caption" color="text.secondary">Last activity</Typography>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>{student.lastActivityAt ? new Date(student.lastActivityAt).toLocaleDateString() : 'No activity recorded'}</Typography>
-          </Box>
-          <Box>
-            <Typography variant="caption" color="text.secondary">All risk factors</Typography>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>{student.reasons.join(', ')}</Typography>
-          </Box>
-        </Box>
-      )}
     </Box>
   )
 }
 
 const AtRiskStudentsPanel = ({ students, loading, error, compact = false }: AtRiskStudentsPanelProps) => {
-  const [search, setSearch] = useState('')
   const [riskFilter, setRiskFilter] = useState<RiskLevel | 'all'>('all')
   const [classFilter, setClassFilter] = useState('all')
   const [sortBy, setSortBy] = useState<SortKey>('risk')
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
-  useEffect(() => setVisibleCount(PAGE_SIZE), [search, riskFilter, classFilter, sortBy])
+  useEffect(() => setVisibleCount(PAGE_SIZE), [riskFilter, classFilter, sortBy])
 
   const classOptions = useMemo(
     () => Array.from(new Set(students.map((student) => student.classTitle).filter((title): title is string => Boolean(title)))).sort(),
@@ -163,16 +121,13 @@ const AtRiskStudentsPanel = ({ students, loading, error, compact = false }: AtRi
   )
 
   const filteredStudents = useMemo(() => {
-    const query = search.trim().toLowerCase()
     const matches = students.filter((student) => {
       if (riskFilter !== 'all' && getRiskLevel(student.reasons.length) !== riskFilter) return false
       if (classFilter !== 'all' && student.classTitle !== classFilter) return false
-      if (!query) return true
-      return [student.studentName, student.studentEmail, student.classTitle ?? '', ...student.reasons]
-        .some((value) => value.toLowerCase().includes(query))
+      return true
     })
     return sortStudents(matches, sortBy)
-  }, [students, search, riskFilter, classFilter, sortBy])
+  }, [students, riskFilter, classFilter, sortBy])
 
   const visibleStudents = filteredStudents.slice(0, visibleCount)
 
@@ -191,7 +146,7 @@ const AtRiskStudentsPanel = ({ students, loading, error, compact = false }: AtRi
 
     return (
       <>
-        <Stack spacing={1}>
+        <Stack spacing={1} sx={{ maxHeight: { xs: 420, md: 520 }, overflowY: 'auto', pr: 0.5, pb: 0.5 }}>
           {visibleStudents.map((student) => <StudentRow key={student.id} student={student} />)}
         </Stack>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1.5 }}>
@@ -222,20 +177,11 @@ const AtRiskStudentsPanel = ({ students, loading, error, compact = false }: AtRi
       {!loading && !error && students.length > 0 && (
         <>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ mb: 1.25 }}>
-            <TextField
-              size="small"
-              placeholder="Search name, email, class, or risk factor"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              inputProps={{ 'aria-label': 'Search at-risk students' }}
-              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
-              sx={{ flex: 1, minWidth: 0 }}
-            />
-            <TextField select size="small" label="Class" value={classFilter} onChange={(event) => setClassFilter(event.target.value)} sx={{ minWidth: { md: 180 } }}>
+            <TextField select size="small" label="Class" value={classFilter} onChange={(event) => setClassFilter(event.target.value)} sx={{ flex: 1, minWidth: { md: 180 } }}>
               <MenuItem value="all">All classes</MenuItem>
               {classOptions.map((title) => <MenuItem key={title} value={title}>{title}</MenuItem>)}
             </TextField>
-            <TextField select size="small" label="Sort by" value={sortBy} onChange={(event) => setSortBy(event.target.value as SortKey)} sx={{ minWidth: { md: 190 } }}>
+            <TextField select size="small" label="Sort by" value={sortBy} onChange={(event) => setSortBy(event.target.value as SortKey)} sx={{ flex: 1, minWidth: { md: 190 } }}>
               {(Object.keys(sortLabels) as SortKey[]).map((key) => <MenuItem key={key} value={key}>{sortLabels[key]}</MenuItem>)}
             </TextField>
           </Stack>
