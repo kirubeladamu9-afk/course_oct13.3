@@ -43,6 +43,11 @@ const programLabel = (program: string) => ({ 'international-online-interactive':
 const displayDate = (value: string) => value ? new Date(value).toLocaleDateString() : '—'
 const inDateRange = (value: string, filters: FilterValues) => (!filters.startDate || value >= filters.startDate) && (!filters.endDate || value <= filters.endDate)
 const csvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`
+const riskLabel = (reasonCount: number) => reasonCount >= 3 ? 'High' : reasonCount === 2 ? 'Medium' : 'Low'
+const countBy = (values: string[]) => Array.from(values.reduce((counts, value) => counts.set(value, (counts.get(value) ?? 0) + 1), new Map<string, number>()), ([label, value]) => ({ label, value }))
+const progressBuckets = ['0–25%', '26–50%', '51–75%', '76–100%']
+
+type ChartSection = { title: string; items: Array<{ label: string; value: number }>; format: (value: number) => string }
 
 const PageHeading: FC = () => <Box sx={{ mb: 4 }}><Typography variant="h4" sx={{ mb: 0.5 }}>Reports</Typography><Typography color="text.secondary">Create focused reports from existing enrollment, payment, attendance, and learning records.</Typography></Box>
 
@@ -123,20 +128,26 @@ const ReportsPage: FC = () => {
     const rows = atRiskStudents.map((item) => {
       const classRecord = classes.find((record) => record.title === item.classTitle)
       return { item, program: classRecord?.program_id ?? '' }
-    }).filter(({ item, program }) => (!filters.student || item.studentName === filters.student) && (!filters.program || program === filters.program)).map(({ item, program }) => ({ id: item.id, Student: item.studentName, Program: program ? programLabel(program) : '—', Course: item.courseTitle ?? '—', Class: item.classTitle ?? '—', Progress: `${Math.round(item.progressPercentage)}%`, 'Last activity': item.lastActivityAt ? displayDate(item.lastActivityAt) : '—' }))
+    }).filter(({ item, program }) => (!filters.student || item.studentName === filters.student) && (!filters.program || program === filters.program)).map(({ item, program }) => ({ id: item.id, Student: item.studentName, Program: program ? programLabel(program) : '—', Course: item.courseTitle ?? '—', Class: item.classTitle ?? '—', Progress: `${Math.round(item.progressPercentage)}%`, 'Last activity': item.lastActivityAt ? displayDate(item.lastActivityAt) : '—', progressValue: Math.round(item.progressPercentage), riskLevel: riskLabel(item.reasons.length) }))
     return { columns: ['Student', 'Program', 'Course', 'Class', 'Progress', 'Last activity'], rows }
   }, [atRiskStudents, classes, enrollments, filters, generatedType, payments, tutors, violations])
 
-  const chartData = useMemo(() => {
+  const charts = useMemo<ChartSection[]>(() => {
     if (generatedType === 'revenue') {
       const values = new Map<string, number>()
       result.rows.forEach((row) => values.set(String(row.Date), (values.get(String(row.Date)) ?? 0) + (typeof row.Amount === 'number' ? row.Amount : 0)))
-      return Array.from(values, ([label, value]) => ({ label, value }))
+      return [{ title: 'Revenue Overview', items: Array.from(values, ([label, value]) => ({ label, value })), format: (value) => `$${value.toLocaleString()}` }]
     }
     if (generatedType === 'enrollment') {
-      const values = new Map<string, number>()
-      result.rows.forEach((row) => values.set(String(row['Enrolled date']), (values.get(String(row['Enrolled date'])) ?? 0) + 1))
-      return Array.from(values, ([label, value]) => ({ label, value }))
+      return [{ title: 'Enrollment Analytics', items: countBy(result.rows.map((row) => String(row['Enrolled date']))), format: String }]
+    }
+    if (generatedType === 'progress') {
+      const progressItems = progressBuckets.map((label, index) => ({ label, value: result.rows.filter((row) => Math.min(3, Math.floor(Math.max(0, Number(row.progressValue) - 1) / 25)) === index).length }))
+      const riskItems = ['High', 'Medium', 'Low'].map((label) => ({ label, value: result.rows.filter((row) => row.riskLevel === label).length }))
+      return [
+        { title: 'Student Learning Progress', items: progressItems, format: String },
+        { title: 'At-Risk Students', items: riskItems, format: String },
+      ]
     }
     return []
   }, [generatedType, result.rows])
@@ -206,7 +217,7 @@ const ReportsPage: FC = () => {
         {!generatedType && <Box sx={{ textAlign: 'center', py: 4, mt: 3, borderRadius: 2, bgcolor: 'action.hover' }}><AssessmentOutlinedIcon sx={{ fontSize: 42, color: 'text.secondary', mb: 1 }} /><Typography color="text.secondary">Select a report type above to get started</Typography></Box>}
       </Paper>
       {generatedType && <><Paper elevation={0} sx={{ p: { xs: 2, md: 2.5 }, border: 1, borderColor: 'divider', mb: 3 }}><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1.5}><Box><Typography variant="h6">{reportOptions.find((option) => option.value === generatedType)?.label} report</Typography><Typography variant="body2" color="text.secondary">{result.rows.length} matching record{result.rows.length === 1 ? '' : 's'}.</Typography></Box><Button variant="outlined" startIcon={<DownloadOutlinedIcon />} onClick={exportReport} disabled={!result.rows.length}>Export CSV</Button></Stack></Paper>
-      {chartData.length > 0 && <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', mb: 3 }}><Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>{generatedType === 'revenue' ? 'Revenue trend' : 'Enrollment trend'}</Typography><Stack direction="row" spacing={1.5} alignItems="flex-end" sx={{ height: 180, overflowX: 'auto', pb: 1 }}>{chartData.map((item) => <Box key={item.label} sx={{ minWidth: 72, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', gap: .75 }}><Typography variant="caption" sx={{ fontWeight: 700 }}>{generatedType === 'revenue' ? `$${item.value.toLocaleString()}` : item.value}</Typography><Box sx={{ width: 36, height: `${Math.max(8, (item.value / Math.max(...chartData.map((entry) => entry.value))) * 110)}px`, borderRadius: '6px 6px 2px 2px', bgcolor: 'primary.main' }} /><Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>{item.label}</Typography></Box>)}</Stack></Paper>}
+      {charts.length > 0 && <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: charts.length > 1 ? 'repeat(2, minmax(0, 1fr))' : '1fr' }, gap: 2, mb: 3 }}>{charts.map((chart) => { const max = Math.max(1, ...chart.items.map((item) => item.value)); return <Paper key={chart.title} elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', minWidth: 0 }}><Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>{chart.title}</Typography><Stack direction="row" spacing={1.5} alignItems="flex-end" sx={{ height: 180, overflowX: 'auto', pb: 1 }}>{chart.items.map((item) => <Box key={item.label} sx={{ minWidth: 72, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', gap: .75 }}><Typography variant="caption" sx={{ fontWeight: 700 }}>{chart.format(item.value)}</Typography><Box sx={{ width: 36, height: `${Math.max(8, (item.value / max) * 110)}px`, borderRadius: '6px 6px 2px 2px', bgcolor: 'primary.main' }} /><Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>{item.label}</Typography></Box>)}</Stack></Paper> })}</Box>}
       <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'hidden' }}><TableContainer><Table sx={{ minWidth: 740 }}><TableHead><TableRow>{result.columns.map((column) => <TableCell key={column}>{column}</TableCell>)}</TableRow></TableHead><TableBody>{result.rows.length ? result.rows.map((row) => <TableRow hover key={row.id}>{result.columns.map((column) => <TableCell key={column}>{column === 'Status' || column === 'Result' ? <Chip label={String(row[column])} size="small" color={String(row[column]).toLowerCase().includes('paid') || String(row[column]).toLowerCase().includes('passed') || String(row[column]).toLowerCase().includes('enrolled') ? 'success' : 'default'} /> : column === 'Amount' ? `$${Number(row[column]).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : row[column]}</TableCell>)}</TableRow>) : <TableRow><TableCell colSpan={result.columns.length}><Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No records match these filters.</Typography></TableCell></TableRow>}</TableBody></Table></TableContainer></Paper></>}
     </>}
   </>
