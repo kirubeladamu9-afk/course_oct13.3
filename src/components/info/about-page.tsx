@@ -15,8 +15,9 @@ import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import type { FC } from 'react'
 import { MentorCardItem } from '@/components/mentor'
-import { data as featureData } from '@/components/home/feature.data'
+import HomeFeature from '@/components/home/feature'
 import { data as mentorData } from '@/components/home/mentors.data'
+import HomeTestimonial from '@/components/home/testimonial'
 import { navigateTo } from '@/lib/navigation'
 
 const valueCards = [
@@ -65,23 +66,9 @@ const AboutPage: FC = () => <Box component="main" sx={{ backgroundColor: (theme)
     </Grid>
   </Container>
 
-  <Container maxWidth="lg" sx={{ py: { xs: 3, md: 4 } }}>
-    <Box sx={{ mb: 3.5 }}>
-      <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: .9 }}>WHY CHOOSE US</Typography>
-      <Typography component="h2" variant="h4" sx={{ mt: .25, fontWeight: 800, letterSpacing: '-.035em' }}>Learning that fits your life</Typography>
-    </Box>
-    <Grid container spacing={2.5}>
-      {featureData.map(({ title, description, icon }) => <Grid key={title} item xs={12} sm={6} md={3}>
-        <Card elevation={0} sx={{ ...cardSx, height: '100%' }}>
-          <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
-            <Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2, borderRadius: '50%', color: 'primary.contrastText', backgroundColor: 'primary.main', '& svg': { fontSize: 20 } }}>{icon}</Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 750 }}>{title}</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: .75, lineHeight: 1.6 }}>{description}</Typography>
-          </CardContent>
-        </Card>
-      </Grid>)}
-    </Grid>
-  </Container>
+  <HomeFeature />
+
+  <HomeTestimonial />
 
   <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 } }}>
     <Box sx={{ mb: 3.5, textAlign: 'center' }}>
