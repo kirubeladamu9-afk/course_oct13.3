@@ -26,7 +26,7 @@ import { useState, type FC, type FormEvent } from 'react'
 import { navigateTo } from '@/lib/navigation'
 
 const emailAddress = 'support@coursesharp.com'
-const contactHeroImage = '/images/contact-hero-student.webp'
+const contactHeroImage = '/images/contact-us-banner.webp'
 const officeAddress = 'Bole, Addis Ababa, Ethiopia'
 const subjects = ['Course enrollment & payments', 'Technical support', 'Account & profile issues', 'General inquiry']
 const faqs = [
