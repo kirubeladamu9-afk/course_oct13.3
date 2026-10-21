@@ -66,7 +66,7 @@ const AtRiskStudentsPanel = ({ students, loading, error, compact = false }: AtRi
       <Stack spacing={0.75}>
         {latestStudents.map((student) => {
           const priority = getPriority(student.reasons.length)
-          const course = student.classTitle ?? student.courseTitle ?? 'Active enrollment'
+          const className = student.classTitle ?? 'Class enrollment'
           const progress = Math.max(0, Math.min(100, student.progressPercentage))
 
           return (
@@ -98,7 +98,7 @@ const AtRiskStudentsPanel = ({ students, loading, error, compact = false }: AtRi
 
               <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0, gridColumn: compact ? '1 / -1' : { xs: '1 / -1', md: 'auto' }, color: 'text.secondary' }}>
                 <SchoolOutlinedIcon sx={{ fontSize: 16, flexShrink: 0 }} />
-                <Typography variant="caption" noWrap>{course}</Typography>
+                <Typography variant="caption" noWrap>{className}</Typography>
               </Stack>
 
               <Box sx={{ gridColumn: compact ? '1 / -1' : { xs: '1 / -1', md: 'auto' }, minWidth: 0 }}>

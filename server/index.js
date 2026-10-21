@@ -3085,7 +3085,7 @@ app.get('/api/admin/at-risk-students', requireAdmin, async (request, response) =
   if (request.query.classId !== undefined && classId === null) return response.status(400).json({ message: 'Invalid class id.' })
   return response.json(await getAtRiskStudents({ classId, classOnly: request.query.classOnly === 'true' }))
 })
-app.get('/api/tutor/at-risk-students', requireTutor, async (request, response) => response.json(await getAtRiskStudents({ tutorId: request.tutorId })))
+app.get('/api/tutor/at-risk-students', requireTutor, async (request, response) => response.json(await getAtRiskStudents({ tutorId: request.tutorId, classOnly: true })))
 
 const getTutorStudentProgress = async (contentType, contentId) => {
   const contentCondition = contentType === 'class'
