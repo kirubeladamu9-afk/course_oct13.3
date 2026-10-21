@@ -163,7 +163,7 @@ const CourseMarketplacePage: FC<CourseMarketplacePageProps> = ({ courses, darkMo
               <Box sx={{ py: 2 }}>
                 <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 700 }}>Price range</Typography>
                 <Typography variant="caption" color="text.secondary">${activePriceRange[0]} – ${activePriceRange[1]}</Typography>
-                <Slider aria-label="Course price range" value={activePriceRange} min={0} max={priceMaximum} step={1} onChange={(_, value) => { if (Array.isArray(value)) { setPriceRange([value[0], value[1]]); setCurrentPage(1) } }} valueLabelDisplay="auto" valueLabelFormat={(value) => `$${value}`} sx={{ mt: 1, mb: 0.5, color: 'primary.main' }} />
+                <Slider getAriaLabel={(index) => (index === 0 ? 'Minimum course price' : 'Maximum course price')} value={activePriceRange} min={0} max={priceMaximum} step={1} onChange={(_, value) => { if (Array.isArray(value)) { setPriceRange([value[0], value[1]]); setCurrentPage(1) } }} valueLabelDisplay="auto" valueLabelFormat={(value) => `$${value}`} sx={{ mt: 1, mb: 0.5, color: 'primary.main' }} />
                 <Stack direction="row" justifyContent="space-between"><Typography variant="caption" color="text.secondary">Min</Typography><Typography variant="caption" color="text.secondary">Max</Typography></Stack>
               </Box>
               <Divider />
