@@ -4,9 +4,10 @@ import { Box, Typography } from '@mui/material'
 interface Props {
   onClick?: () => void
   variant?: 'primary' | 'secondary'
+  compact?: boolean
 }
 
-const Logo: FC<Props> = ({ onClick, variant = 'primary' }) => {
+const Logo: FC<Props> = ({ onClick, variant = 'primary', compact = false }) => {
   return (
     <Box
       component="a"
@@ -24,7 +25,7 @@ const Logo: FC<Props> = ({ onClick, variant = 'primary' }) => {
         component="h1"
         sx={{ fontWeight: 700, '& span': { color: variant === 'primary' ? 'primary.main' : 'unset' } }}
       >
-        C<span>s</span>
+        {compact ? <>C<span>s</span></> : <>Course<span>sharp</span></>}
       </Typography>
     </Box>
   )

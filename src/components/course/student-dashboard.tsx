@@ -484,7 +484,7 @@ const DashboardHeader: FC<{ title: string; darkMode: boolean; language: string; 
   return <Box component="header" sx={{ minHeight: 82, px: { xs: 2, md: 3.5 }, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, backgroundColor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === 'dark' ? 0.96 : 0.82), backdropFilter: 'blur(16px)', borderBottom: 1, borderColor: 'divider' }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
       <IconButton onClick={onOpenMenu} sx={{ display: { xs: 'inline-flex', md: 'none' } }} aria-label="Open dashboard navigation"><MenuIcon /></IconButton>
-      <Box sx={{ display: { xs: 'block', sm: 'none' } }}><Typography variant="h6" sx={{ fontWeight: 800 }}>C<span style={{ color: 'inherit' }}>s</span></Typography></Box>
+      <Box sx={{ display: { xs: 'block', sm: 'none' } }}><Typography variant="h6" sx={{ fontWeight: 800 }}>Course<span style={{ color: 'inherit' }}>space</span></Typography></Box>
       <Box sx={{ display: { xs: 'none', md: 'block' } }}>
         <Typography variant="overline" sx={{ color: 'text.secondary', letterSpacing: .8, lineHeight: 1 }}>Student portal</Typography>
         <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.35 }}>{title}</Typography>
@@ -534,7 +534,7 @@ const DashboardSidebar: FC<SidebarProps> = ({ activeView, onSelectView, collapse
   }
 
   return <Box sx={{ width: collapsed ? collapsedDrawerWidth : drawerWidth, height: '100%', overflowY: 'auto', backgroundColor: 'background.paper', display: 'flex', flexDirection: 'column', borderRight: 1, borderColor: 'divider', transition: 'width .2s ease' }}>
-    <Box sx={{ px: collapsed ? 1 : 3, pt: 2.5, pb: 2.25, borderBottom: 1, borderColor: 'divider' }}>{!collapsed && <><Box sx={{ transform: 'scale(.82)', transformOrigin: 'left center', width: '122%' }}><Logo /></Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: .2 }}>Your personal learning space</Typography></>}</Box>
+    <Box sx={{ px: collapsed ? 1 : 3, pt: 2.5, pb: 2.25, borderBottom: 1, borderColor: 'divider' }}>{collapsed ? <Box sx={{ display: 'flex', justifyContent: 'center' }}><Logo compact /></Box> : <><Box sx={{ transform: 'scale(.82)', transformOrigin: 'left center', width: '122%' }}><Logo /></Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: .2 }}>Your personal learning space</Typography></>}</Box>
     <Box component="nav" aria-label="Student dashboard navigation" sx={{ px: collapsed ? 1 : 1.75, py: 2, flex: 1 }}>
       {!collapsed && <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Overview</Typography>}
       {navItem('overview', 'Dashboard', <DashboardOutlinedIcon fontSize="small" />, activeView === 'overview')}
