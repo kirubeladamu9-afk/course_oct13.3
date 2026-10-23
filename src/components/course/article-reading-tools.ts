@@ -98,9 +98,11 @@ export const useReadAloud = (rootRef: RefObject<HTMLElement | null>) => {
   const segmentsRef = useRef<ReadingSegment[]>([])
   const indexRef = useRef(0)
   const sessionRef = useRef(0)
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   const stop = useCallback(() => {
     sessionRef.current += 1
+    utteranceRef.current = null
     if (supported) window.speechSynthesis.cancel()
     clearHighlight()
     setStatus('idle')
@@ -114,15 +116,20 @@ export const useReadAloud = (rootRef: RefObject<HTMLElement | null>) => {
     }
     indexRef.current = index
     const utterance = new SpeechSynthesisUtterance(segment.text)
+    utteranceRef.current = utterance
     utterance.rate = speed
     utterance.onstart = () => {
       if (session === sessionRef.current) highlightSegment(segment)
     }
     utterance.onend = () => {
-      if (session === sessionRef.current) speakFrom(session, index + 1, speed)
+      if (session !== sessionRef.current) return
+      utteranceRef.current = null
+      speakFrom(session, index + 1, speed)
     }
     utterance.onerror = (event) => {
-      if (session === sessionRef.current && event.error !== 'interrupted' && event.error !== 'canceled') stop()
+      if (session !== sessionRef.current) return
+      if (event.error === 'interrupted' || event.error === 'canceled') return
+      stop()
     }
     window.speechSynthesis.speak(utterance)
   }, [stop])
