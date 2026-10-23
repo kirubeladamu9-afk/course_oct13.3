@@ -18,10 +18,6 @@ export const navigations: Navigation[] = [
     path: '/practice-exams',
   },
   {
-    label: 'Bookstore',
-    path: '/bookstore',
-  },
-  {
     label: 'About Us',
     path: '/about-us',
   },
