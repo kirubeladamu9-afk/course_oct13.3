@@ -34,3 +34,5 @@ export const getStepByStepSolverSessionView = (record, problem) => {
 }
 
 export const areSolverFollowUpsComplete = (problem, results) => problem.followUpQuestions.every((question) => results[String(question.id)]?.correct)
+
+export const areSolverProblemsComplete = (problems, completedProblemIds) => problems.length > 0 && problems.every((problem) => completedProblemIds.includes(problem.id))

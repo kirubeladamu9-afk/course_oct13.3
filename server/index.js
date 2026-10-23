@@ -6,7 +6,7 @@ import express from 'express'
 import postgres from 'postgres'
 import { getChangedCourseLessonIds, remapReusedCourseLessonIds } from './course-lesson-identities.js'
 import { getLatestSubmittedQuizAttempts } from './quiz-performance.js'
-import { areSolverFollowUpsComplete, getStepByStepSolverSessionView, isValidStepByStepSolverConfig, normalizeSolverAnswer } from './step-by-step-solver-engine.js'
+import { areSolverFollowUpsComplete, areSolverProblemsComplete, getStepByStepSolverSessionView, isValidStepByStepSolverConfig, normalizeSolverAnswer } from './step-by-step-solver-engine.js'
 import { expireQuizAnswers, getQuizDeadline, getQuizTimeLimitSeconds, hasScheduledClassQuizzes, isQuizExpired } from './quiz-timing.js'
 
 const databaseUrl = process.env.DATABASE_URL
@@ -2051,6 +2051,11 @@ const getOwnedSolverLesson = async (transaction, userId, enrollmentId, lessonId)
   return { enrollment, lesson, config: lesson.stepByStepSolver }
 }
 
+const getCompletedSolverProblemIds = async (transaction, enrollmentId, lessonId) => {
+  const rows = await transaction`SELECT DISTINCT problem_id FROM step_by_step_solver_sessions WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND completed_at IS NOT NULL`
+  return rows.map((row) => Number(row.problem_id))
+}
+
 const getOwnedSolverSession = async (transaction, userId, enrollmentId, lessonId, sessionId, lock = false) => {
   const owned = await getOwnedSolverLesson(transaction, userId, enrollmentId, lessonId)
   if (owned.missingEnrollment || owned.error) return owned
@@ -2071,7 +2076,8 @@ app.get('/api/enrollments/:enrollmentId/lessons/:lessonId/step-by-step-solver', 
     if (owned.error) return { error: owned.error }
     const [record] = await transaction`SELECT * FROM step_by_step_solver_sessions WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND (is_active = TRUE OR completed_at IS NOT NULL) ORDER BY created_at DESC LIMIT 1`
     const problem = owned.config.problems.find((item) => item.id === Number(record?.problem_id))
-    return { problems: owned.config.problems.map(({ id, prompt }) => ({ id, prompt })), session: getStepByStepSolverSessionView(record, problem) }
+    const completedProblemIds = await getCompletedSolverProblemIds(transaction, enrollmentId, lessonId)
+    return { problems: owned.config.problems.map(({ id, prompt }) => ({ id, prompt })), completedProblemIds, session: getStepByStepSolverSessionView(record, problem) }
   })
   if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
   if (result.error) return response.status(404).json({ message: result.error })
@@ -2089,6 +2095,8 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/step-by-step-solver/s
     if (owned.error) return { error: owned.error }
     const problem = owned.config.problems.find((item) => item.id === problemId)
     if (!problem) return { error: 'Worked problem not found.' }
+    const completedProblemIds = await getCompletedSolverProblemIds(transaction, enrollmentId, lessonId)
+    if (completedProblemIds.includes(problemId)) return { error: 'This worked problem is already complete.' }
     await transaction`UPDATE step_by_step_solver_sessions SET is_active = FALSE, updated_at = NOW() WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND is_active = TRUE`
     const [record] = await transaction`
       INSERT INTO step_by_step_solver_sessions (enrollment_id, lesson_id, problem_id)
@@ -2180,7 +2188,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/step-by-step-solver/s
     const owned = await getOwnedSolverSession(transaction, request.userId, enrollmentId, lessonId, sessionId, true)
     if (owned.missingEnrollment) return null
     if (owned.error) return { error: owned.error }
-    const { session, problem } = owned
+    const { session, problem, config } = owned
     if (!session.is_active || session.completed_at || Number(session.current_step) < problem.steps.length) return { error: 'Finish the worked steps before attempting practice problems.' }
     const question = problem.followUpQuestions.find((item) => item.id === questionId)
     if (!question) return { error: 'Follow-up problem not found.' }
@@ -2192,7 +2200,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/step-by-step-solver/s
     const followUpResults = { ...(deserializeJson(session.follow_up_results) ?? {}), [String(questionId)]: { correct, feedback } }
     const completed = areSolverFollowUpsComplete(problem, followUpResults)
     const [updated] = await transaction`UPDATE step_by_step_solver_sessions SET follow_up_results = ${JSON.stringify(followUpResults)}::jsonb, completed_at = ${completed ? sql`NOW()` : sql`NULL`}, is_active = ${!completed}, updated_at = NOW() WHERE id = ${sessionId} RETURNING *`
-    if (completed) await transaction`UPDATE student_lesson_progress SET completed_at = COALESCE(completed_at, NOW()), last_accessed_at = NOW() WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}`
+    if (completed && areSolverProblemsComplete(config.problems, await getCompletedSolverProblemIds(transaction, enrollmentId, lessonId))) await transaction`UPDATE student_lesson_progress SET completed_at = COALESCE(completed_at, NOW()), last_accessed_at = NOW() WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}`
     return { session: getStepByStepSolverSessionView(updated, problem), correct, feedback }
   })
   if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
@@ -2266,8 +2274,8 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/complete', requireAut
     if (!lesson) return { error: 'Lesson not found.' }
 
     if (lesson.type === 'stepByStepSolver') {
-      const [completedSession] = await transaction`SELECT id FROM step_by_step_solver_sessions WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND completed_at IS NOT NULL LIMIT 1`
-      if (!completedSession) return { error: 'Complete the solver problem and follow-up practice before completing this lesson.' }
+      const completedProblemIds = await getCompletedSolverProblemIds(transaction, enrollmentId, lessonId)
+      if (!areSolverProblemsComplete(lesson.stepByStepSolver.problems, completedProblemIds)) return { error: 'Finish every solver problem and its practice questions before completing this lesson.' }
     }
     if (lesson.type === 'quiz') {
       const [completedAttempt] = await transaction`

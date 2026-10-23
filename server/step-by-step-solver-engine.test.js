@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { areSolverFollowUpsComplete, getStepByStepSolverSessionView, isValidStepByStepSolverConfig, normalizeSolverAnswer } from './step-by-step-solver-engine.js'
+import { areSolverFollowUpsComplete, areSolverProblemsComplete, getStepByStepSolverSessionView, isValidStepByStepSolverConfig, normalizeSolverAnswer } from './step-by-step-solver-engine.js'
 
 const config = {
   problems: [{
@@ -45,5 +45,12 @@ describe('step-by-step solver helpers', () => {
     const problem = { ...config.problems[0], followUpQuestions: [...config.problems[0].followUpQuestions, { id: 2, prompt: 'Solve y + 2 = 5.', correctAnswer: 'y = 3', explanation: 'Subtract 2.', correctiveFeedback: 'Subtract 2 from both sides.' }] }
     expect(areSolverFollowUpsComplete(problem, { '1': { correct: true } })).toBe(false)
     expect(areSolverFollowUpsComplete(problem, { '1': { correct: true }, '2': { correct: true } })).toBe(true)
+  })
+
+  it('requires every worked problem before the lesson is complete', () => {
+    const problems = [config.problems[0], { ...config.problems[0], id: 2 }]
+    expect(areSolverProblemsComplete(problems, [1])).toBe(false)
+    expect(areSolverProblemsComplete(problems, [1, 2])).toBe(true)
+    expect(areSolverProblemsComplete([], [])).toBe(false)
   })
 })

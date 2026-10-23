@@ -32,6 +32,7 @@ export interface StepByStepSolverSession {
 
 export interface StepByStepSolverState {
   problems: Array<{ id: number; prompt: string }>
+  completedProblemIds: number[]
   session: StepByStepSolverSession | null
 }
 
