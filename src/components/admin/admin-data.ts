@@ -1,34 +1,4 @@
-export type LessonType = 'video' | 'article' | 'interactive' | 'interactiveTool' | 'simulation' | 'quiz' | 'practice' | 'live'
-export type InteractiveToolSubject = 'Mathematics' | 'Physics' | 'Chemistry' | 'Biology' | 'Other'
-export type InteractiveToolDifficulty = 'Beginner' | 'Intermediate' | 'Advanced'
-export type InteractiveToolLearningMode = 'Guided' | 'Practice'
-export type InteractiveToolType = 'step-by-step-solver' | 'word-problems'
-
-export interface InteractiveToolConfig {
-  subject: InteractiveToolSubject
-  toolType: InteractiveToolType
-  instructions: string
-  examples: string[]
-  difficulty: InteractiveToolDifficulty
-  learningObjectives: string[]
-  learningMode?: InteractiveToolLearningMode
-  exampleProblem?: string
-}
-
-export interface InteractiveToolSession {
-  sessionId: number
-  subject: InteractiveToolSubject
-  toolType: InteractiveToolType
-  difficulty: InteractiveToolDifficulty
-  learningMode: InteractiveToolLearningMode
-  problem: string
-  topic: string
-  currentStep: number
-  totalSteps: number
-  isCompleted: boolean
-  step: { title: string; prompt: string; reasoning?: string; topic: string } | null
-  result: { finalAnswer: string; explanation: string; topic: string } | null
-}
+export type LessonType = 'video' | 'article' | 'interactive' | 'simulation' | 'quiz' | 'practice' | 'live'
 
 export type SimulationRule = 'pendulum-period' | 'osmosis-movement' | 'neutralization' | 'projectile-range' | 'linear'
 
@@ -108,7 +78,6 @@ export interface AdminLesson {
   articleHeaderImageUrl?: string
   baseImageUrl?: string
   interactiveHotspots?: InteractiveHotspot[]
-  interactiveTool?: InteractiveToolConfig
   simulation?: SimulationConfig
   simulationToolId?: string
   platformEngineId?: string

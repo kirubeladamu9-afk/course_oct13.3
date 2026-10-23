@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url'
 import express from 'express'
 import postgres from 'postgres'
 import { getChangedCourseLessonIds, remapReusedCourseLessonIds } from './course-lesson-identities.js'
-import { getPublicSolverStep, getSolverFeedback, getSolverHint, getSolverResult, parseInteractiveProblem, validateSolverStep } from './interactive-tool-engine.js'
 import { getLatestSubmittedQuizAttempts } from './quiz-performance.js'
 import { expireQuizAnswers, getQuizDeadline, getQuizTimeLimitSeconds, hasScheduledClassQuizzes, isQuizExpired } from './quiz-timing.js'
 
@@ -419,42 +418,6 @@ const initializeDatabase = async () => {
     )
   `
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS interactive_tool_sessions (
-      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      enrollment_id BIGINT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
-      lesson_id BIGINT NOT NULL,
-      subject TEXT NOT NULL,
-      tool_type TEXT NOT NULL,
-      difficulty TEXT NOT NULL,
-      learning_mode TEXT NOT NULL,
-      problem TEXT NOT NULL,
-      topic TEXT NOT NULL,
-      solution JSONB NOT NULL,
-      current_step INTEGER NOT NULL DEFAULT 0 CHECK (current_step >= 0),
-      hint_level INTEGER NOT NULL DEFAULT 0 CHECK (hint_level >= 0),
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      completed_at TIMESTAMPTZ,
-      cleared_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `
-  await sql`ALTER TABLE interactive_tool_sessions ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ`
-  await sql`CREATE UNIQUE INDEX IF NOT EXISTS interactive_tool_one_active_session ON interactive_tool_sessions (enrollment_id, lesson_id) WHERE is_active = TRUE`
-  await sql`CREATE INDEX IF NOT EXISTS interactive_tool_session_history_idx ON interactive_tool_sessions (enrollment_id, lesson_id, created_at DESC)`
-  await sql`
-    CREATE TABLE IF NOT EXISTS interactive_tool_step_attempts (
-      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-      session_id BIGINT NOT NULL REFERENCES interactive_tool_sessions(id) ON DELETE CASCADE,
-      step_index INTEGER NOT NULL CHECK (step_index >= 0),
-      answer TEXT NOT NULL,
-      is_correct BOOLEAN NOT NULL,
-      topic TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `
-  await sql`CREATE INDEX IF NOT EXISTS interactive_tool_attempt_session_idx ON interactive_tool_step_attempts (session_id, step_index, created_at)`
 
   await sql`
     CREATE TABLE IF NOT EXISTS class_attendance (
@@ -1057,7 +1020,7 @@ const getQuestionResults = (modules, attempt) => {
   })
 }
 
-const getTopicPerformance = (modules, quizAttempts, practiceAnswers, solverAnswers = []) => {
+const getTopicPerformance = (modules, quizAttempts, practiceAnswers) => {
   const topics = new Map()
   const addAnswer = (topic, correct) => {
     const label = typeof topic === 'string' ? topic.trim() : ''
@@ -1078,7 +1041,6 @@ const getTopicPerformance = (modules, quizAttempts, practiceAnswers, solverAnswe
     }
   }
   for (const answer of Array.isArray(practiceAnswers) ? practiceAnswers : []) addAnswer(answer.topic, answer.correct)
-  for (const answer of Array.isArray(solverAnswers) ? solverAnswers : []) addAnswer(answer.topic, answer.correct)
   return [...topics.values()].map((area) => ({
     ...area,
     accuracy: Math.round((area.correct / area.total) * 100),
@@ -1086,7 +1048,7 @@ const getTopicPerformance = (modules, quizAttempts, practiceAnswers, solverAnswe
   }))
 }
 
-const getWeakAreas = (modules, quizAttempts, practiceAnswers, solverAnswers = []) => getTopicPerformance(modules, quizAttempts, practiceAnswers, solverAnswers)
+const getWeakAreas = (modules, quizAttempts, practiceAnswers) => getTopicPerformance(modules, quizAttempts, practiceAnswers)
   .filter((area) => area.accuracy < 60)
   .sort((first, second) => first.accuracy - second.accuracy || first.topic.localeCompare(second.topic))
 
@@ -1097,7 +1059,7 @@ const getAdminWeakAreas = async (classId = null) => {
            CASE WHEN classes.id IS NULL THEN courses.modules ELSE classes.modules END AS modules,
            quiz_summary."quizAttempts",
            practice_summary."practiceAnswers",
-           solver_summary."solverAnswers"
+
     FROM enrollments
     INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
     LEFT JOIN courses ON courses.id = enrollments.course_id
@@ -1116,12 +1078,7 @@ const getAdminWeakAreas = async (classId = null) => {
       FROM practice_answers
       WHERE enrollment_id = enrollments.id
     ) AS practice_summary ON true
-    LEFT JOIN LATERAL (
-      SELECT COALESCE(jsonb_agg(jsonb_build_object('topic', attempts.topic, 'correct', attempts.is_correct)), '[]'::jsonb) AS "solverAnswers"
-      FROM interactive_tool_step_attempts attempts
-      INNER JOIN interactive_tool_sessions sessions ON sessions.id = attempts.session_id
-      WHERE sessions.enrollment_id = enrollments.id
-    ) AS solver_summary ON true
+
     WHERE enrollments.class_id IS NOT NULL
       AND classes.published = true
       AND enrollments.class_status = 'enrolled'
@@ -1129,7 +1086,7 @@ const getAdminWeakAreas = async (classId = null) => {
   `
   const topics = new Map()
   for (const record of records) {
-    const areas = getTopicPerformance(deserializeJson(record.modules) ?? [], deserializeJson(record.quizAttempts) ?? [], deserializeJson(record.practiceAnswers) ?? [], deserializeJson(record.solverAnswers) ?? [])
+    const areas = getTopicPerformance(deserializeJson(record.modules) ?? [], deserializeJson(record.quizAttempts) ?? [], deserializeJson(record.practiceAnswers) ?? [])
     for (const area of areas) {
       const key = area.topic.toLocaleLowerCase()
       const current = topics.get(key) ?? { topic: area.topic, correct: 0, total: 0, affectedStudentIds: new Set() }
@@ -1153,7 +1110,6 @@ const serializeEnrollment = (enrollment) => {
   const rawQuizAttempts = deserializeJson(enrollment.quizAttempts)
   const quizAttempts = Array.isArray(rawQuizAttempts) ? rawQuizAttempts.map((attempt) => ({ ...attempt, questionResults: getQuestionResults(modules, attempt) })) : []
   const practiceAnswers = deserializeJson(enrollment.practiceAnswers)
-  const solverAnswers = deserializeJson(enrollment.solverAnswers)
   const lessonProgress = isPlainObject(rawLessonProgress) ? rawLessonProgress : {}
   const { completedLessonIds, progressPercentage } = getEnrollmentProgress(modules, lessonProgress)
 
@@ -1164,7 +1120,7 @@ const serializeEnrollment = (enrollment) => {
     classSchedule: isPlainObject(deserializeJson(enrollment.classSchedule)) ? deserializeJson(enrollment.classSchedule) : null,
     lessonProgress,
     quizAttempts,
-    weakAreas: getWeakAreas(modules, quizAttempts, practiceAnswers, solverAnswers),
+    weakAreas: getWeakAreas(modules, quizAttempts, practiceAnswers),
     completedLessonIds,
     started: Object.keys(lessonProgress).length > 0,
     timeSpentSeconds: Number(enrollment.timeSpentSeconds) || 0,
@@ -1946,7 +1902,7 @@ app.get('/api/enrollments', requireAuthenticated, async (request, response) => {
            lesson_summary."lastActivityAt",
            quiz_summary."quizAttempts",
            practice_summary."practiceAnswers",
-           solver_summary."solverAnswers",
+,
            attendance_summary.attendance,
            session_join_summary."sessionJoinClicks",
            study_plan_summary."studyPlanOrder",
@@ -1998,12 +1954,7 @@ app.get('/api/enrollments', requireAuthenticated, async (request, response) => {
       FROM practice_answers
       WHERE enrollment_id = enrollments.id OR (enrollment_id IS NULL AND user_id = enrollments.user_id)
     ) AS practice_summary ON true
-    LEFT JOIN LATERAL (
-      SELECT COALESCE(jsonb_agg(jsonb_build_object('topic', attempts.topic, 'correct', attempts.is_correct)), '[]'::jsonb) AS "solverAnswers"
-      FROM interactive_tool_step_attempts attempts
-      INNER JOIN interactive_tool_sessions sessions ON sessions.id = attempts.session_id
-      WHERE sessions.enrollment_id = enrollments.id
-    ) AS solver_summary ON true
+
     LEFT JOIN LATERAL (
       SELECT COALESCE(jsonb_object_agg(lesson_id::TEXT, status), '{}'::jsonb) AS attendance
       FROM class_attendance
@@ -2118,199 +2069,6 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/engagement', requireA
   return response.json(progress.lessonProgress)
 })
 
-const getSolverSessionView = (record) => {
-  if (!record) return null
-  const solutionRecord = deserializeJson(record.solution)
-  const isCompleted = Boolean(record.completed_at)
-  const result = isCompleted ? getSolverResult(solutionRecord) : null
-  if (result && record.learning_mode !== 'Guided') delete result.explanation
-  return {
-    sessionId: Number(record.id),
-    subject: record.subject,
-    toolType: record.tool_type,
-    difficulty: record.difficulty,
-    learningMode: record.learning_mode,
-    problem: record.problem,
-    topic: record.topic,
-    currentStep: Number(record.current_step),
-    totalSteps: solutionRecord.steps.length,
-    isCompleted,
-    step: isCompleted ? null : getPublicSolverStep(solutionRecord, Number(record.current_step), record.learning_mode),
-    result: isCompleted ? getSolverResult(solutionRecord) : null,
-  }
-}
-
-const getOwnedSolverSession = async (transaction, userId, enrollmentId, lessonId, sessionId, lock = false) => {
-  const enrollment = await getOwnedEnrollment(transaction, userId, enrollmentId)
-  if (!enrollment) return { missingEnrollment: true }
-  const lesson = findCourseLesson(enrollment.modules, lessonId)
-  if (!lesson || lesson.type !== 'interactiveTool') return { error: 'Interactive tool lesson not found.' }
-  const [session] = lock
-    ? await transaction`SELECT * FROM interactive_tool_sessions WHERE id = ${sessionId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} FOR UPDATE`
-    : await transaction`SELECT * FROM interactive_tool_sessions WHERE id = ${sessionId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}`
-  return session ? { enrollment, lesson, session } : { error: 'Solver session not found.' }
-}
-
-app.post('/api/admin/interactive-tools/preview', requireAdminOrTutor, async (request, response) => {
-  const parsed = parseInteractiveProblem(request.body ?? {})
-  if (!parsed.ok) return response.json({ solvable: false, message: parsed.message })
-  return response.json({ solvable: true, finalAnswer: getSolverResult(parsed.solution).finalAnswer, steps: parsed.solution.steps.length, topic: parsed.solution.topic })
-})
-
-app.get('/api/enrollments/:enrollmentId/lessons/:lessonId/interactive-tool-progress', requireAuthenticated, async (request, response) => {
-  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
-  const lessonId = parseEnrollmentId(request.params.lessonId)
-  if (enrollmentId === null || lessonId === null) return response.status(400).json({ message: 'Invalid lesson.' })
-  const result = await sql.begin(async (transaction) => {
-    const enrollment = await getOwnedEnrollment(transaction, request.userId, enrollmentId)
-    if (!enrollment) return null
-    const lesson = findCourseLesson(enrollment.modules, lessonId)
-    if (!lesson || lesson.type !== 'interactiveTool') return { error: 'Interactive tool lesson not found.' }
-    const [record] = await transaction`
-      SELECT * FROM interactive_tool_sessions
-      WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND cleared_at IS NULL
-        AND (is_active = TRUE OR completed_at IS NOT NULL)
-      ORDER BY created_at DESC LIMIT 1
-    `
-    return { session: getSolverSessionView(record) }
-  })
-  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
-  if (result.error) return response.status(404).json({ message: result.error })
-  return response.json(result.session)
-})
-
-app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/interactive-tool-sessions', requireAuthenticated, async (request, response) => {
-  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
-  const lessonId = parseEnrollmentId(request.params.lessonId)
-  if (enrollmentId === null || lessonId === null) return response.status(400).json({ message: 'Invalid lesson.' })
-  const result = await sql.begin(async (transaction) => {
-    const enrollment = await getOwnedEnrollment(transaction, request.userId, enrollmentId)
-    if (!enrollment) return null
-    const lesson = findCourseLesson(enrollment.modules, lessonId)
-    const config = lesson?.interactiveTool
-    if (!lesson || lesson.type !== 'interactiveTool' || !config) return { error: 'Solver lesson not found.' }
-    const problem = typeof request.body?.problem === 'string' && request.body.problem.trim() ? request.body.problem : config.exampleProblem ?? config.examples?.[0] ?? ''
-    const parsed = parseInteractiveProblem({ subject: config.subject, toolType: config.toolType, difficulty: config.difficulty, problem })
-    if (!parsed.ok) return { invalid: parsed.message }
-    await transaction`UPDATE interactive_tool_sessions SET is_active = FALSE WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND is_active = TRUE`
-    const [session] = await transaction`
-      INSERT INTO interactive_tool_sessions (enrollment_id, lesson_id, subject, tool_type, difficulty, learning_mode, problem, topic, solution)
-      VALUES (${enrollmentId}, ${lessonId}, ${config.subject}, ${config.toolType}, ${config.difficulty}, ${config.learningMode ?? 'Guided'}, ${problem.trim()}, ${parsed.solution.topic}, ${JSON.stringify(parsed.solution)}::jsonb)
-      RETURNING *
-    `
-    await transaction`
-      INSERT INTO student_lesson_progress (enrollment_id, lesson_id)
-      VALUES (${enrollmentId}, ${lessonId})
-      ON CONFLICT (enrollment_id, lesson_id) DO UPDATE SET last_accessed_at = NOW()
-    `
-    return { session: getSolverSessionView(session) }
-  })
-  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
-  if (result.error) return response.status(404).json({ message: result.error })
-  if (result.invalid) return response.status(422).json({ message: result.invalid })
-  return response.status(201).json(result.session)
-})
-
-app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/interactive-tool-sessions/:sessionId/answers', requireAuthenticated, async (request, response) => {
-  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
-  const lessonId = parseEnrollmentId(request.params.lessonId)
-  const sessionId = parseEnrollmentId(request.params.sessionId)
-  const answer = request.body?.answer
-  if (enrollmentId === null || lessonId === null || sessionId === null || typeof answer !== 'string' || !answer.trim() || answer.length > 500) return response.status(400).json({ message: 'Enter a step answer up to 500 characters.' })
-  const result = await sql.begin(async (transaction) => {
-    const owned = await getOwnedSolverSession(transaction, request.userId, enrollmentId, lessonId, sessionId, true)
-    if (owned.missingEnrollment) return null
-    if (owned.error) return { error: owned.error }
-    const { session } = owned
-    if (!session.is_active || session.completed_at) return { error: 'This solver session is no longer active.' }
-    const solutionRecord = deserializeJson(session.solution)
-    const step = solutionRecord.steps[Number(session.current_step)]
-    if (!step) return { error: 'No active solver step was found.' }
-    const isCorrect = validateSolverStep(step, answer.trim())
-    await transaction`
-      INSERT INTO interactive_tool_step_attempts (session_id, step_index, answer, is_correct, topic)
-      VALUES (${sessionId}, ${session.current_step}, ${answer.trim()}, ${isCorrect}, ${step.topic})
-    `
-    if (!isCorrect) return { session: getSolverSessionView(session), feedback: getSolverFeedback(step, solutionRecord), isCorrect: false }
-    const nextStep = Number(session.current_step) + 1
-    const completed = nextStep >= solutionRecord.steps.length
-    const [updated] = await transaction`
-      UPDATE interactive_tool_sessions
-      SET current_step = ${nextStep}, hint_level = 0, completed_at = ${completed ? sql`NOW()` : sql`NULL`}, is_active = ${!completed}, updated_at = NOW()
-      WHERE id = ${sessionId}
-      RETURNING *
-    `
-    return { session: getSolverSessionView(updated), feedback: 'Correct. Continue to the next step.', isCorrect: true }
-  })
-  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
-  if (result.error) return response.status(409).json({ message: result.error })
-  return response.json(result)
-})
-
-app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/interactive-tool-sessions/:sessionId/hints', requireAuthenticated, async (request, response) => {
-  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
-  const lessonId = parseEnrollmentId(request.params.lessonId)
-  const sessionId = parseEnrollmentId(request.params.sessionId)
-  if (enrollmentId === null || lessonId === null || sessionId === null) return response.status(400).json({ message: 'Invalid solver session.' })
-  const result = await sql.begin(async (transaction) => {
-    const owned = await getOwnedSolverSession(transaction, request.userId, enrollmentId, lessonId, sessionId, true)
-    if (owned.missingEnrollment) return null
-    if (owned.error) return { error: owned.error }
-    const { session } = owned
-    if (!session.is_active || session.learning_mode !== 'Guided') return { error: 'Hints are available only in Guided mode.' }
-    const solutionRecord = deserializeJson(session.solution)
-    const step = solutionRecord.steps[Number(session.current_step)]
-    if (!step) return { error: 'No active solver step was found.' }
-    const hintLevel = Math.min(step.hints.length, Number(session.hint_level) + 1)
-    await transaction`UPDATE interactive_tool_sessions SET hint_level = ${hintLevel}, updated_at = NOW() WHERE id = ${sessionId}`
-    return { hint: getSolverHint(step, hintLevel), hintLevel }
-  })
-  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
-  if (result.error) return response.status(409).json({ message: result.error })
-  return response.json(result)
-})
-
-app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/interactive-tool-sessions/:sessionId/similar', requireAuthenticated, async (request, response) => {
-  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
-  const lessonId = parseEnrollmentId(request.params.lessonId)
-  const sessionId = parseEnrollmentId(request.params.sessionId)
-  if (enrollmentId === null || lessonId === null || sessionId === null) return response.status(400).json({ message: 'Invalid solver session.' })
-  const owned = await sql.begin((transaction) => getOwnedSolverSession(transaction, request.userId, enrollmentId, lessonId, sessionId))
-  if (!owned || owned.missingEnrollment) return response.status(404).json({ message: 'Course enrollment not found.' })
-  if (owned.error) return response.status(404).json({ message: owned.error })
-  if (!owned.session.completed_at || owned.session.cleared_at) return response.status(409).json({ message: 'Complete the current problem before requesting a similar one.' })
-  const previous = deserializeJson(owned.session.solution)
-  const parsedSimilar = parseInteractiveProblem({ subject: owned.session.subject, toolType: owned.session.tool_type, difficulty: owned.session.difficulty, problem: previous.similarProblem })
-  if (!parsedSimilar.ok) return response.status(422).json({ message: parsedSimilar.message })
-  const result = await sql.begin(async (transaction) => {
-    await transaction`UPDATE interactive_tool_sessions SET is_active = FALSE WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND is_active = TRUE`
-    const [session] = await transaction`
-      INSERT INTO interactive_tool_sessions (enrollment_id, lesson_id, subject, tool_type, difficulty, learning_mode, problem, topic, solution)
-      VALUES (${enrollmentId}, ${lessonId}, ${owned.session.subject}, ${owned.session.tool_type}, ${owned.session.difficulty}, ${owned.session.learning_mode}, ${previous.similarProblem}, ${parsedSimilar.solution.topic}, ${JSON.stringify(parsedSimilar.solution)}::jsonb)
-      RETURNING *
-    `
-    return getSolverSessionView(session)
-  })
-  return response.status(201).json(result)
-})
-
-app.delete('/api/enrollments/:enrollmentId/lessons/:lessonId/interactive-tool-progress', requireAuthenticated, async (request, response) => {
-  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
-  const lessonId = parseEnrollmentId(request.params.lessonId)
-  if (enrollmentId === null || lessonId === null) return response.status(400).json({ message: 'Invalid lesson.' })
-  const result = await sql.begin(async (transaction) => {
-    const enrollment = await getOwnedEnrollment(transaction, request.userId, enrollmentId)
-    if (!enrollment) return null
-    const lesson = findCourseLesson(enrollment.modules, lessonId)
-    if (!lesson || lesson.type !== 'interactiveTool') return { error: 'Solver lesson not found.' }
-    await transaction`UPDATE interactive_tool_sessions SET is_active = FALSE, cleared_at = NOW() WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND cleared_at IS NULL`
-    return { success: true }
-  })
-  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
-  if (result.error) return response.status(404).json({ message: result.error })
-  return response.status(204).end()
-})
-
 app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/complete', requireAuthenticated, async (request, response) => {
   const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
   const lessonId = parseEnrollmentId(request.params.lessonId)
@@ -2322,10 +2080,6 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/complete', requireAut
     const lesson = findCourseLesson(enrollment.modules, lessonId)
     if (!lesson) return { error: 'Lesson not found.' }
 
-    if (lesson.type === 'interactiveTool') {
-      const [completedSession] = await transaction`SELECT id FROM interactive_tool_sessions WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND completed_at IS NOT NULL LIMIT 1`
-      if (!completedSession) return { error: 'Complete the solver problem before completing this lesson.' }
-    }
     if (lesson.type === 'quiz') {
       const [completedAttempt] = await transaction`
         SELECT id
@@ -3201,7 +2955,7 @@ app.put('/api/tutor/courses/:id/curriculum', requireTutor, async (request, respo
   const courseId = parseCourseId(request.params.id)
   const modules = request.body?.modules
   const lessons = getCourseLessons(modules)
-  if (courseId === null || !Array.isArray(modules) || lessons.some((lesson) => !['video', 'article', 'interactive', 'interactiveTool', 'quiz'].includes(lesson?.type))) {
+  if (courseId === null || !Array.isArray(modules) || lessons.some((lesson) => !['video', 'article', 'interactive', 'quiz'].includes(lesson?.type))) {
     return response.status(400).json({ message: 'Enter valid course curriculum lessons.' })
   }
   const [updated] = await sql`

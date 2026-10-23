@@ -1,6 +1,6 @@
 import { type AdminCourse, type AdminModule, type AdminTutor, type AdminUser } from '@/components/admin/admin-data'
 import { type Course } from '@/interfaces/course'
-import { type ArticleContentBlock, type InteractiveToolConfig, type InteractiveToolSession, type SimulationConfig } from '@/components/admin/admin-data'
+import { type ArticleContentBlock, type SimulationConfig } from '@/components/admin/admin-data'
 import { type PracticeExam, type PracticeExamWithQuestions, type PracticePurchase, type PracticeQuestion } from '@/components/practice/practice-data'
 import { navigateTo } from '@/lib/navigation'
 
@@ -59,7 +59,7 @@ export interface WeakArea {
 interface EnrollmentLesson {
   id: number
   title: string
-  type: 'video' | 'article' | 'interactive' | 'interactiveTool' | 'simulation' | 'quiz' | 'practice' | 'live'
+  type: 'video' | 'article' | 'interactive' | 'simulation' | 'quiz' | 'practice' | 'live'
   duration: number | null
   videoUrl?: string
   thumbnailUrl?: string
@@ -69,7 +69,6 @@ interface EnrollmentLesson {
   articleHeaderImageUrl?: string
   baseImageUrl?: string
   interactiveHotspots?: Array<{ id: number; left: string; top: string; label: string; explanation: string }>
-  interactiveTool?: InteractiveToolConfig
   simulation?: SimulationConfig
   platformEngineId?: string
   curriculumTopic?: string
@@ -1237,35 +1236,6 @@ export const saveLessonEngagement = (enrollmentId: number, lessonId: number, val
 export const completeLesson = (enrollmentId: number, lessonId: number) => requestLearningProgress<LessonProgress>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/complete`, {
   method: 'POST',
 })
-
-export const previewInteractiveTool = (configuration: Pick<InteractiveToolConfig, 'subject' | 'toolType' | 'difficulty'> & { problem: string }) => requestLearningProgress<{ solvable: boolean; message?: string; finalAnswer?: string; steps?: number; topic?: string }>('/api/admin/interactive-tools/preview', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(configuration),
-})
-
-export const getInteractiveToolProgress = (enrollmentId: number, lessonId: number) => requestLearningProgress<InteractiveToolSession | null>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/interactive-tool-progress`, {})
-
-export const startInteractiveToolSession = (enrollmentId: number, lessonId: number, problem?: string) => requestLearningProgress<InteractiveToolSession>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/interactive-tool-sessions`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(problem === undefined ? {} : { problem }),
-})
-
-export const submitInteractiveToolAnswer = (enrollmentId: number, lessonId: number, sessionId: number, answer: string) => requestLearningProgress<{ session: InteractiveToolSession; feedback: string; isCorrect: boolean }>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/interactive-tool-sessions/${sessionId}/answers`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ answer }),
-})
-
-export const requestInteractiveToolHint = (enrollmentId: number, lessonId: number, sessionId: number) => requestLearningProgress<{ hint: string; hintLevel: number }>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/interactive-tool-sessions/${sessionId}/hints`, { method: 'POST' })
-
-export const startSimilarInteractiveToolProblem = (enrollmentId: number, lessonId: number, sessionId: number) => requestLearningProgress<InteractiveToolSession>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/interactive-tool-sessions/${sessionId}/similar`, { method: 'POST' })
-
-export const resetInteractiveToolProgress = async (enrollmentId: number, lessonId: number) => {
-  const response = await requestApi(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/interactive-tool-progress`, { method: 'DELETE' })
-  if (!response.ok) throw new Error(await getErrorMessage(response))
-}
 
 export const beginQuizAttempt = (enrollmentId: number, lessonId: number) => requestLearningProgress<QuizAttempt>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/quiz-attempts`, {
   method: 'POST',
