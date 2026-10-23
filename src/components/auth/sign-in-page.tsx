@@ -51,7 +51,7 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
     }
   }
 
-  return <Box sx={{ background: 'var(--app-auth-backdrop)', backgroundColor: 'background.default', height: 'calc(100vh - 88px)', minHeight: 0, display: 'flex', alignItems: 'center', overflow: 'hidden', boxSizing: 'border-box', py: { xs: 1, md: 2 } }}>
+  return <Box sx={{ background: 'var(--app-auth-backdrop)', backgroundColor: 'background.default', height: 'calc(100vh - 88px)', minHeight: 0, display: 'flex', alignItems: 'center', overflow: 'hidden', boxSizing: 'border-box', py: { xs: 2, md: 4 } }}>
     <Container maxWidth="lg" sx={{ maxHeight: '100%', display: 'flex', alignItems: 'center', px: { xs: 2, sm: 2, md: 3 } }}>
       <Paper elevation={8} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 0.9fr) minmax(0, 1.1fr)' }, width: { xs: '100%', md: 'auto' }, boxSizing: 'border-box', maxWidth: 1080, maxHeight: '100%', minHeight: 0, mx: 'auto', overflow: 'hidden', borderRadius: { xs: 3, md: 5 } }}>
         <Box sx={{ display: { xs: 'none', md: 'flex' }, flexDirection: 'column', justifyContent: 'space-between', p: { xs: 1.5, sm: 3, md: 4 }, pb: { xs: 3, sm: 4, md: 5 }, color: 'common.white', background: 'var(--app-auth-panel)', minHeight: 0 }}>
