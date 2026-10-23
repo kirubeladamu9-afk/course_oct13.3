@@ -793,6 +793,21 @@ export const getTutorAtRiskStudents = async (): Promise<AtRiskStudent[]> => {
   return response.json()
 }
 
+export interface AdminCspReport {
+  id: number
+  documentUrl: string
+  violatedDirective: string
+  blockedUrl: string
+  sourceFile: string
+  createdAt: string
+}
+
+export const getAdminCspReports = async (): Promise<AdminCspReport[]> => {
+  const response = await requestApi('/api/admin/csp-reports')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
 export const getAdminQuizViolations = async (): Promise<AdminQuizViolation[]> => {
   const response = await requestApi('/api/admin/quiz-violations')
   if (!response.ok) throw new Error(await getErrorMessage(response))

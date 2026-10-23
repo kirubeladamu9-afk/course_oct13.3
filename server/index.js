@@ -605,6 +605,16 @@ const initializeDatabase = async () => {
   await sql`CREATE INDEX IF NOT EXISTS gamification_activity_rewards_user_idx ON gamification_activity_rewards(user_id, awarded_at DESC)`
   await sql`CREATE INDEX IF NOT EXISTS gamification_achievements_user_idx ON gamification_achievements(user_id, unlocked_at DESC)`
   await sql`CREATE INDEX IF NOT EXISTS gamification_challenge_completions_user_idx ON gamification_challenge_completions(user_id, completed_at DESC)`
+  await sql`
+    CREATE TABLE IF NOT EXISTS csp_violation_reports (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      document_url TEXT NOT NULL,
+      violated_directive TEXT NOT NULL,
+      blocked_url TEXT NOT NULL,
+      source_file TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
 
   for (const badge of gamificationBadgeSeeds) {
     await sql`
@@ -1570,8 +1580,28 @@ const updatePaymentStatus = async (reference, status, verification = {}) => sql.
 
 app.use(express.json({ limit: '30mb' }))
 
-app.post('/api/csp-report', express.json({ type: ['application/csp-report', 'application/reports+json'] }), (request, response) => {
-  console.warn('CSP violation report', JSON.stringify(request.body))
+const toCspReportText = (value) => String(value ?? '').slice(0, 500)
+
+const parseCspReports = (body) => (Array.isArray(body) ? body : [body]).flatMap((entry) => {
+  const report = entry?.['csp-report'] ?? entry?.body
+  if (!report || typeof report !== 'object') return []
+  return [{
+    document_url: toCspReportText(report['document-uri'] ?? report.documentURL),
+    violated_directive: toCspReportText(report['violated-directive'] ?? report.effectiveDirective),
+    blocked_url: toCspReportText(report['blocked-uri'] ?? report.blockedURL),
+    source_file: toCspReportText(report['source-file'] ?? report.sourceFile),
+  }]
+}).slice(0, 20)
+
+app.post('/api/csp-report', express.json({ type: ['application/csp-report', 'application/reports+json'] }), async (request, response) => {
+  const reports = parseCspReports(request.body)
+  console.warn('CSP violation report', JSON.stringify(reports))
+  for (const report of reports) {
+    await sql`
+      INSERT INTO csp_violation_reports (document_url, violated_directive, blocked_url, source_file)
+      VALUES (${report.document_url}, ${report.violated_directive}, ${report.blocked_url}, ${report.source_file})
+    `
+  }
   response.status(204).end()
 })
 
@@ -3729,6 +3759,21 @@ app.get('/api/admin/payments', requireAdmin, async (_request, response) => {
     ORDER BY payments.created_at DESC, payments.id DESC
   `
   return response.json(payments)
+})
+
+app.get('/api/admin/csp-reports', requireAdmin, async (_request, response) => {
+  const reports = await sql`
+    SELECT id::INTEGER AS id,
+           document_url AS "documentUrl",
+           violated_directive AS "violatedDirective",
+           blocked_url AS "blockedUrl",
+           source_file AS "sourceFile",
+           created_at AS "createdAt"
+    FROM csp_violation_reports
+    ORDER BY created_at DESC, id DESC
+    LIMIT 200
+  `
+  return response.json(reports)
 })
 
 app.get('/api/admin/quiz-violations', requireAdmin, async (_request, response) => {
