@@ -1932,7 +1932,6 @@ app.get('/api/enrollments', requireAuthenticated, async (request, response) => {
            lesson_summary."lastActivityAt",
            quiz_summary."quizAttempts",
            practice_summary."practiceAnswers",
-,
            attendance_summary.attendance,
            session_join_summary."sessionJoinClicks",
            study_plan_summary."studyPlanOrder",
