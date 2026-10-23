@@ -145,7 +145,7 @@ const StudentDashboardOverview = ({ displayName, courses, classes, lessonCount, 
     {enrollmentCount > 0 && !activeSlide ? <LearningCompleteBanner lessonCount={lessonCount} averageQuizScore={averageQuizScore} learningStreak={learningStreak} /> : <Paper elevation={0} sx={{ position: 'relative', overflow: 'hidden', mb: 2.25, borderRadius: { xs: 3.5, md: 4.5 }, color: '#fff', background: heroGradient }}>
       <Box aria-hidden="true" sx={{ position: 'absolute', width: 420, height: 420, right: { xs: -250, md: 70 }, top: -280, borderRadius: '50%', border: '1px solid rgba(255,255,255,.11)', boxShadow: '0 0 0 42px rgba(255,255,255,.035), 0 0 0 84px rgba(255,255,255,.025)' }} />
       <Stack key={activeSlide?.key} direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} spacing={3} sx={{ position: 'relative', p: { xs: 2.5, sm: 3.5, md: 4 }, animation: 'learningSlideIn .5s ease', '@keyframes learningSlideIn': { from: { opacity: 0, transform: 'translateY(6px)' }, to: { opacity: 1, transform: 'none' } } }}>
-        <Box sx={{ maxWidth: 650 }}>
+        <Box sx={{ flex: 1, minWidth: 0, maxWidth: 650 }}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
             <Chip size="small" icon={<SchoolOutlinedIcon />} label={featuredLearning ? featuredClass ? 'PICK UP YOUR CLASS' : 'PICK UP WHERE YOU LEFT OFF' : 'YOUR LEARNING PLAN'} sx={{ color: '#e6fff8', bgcolor: 'rgba(255,255,255,.13)', '& .MuiChip-icon': { color: 'inherit' }, fontWeight: 700, letterSpacing: '.04em' }} />
           </Stack>
