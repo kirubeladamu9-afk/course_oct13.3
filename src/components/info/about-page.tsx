@@ -54,6 +54,66 @@ const AboutPage: FC = () => <Box component="main" sx={{ backgroundColor: (theme)
     </Grid>
   </Container>
 
+  <Container maxWidth="lg" sx={{ py: { xs: 7, md: 10 } }}>
+    <Box sx={{ maxWidth: 700, mx: 'auto', mb: { xs: 4, md: 6 }, textAlign: 'center' }}>
+      <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1 }}>LEARNING THAT MOVES YOU FORWARD</Typography>
+      <Typography component="h2" variant="h3" sx={{ mt: .75, fontWeight: 800, letterSpacing: '-.035em', fontSize: { xs: '2rem', md: '2.75rem' } }}>Built for modern learning</Typography>
+      <Typography color="text.secondary" sx={{ mt: 1.5, lineHeight: 1.7 }}>We bring clear courses, experienced tutors, and flexible practice together to help every learner make steady progress.</Typography>
+    </Box>
+
+    <Grid container spacing={2} alignItems="center" sx={{ mb: { xs: 4, md: 5 } }}>
+      <Grid item xs={12} sm={4}>
+        <Box component="img" src="/images/home-feature.png" alt="Student learning with a notebook" sx={{ display: 'block', width: '100%', height: { xs: 210, sm: 190, md: 220 }, borderRadius: 3, objectFit: 'cover' }} />
+      </Grid>
+      <Grid item xs={12} sm={4}>
+        <Box component="img" src="/images/about-study-group-banner.webp" alt="Students learning together around a laptop" sx={{ display: 'block', width: '100%', height: { xs: 230, sm: 230, md: 270 }, borderRadius: 3, objectFit: 'cover' }} />
+      </Grid>
+      <Grid item xs={12} sm={4}>
+        <Box component="img" src="/images/home-testimonial.png" alt="Student sharing their learning experience" sx={{ display: 'block', width: '100%', height: { xs: 210, sm: 190, md: 220 }, borderRadius: 3, objectFit: 'cover' }} />
+      </Grid>
+    </Grid>
+
+    <Typography component="p" sx={{ maxWidth: 790, mx: 'auto', mb: { xs: 4, md: 5 }, textAlign: 'center', fontSize: { xs: '1.1rem', md: '1.35rem' }, lineHeight: 1.6 }}>
+      Our mission is to make quality learning accessible, supportive, and practical for students wherever they are.
+    </Typography>
+
+    <Paper elevation={0} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, p: { xs: 2.5, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper' }}>
+      {[{ value: '500+', label: 'Students' }, { value: '20+', label: 'Quality courses' }, { value: '10+', label: 'Experienced tutors' }].map((stat, index) => <Box key={stat.label} sx={{ py: { xs: 1.5, sm: 1 }, textAlign: 'center', borderRight: { sm: index < 2 ? 1 : 0 }, borderBottom: { xs: index < 2 ? 1 : 0, sm: 0 }, borderColor: 'divider' }}>
+        <Typography sx={{ fontSize: { xs: '1.6rem', md: '1.9rem' }, fontWeight: 800 }}>{stat.value}</Typography>
+        <Typography variant="body2" color="text.secondary">{stat.label}</Typography>
+      </Box>)}
+    </Paper>
+
+    <Grid container spacing={{ xs: 4, md: 7 }} alignItems="center" sx={{ mt: { xs: 6, md: 9 }, pb: { xs: 4, md: 6 }, borderBottom: 1, borderColor: 'divider' }}>
+      <Grid item xs={12} md={6}>
+        <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: .8 }}>A CLEAR PATH FORWARD</Typography>
+        <Typography component="h3" variant="h4" sx={{ mt: .5, fontWeight: 800 }}>Learning designed for real progress</Typography>
+        <Typography color="text.secondary" sx={{ mt: 1.5, lineHeight: 1.75 }}>Build confidence through practical lessons that break big ideas into manageable steps. Learn at your own pace and keep your progress moving forward.</Typography>
+        <Stack spacing={1.25} sx={{ mt: 2.5 }}>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>Flexible courses that fit your schedule</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>Practice that turns knowledge into confidence</Typography>
+        </Stack>
+      </Grid>
+      <Grid item xs={12} md={6}>
+        <Box component="img" src="/images/courses/annie-spratt-QckxruozjRg-unsplash.jpg" alt="Learners working together on computers" sx={{ display: 'block', width: '100%', height: { xs: 240, md: 330 }, borderRadius: 3, objectFit: 'cover' }} />
+      </Grid>
+    </Grid>
+
+    <Grid container spacing={{ xs: 4, md: 7 }} alignItems="center" sx={{ mt: { xs: 4, md: 6 } }}>
+      <Grid item xs={12} md={6}>
+        <Box component="img" src="/images/contact-support-banner.webp" alt="Support professional ready to help a learner" sx={{ display: 'block', width: '100%', height: { xs: 240, md: 330 }, borderRadius: 3, objectFit: 'cover' }} />
+      </Grid>
+      <Grid item xs={12} md={6}>
+        <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: .8 }}>SUPPORT THAT GROWS WITH YOU</Typography>
+        <Typography component="h3" variant="h4" sx={{ mt: .5, fontWeight: 800 }}>Guidance at every step</Typography>
+        <Typography color="text.secondary" sx={{ mt: 1.5, lineHeight: 1.75 }}>Learning feels easier when you have the right support. Our tutors make space for questions, explain challenging topics, and help learners stay motivated.</Typography>
+        <Stack spacing={1.25} sx={{ mt: 2.5 }}>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>Experienced tutors who meet you where you are</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>A welcoming place to ask, explore, and improve</Typography>
+        </Stack>
+      </Grid>
+    </Grid>
+  </Container>
 
   <HomeOurMentors autoplay />
 
