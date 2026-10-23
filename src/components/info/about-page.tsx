@@ -161,7 +161,7 @@ const AboutPage: FC = () => {
     </Stack>
 
     <Stack spacing={1.5}>
-      {faqCategories[selectedFaqCategory].map((faq, index) => <Accordion key={faq.question} defaultExpanded={selectedFaqCategory === 'General' && index === 0} disableGutters elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: '10px !important', '&:before': { display: 'none' }, '&.Mui-expanded': { borderColor: 'primary.light', backgroundColor: 'rgba(22, 140, 125, .035)' } }}>
+      {faqCategories[selectedFaqCategory].map((faq, index) => <Accordion key={faq.question} defaultExpanded={selectedFaqCategory === 'General' && index === 0} disableGutters elevation={0} sx={{ border: 1, borderColor: 'transparent', borderRadius: '10px !important', backgroundColor: '#fff', color: '#173a38', '&:before': { display: 'none' }, '&.Mui-expanded': { borderColor: 'primary.main', backgroundColor: '#fff' } }}>
         <AccordionSummary expandIcon={<ExpandMoreRoundedIcon />} aria-controls={`about-faq-${selectedFaqCategory}-${index}-content`} id={`about-faq-${selectedFaqCategory}-${index}-header`} sx={{ px: { xs: 2, sm: 2.5 }, '& .MuiAccordionSummary-content': { my: 1.75 } }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{faq.question}</Typography>
         </AccordionSummary>
