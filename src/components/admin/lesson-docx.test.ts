@@ -140,3 +140,51 @@ describe('parseLessonParagraphs', () => {
     expect(result.fatalError).toBe('Question 1 must use Heading 2 in the Quiz template.')
   })
 })
+
+describe('parseLessonParagraphs for Step-by-Step Solver', () => {
+  const solverParagraphs = (omitHint = false): LessonParagraph[] => [
+    paragraph('Step-by-Step Solver template instructions'),
+    paragraph('LESSON TYPE: STEP-BY-STEP SOLVER'),
+    paragraph('Solve Linear Equations', 1),
+    paragraph('Problem 1', 2),
+    paragraph('Problem: Solve 2x = 8'),
+    paragraph('Step 1', 3),
+    paragraph('Instruction: Divide both sides by 2.'),
+    paragraph('Correct answer: 4'),
+    paragraph('Explanation: Dividing by 2 isolates x.'),
+    ...(omitHint ? [] : [paragraph('Hint: Undo the multiplication.')]),
+    paragraph('Corrective feedback: Divide, do not subtract.'),
+    paragraph('Follow-up 1', 3),
+    paragraph('Question: Solve 3x = 9'),
+    paragraph('Correct answer: 3'),
+    paragraph('Explanation: Divide both sides by 3.'),
+    paragraph('Corrective feedback: Divide by the coefficient.'),
+  ]
+
+  it('imports problems with steps and follow-up questions', () => {
+    const result = parseLessonParagraphs('stepByStepSolver', solverParagraphs())
+
+    expect(result.fatalError).toBeNull()
+    expect(result.title).toBe('Solve Linear Equations')
+    expect(result.stepByStepSolver?.problems).toEqual([{
+      id: 1,
+      prompt: 'Solve 2x = 8',
+      steps: [{ id: 1, instruction: 'Divide both sides by 2.', correctAnswer: '4', explanation: 'Dividing by 2 isolates x.', hint: 'Undo the multiplication.', correctiveFeedback: 'Divide, do not subtract.' }],
+      followUpQuestions: [{ id: 1, prompt: 'Solve 3x = 9', correctAnswer: '3', explanation: 'Divide both sides by 3.', correctiveFeedback: 'Divide by the coefficient.' }],
+    }])
+  })
+
+  it('skips a problem with a missing step field and reports it', () => {
+    const result = parseLessonParagraphs('stepByStepSolver', solverParagraphs(true))
+
+    expect(result.stepByStepSolver?.problems).toEqual([])
+    expect(result.issues).toEqual(['Problem 1: Step 1 is missing hint.'])
+    expect(result.fatalError).toBe('No valid problems were found. Problem 1: Step 1 is missing hint.')
+  })
+
+  it('rejects importing a Quiz template as Step-by-Step Solver', () => {
+    const result = parseLessonParagraphs('stepByStepSolver', [...questionTemplate('QUIZ'), ...validQuestion(1)])
+
+    expect(result.fatalError).toBe('This file is a Quiz template, not a Step-by-Step Solver template.')
+  })
+})

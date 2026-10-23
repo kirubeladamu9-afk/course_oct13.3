@@ -1,8 +1,8 @@
 import { Document, HeadingLevel, Packer, Paragraph } from 'docx'
 import JSZip from 'jszip'
-import type { ArticleContentBlock } from './admin-data'
+import type { ArticleContentBlock, StepByStepSolverConfig, StepByStepSolverProblem } from './admin-data'
 
-export type ImportableLessonType = 'article' | 'quiz' | 'practice'
+export type ImportableLessonType = 'article' | 'quiz' | 'practice' | 'stepByStepSolver'
 
 export interface ImportedQuestion {
   number: number
@@ -26,6 +26,7 @@ export interface LessonImportPreview {
   questions: ImportedQuestion[]
   issues: string[]
   fatalError: string | null
+  stepByStepSolver?: StepByStepSolverConfig
 }
 
 export type LessonParagraphPart = { type: 'text'; text: string } | { type: 'image'; imageUrl?: string; marker?: string }
@@ -70,7 +71,44 @@ const questionTemplateParagraphs = (type: 'quiz' | 'practice') => {
   ]
 }
 
-const templateParagraphs = (type: ImportableLessonType) => type === 'article'
+const solverTemplateParagraphs = () => [
+  paragraph('Step-by-Step Solver template instructions'),
+  paragraph('Replace the Heading 1 text with the lesson title. Each problem is a Heading 2 named Problem 1, Problem 2, and so on. Under each problem, add Heading 3 sections named Step 1, Step 2, and so on, then Follow-up 1, Follow-up 2, and so on.'),
+  paragraph('For each problem use: Problem: text. For each step use, in this order: Instruction: text, Correct answer: text, Explanation: text, Hint: text, and Corrective feedback: text. For each follow-up question use, in this order: Question: text, Correct answer: text, Explanation: text, and Corrective feedback: text. Use one paragraph per line.'),
+  paragraph('Every field is required. Each problem needs at least one step and one follow-up question. Any problem with a missing field is skipped during import, and the import review lists why. The first problem is an example; replace it or remove it.'),
+  paragraph('LESSON TYPE: STEP-BY-STEP SOLVER'),
+  paragraph('[Enter lesson title]', HeadingLevel.HEADING_1),
+  paragraph('Problem 1', HeadingLevel.HEADING_2),
+  paragraph('Problem: What is 12 + 7?'),
+  paragraph('Step 1', HeadingLevel.HEADING_3),
+  paragraph('Instruction: Split 12 into 10 and 2, then add the 10 first.'),
+  paragraph('Correct answer: 19'),
+  paragraph('Explanation: Adding 10 + 7 gives 17, and adding the remaining 2 gives 19.'),
+  paragraph('Hint: Start by splitting 12 into 10 and 2.'),
+  paragraph('Corrective feedback: Split 12 into 10 and 2 before adding 7.'),
+  paragraph('Follow-up 1', HeadingLevel.HEADING_3),
+  paragraph('Question: What is 15 + 6?'),
+  paragraph('Correct answer: 21'),
+  paragraph('Explanation: Split 15 into 10 and 5. Then 5 + 6 = 11, and 10 + 11 = 21.'),
+  paragraph('Corrective feedback: Split 15 into 10 and 5 before adding 6.'),
+  paragraph('Problem 2', HeadingLevel.HEADING_2),
+  paragraph('Problem:'),
+  paragraph('Step 1', HeadingLevel.HEADING_3),
+  paragraph('Instruction:'),
+  paragraph('Correct answer:'),
+  paragraph('Explanation:'),
+  paragraph('Hint:'),
+  paragraph('Corrective feedback:'),
+  paragraph('Follow-up 1', HeadingLevel.HEADING_3),
+  paragraph('Question:'),
+  paragraph('Correct answer:'),
+  paragraph('Explanation:'),
+  paragraph('Corrective feedback:'),
+]
+
+const templateParagraphs = (type: ImportableLessonType) => type === 'stepByStepSolver'
+  ? solverTemplateParagraphs()
+  : type === 'article'
   ? [
       paragraph('Article template instructions'),
       paragraph('Use exactly one Heading 1 for the lesson title. Use Heading 2 for optional subsection titles, then write plain text paragraphs beneath them.'),
@@ -100,8 +138,8 @@ export const downloadLessonTemplate = async (type: ImportableLessonType) => {
 const isPlaceholder = (value: string) => /^\[.*\]$/.test(value.trim())
 const preview = (fatalError: string, title = ''): LessonImportPreview => ({ title, articleBody: '', articleBlocks: [], questions: [], issues: [], fatalError })
 const parseArticle = (paragraphs: LessonParagraph[]): LessonImportPreview => {
-  const instructionMarker = paragraphs.find((paragraph) => /^(Article|Quiz|Practice) template instructions$/i.test(paragraph.text))?.text
-  if (instructionMarker && !/^Article/i.test(instructionMarker)) return preview(`This file is a ${instructionMarker.split(' ')[0]} template, not an Article template.`)
+  const instructionMarker = paragraphs.find((paragraph) => /^(Article|Quiz|Practice|Step-by-Step Solver) template instructions$/i.test(paragraph.text))?.text
+  if (instructionMarker && !/^Article/i.test(instructionMarker)) return preview(`This file is a ${instructionMarker.replace(' template instructions', '')} template, not an Article template.`)
   const lessonTypeMarker = paragraphs.find(({ text }) => /^LESSON TYPE: (ARTICLE|QUIZ|PRACTICE)$/i.test(text))?.text
   if (lessonTypeMarker && lessonTypeMarker !== 'LESSON TYPE: ARTICLE') return preview(`This file is marked as ${lessonTypeMarker.split(': ')[1]}, not Article. Choose the matching lesson type to import it.`)
   if (!lessonTypeMarker) return preview('The Article template is missing its required LESSON TYPE marker. Download a fresh Article template.')
@@ -287,8 +325,8 @@ const parseQuestionBlock = (heading: string, paragraphs: LessonParagraph[], issu
 
 const parseQuizOrPractice = (paragraphs: LessonParagraph[], type: 'quiz' | 'practice'): LessonImportPreview => {
   const hint = type === 'quiz' ? 'Quiz' : 'Practice'
-  const instructionMarker = paragraphs.find((paragraph) => /^(Article|Quiz|Practice) template instructions$/i.test(paragraph.text))?.text
-  if (instructionMarker && !new RegExp(`^${hint}`, 'i').test(instructionMarker)) return preview(`This file is a ${instructionMarker.split(' ')[0]} template, not a ${hint} template.`)
+  const instructionMarker = paragraphs.find((paragraph) => /^(Article|Quiz|Practice|Step-by-Step Solver) template instructions$/i.test(paragraph.text))?.text
+  if (instructionMarker && !new RegExp(`^${hint}`, 'i').test(instructionMarker)) return preview(`This file is a ${instructionMarker.replace(' template instructions', '')} template, not a ${hint} template.`)
   const lessonTypeMarker = paragraphs.find(({ text }) => /^LESSON TYPE: (QUIZ|PRACTICE)$/i.test(text))?.text
   if (lessonTypeMarker && !lessonTypeMarker.toLowerCase().endsWith(hint.toLowerCase())) return preview(`This file is marked as ${lessonTypeMarker.split(': ')[1]}, not ${hint}. Choose the matching lesson type to import it.`)
   if (!lessonTypeMarker) return preview(`The ${hint} template is missing its required LESSON TYPE marker. Download a fresh ${hint} template.`)
@@ -316,7 +354,122 @@ const parseQuizOrPractice = (paragraphs: LessonParagraph[], type: 'quiz' | 'prac
   return { title, articleBody: '', articleBlocks: [], questions, issues, fatalError: questions.length ? null : `No valid questions were found. ${issues.join(' ')}` }
 }
 
-export const parseLessonParagraphs = (type: ImportableLessonType, paragraphs: LessonParagraph[]): LessonImportPreview => type === 'article' ? parseArticle(paragraphs) : parseQuizOrPractice(paragraphs, type)
+interface SolverSection {
+  kind: 'problem' | 'step' | 'followUp'
+  heading: string
+  fields: Map<string, string>
+  errors: string[]
+}
+
+interface SolverGroup {
+  section: SolverSection
+  steps: SolverSection[]
+  followUps: SolverSection[]
+}
+
+const solverFieldKeys: Record<SolverSection['kind'], string[]> = {
+  problem: ['problem'],
+  step: ['instruction', 'correct answer', 'explanation', 'hint', 'corrective feedback'],
+  followUp: ['question', 'correct answer', 'explanation', 'corrective feedback'],
+}
+const solverLabelPattern = /^(Problem|Instruction|Question|Correct answer|Explanation|Hint|Corrective feedback):\s*(.*)$/i
+const hasValue = (value?: string) => Boolean(value?.trim()) && !isPlaceholder(value ?? '')
+const sectionValue = (section: SolverSection, key: string) => section.fields.get(key)?.trim() ?? ''
+const isBlankSection = (section: SolverSection) => section.errors.length === 0 && Array.from(section.fields.values()).every((value) => !hasValue(value))
+const sectionProblems = (section: SolverSection) => {
+  const missing = solverFieldKeys[section.kind].filter((key) => !hasValue(section.fields.get(key)))
+  return [
+    ...section.errors.map((error) => `${section.heading} ${error}`),
+    ...(missing.length ? [`${section.heading} is missing ${missing.join(', ')}`] : []),
+  ]
+}
+
+const parseStepByStepSolver = (paragraphs: LessonParagraph[]): LessonImportPreview => {
+  const instructionMarker = paragraphs.find(({ text }) => /^(Article|Quiz|Practice|Step-by-Step Solver) template instructions$/i.test(text))?.text
+  if (instructionMarker && !/^Step-by-Step Solver/i.test(instructionMarker)) return preview(`This file is a ${instructionMarker.replace(' template instructions', '')} template, not a Step-by-Step Solver template.`)
+  const lessonTypeMarker = paragraphs.find(({ text }) => /^LESSON TYPE:/i.test(text))?.text
+  if (!lessonTypeMarker) return preview('The Step-by-Step Solver template is missing its required LESSON TYPE marker. Download a fresh Step-by-Step Solver template.')
+  if (lessonTypeMarker.toUpperCase() !== 'LESSON TYPE: STEP-BY-STEP SOLVER') return preview(`This file is marked as ${lessonTypeMarker.split(': ')[1]}, not Step-by-Step Solver. Choose the matching lesson type to import it.`)
+
+  const titleHeadings = paragraphs.filter(({ heading }) => heading === 1)
+  if (titleHeadings.length !== 1) return preview('The Step-by-Step Solver template must contain exactly one Heading 1 lesson title.')
+  const title = titleHeadings[0].text
+  if (!title || isPlaceholder(title)) return preview("Enter a non-empty lesson title in the Step-by-Step Solver template's Heading 1 line.", title)
+
+  const sections: SolverSection[] = []
+  for (const { text, heading } of paragraphs) {
+    if (heading === 1) continue
+    if (heading === 2) {
+      if (!/^Problem\s+\d+$/i.test(text)) return preview(`${text} must use the Problem heading format, such as Problem 1, in the Step-by-Step Solver template.`, title)
+      sections.push({ kind: 'problem', heading: text, fields: new Map(), errors: [] })
+      continue
+    }
+    if (heading === 3) {
+      const kind = /^Step\s+\d+$/i.test(text) ? 'step' : /^Follow-up\s+\d+$/i.test(text) ? 'followUp' : null
+      if (!kind) return preview(`${text} must be named Step 1 or Follow-up 1 and use Heading 3 in the Step-by-Step Solver template.`, title)
+      sections.push({ kind, heading: text, fields: new Map(), errors: [] })
+      continue
+    }
+    if (heading !== null) return preview('The Step-by-Step Solver template uses Heading 1 for the lesson title, Heading 2 for problems, and Heading 3 for steps and follow-ups.', title)
+    const current = sections[sections.length - 1]
+    if (!current || !text) continue
+    const match = text.match(solverLabelPattern)
+    if (!match) {
+      current.errors.push('contains an unrecognized line; use the labels shown in the template')
+      continue
+    }
+    const key = match[1].toLowerCase()
+    if (!solverFieldKeys[current.kind].includes(key)) {
+      current.errors.push(`has a ${match[1]}: line that does not belong in this section`)
+      continue
+    }
+    if (current.fields.has(key)) {
+      current.errors.push(`has more than one ${match[1]}: line`)
+      continue
+    }
+    current.fields.set(key, match[2].trim())
+  }
+
+  if (!sections.some(({ kind }) => kind === 'problem')) return preview('The Step-by-Step Solver template must contain at least one Heading 2 named Problem 1.', title)
+  const issues: string[] = []
+  const groups: SolverGroup[] = []
+  for (const section of sections) {
+    if (section.kind === 'problem') groups.push({ section, steps: [], followUps: [] })
+    else if (!groups.length) {
+      if (!isBlankSection(section)) issues.push(`${section.heading} must appear under a Problem heading.`)
+    } else if (section.kind === 'step') groups[groups.length - 1].steps.push(section)
+    else groups[groups.length - 1].followUps.push(section)
+  }
+
+  const problems: StepByStepSolverProblem[] = []
+  for (const { section, steps, followUps } of groups) {
+    const filledSteps = steps.filter((step) => !isBlankSection(step))
+    const filledFollowUps = followUps.filter((followUp) => !isBlankSection(followUp))
+    if (isBlankSection(section) && !filledSteps.length && !filledFollowUps.length) continue
+    const errors = [
+      ...section.errors,
+      ...(hasValue(section.fields.get('problem')) ? [] : ['has no non-empty Problem: line']),
+      ...(filledSteps.length ? [] : ['needs at least one Step section']),
+      ...(filledFollowUps.length ? [] : ['needs at least one Follow-up section']),
+      ...filledSteps.flatMap(sectionProblems),
+      ...filledFollowUps.flatMap(sectionProblems),
+    ]
+    if (errors.length) {
+      issues.push(`${section.heading}: ${errors.join('; ')}.`)
+      continue
+    }
+    problems.push({
+      id: problems.length + 1,
+      prompt: sectionValue(section, 'problem'),
+      steps: filledSteps.map((step, index) => ({ id: index + 1, instruction: sectionValue(step, 'instruction'), explanation: sectionValue(step, 'explanation'), hint: sectionValue(step, 'hint'), correctiveFeedback: sectionValue(step, 'corrective feedback'), correctAnswer: sectionValue(step, 'correct answer') })),
+      followUpQuestions: filledFollowUps.map((followUp, index) => ({ id: index + 1, prompt: sectionValue(followUp, 'question'), correctAnswer: sectionValue(followUp, 'correct answer'), explanation: sectionValue(followUp, 'explanation'), correctiveFeedback: sectionValue(followUp, 'corrective feedback') })),
+    })
+  }
+
+  return { title, articleBody: '', articleBlocks: [], questions: [], issues, fatalError: problems.length ? null : `No valid problems were found. ${issues.join(' ')}`, stepByStepSolver: { problems } }
+}
+
+export const parseLessonParagraphs = (type: ImportableLessonType, paragraphs: LessonParagraph[]): LessonImportPreview => type === 'article' ? parseArticle(paragraphs) : type === 'stepByStepSolver' ? parseStepByStepSolver(paragraphs) : parseQuizOrPractice(paragraphs, type)
 
 const relationshipsNamespace = 'http://schemas.openxmlformats.org/package/2006/relationships'
 const drawingNamespace = 'http://schemas.openxmlformats.org/drawingml/2006/main'
@@ -336,8 +489,9 @@ const normalizeZipPath = (target: string) => {
 const parseLessonXml = async (type: ImportableLessonType, xml: string, archive: JSZip): Promise<LessonImportPreview> => {
   const xmlDocument = new DOMParser().parseFromString(xml, 'application/xml')
   if (xmlDocument.querySelector('parsererror')) return preview('This DOCX contains invalid document XML. Download a fresh template and try again.')
+  const textOnly = type === 'practice' || type === 'stepByStepSolver'
   const relationships = new Map<string, { target: string; external: boolean }>()
-  if (type !== 'practice') {
+  if (!textOnly) {
     const relationshipFile = archive.file('word/_rels/document.xml.rels')
     if (relationshipFile) {
       const relationshipXml = new DOMParser().parseFromString(await relationshipFile.async('text'), 'application/xml')
@@ -353,7 +507,7 @@ const parseLessonXml = async (type: ImportableLessonType, xml: string, archive: 
     const outline = element.getElementsByTagNameNS(wordNamespace, 'outlineLvl')[0]?.getAttributeNS(wordNamespace, 'val')
     const styleLevel = style?.match(/^heading(\d+)$/)?.[1]
     const heading = styleLevel ? Number(styleLevel) : outline !== undefined ? Number(outline) + 1 : null
-    if (type === 'practice') {
+    if (textOnly) {
       const text = Array.from(element.getElementsByTagNameNS(wordNamespace, 't')).map((run) => run.textContent ?? '').join('').replace(/\u00a0/g, ' ').trim()
       return { text, heading }
     }
