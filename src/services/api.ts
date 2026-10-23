@@ -1,6 +1,6 @@
 import { type AdminCourse, type AdminModule, type AdminTutor, type AdminUser } from '@/components/admin/admin-data'
 import { type Course } from '@/interfaces/course'
-import { type ArticleContentBlock, type SimulationConfig, type StepByStepSolverLearnerConfig, type StepByStepSolverSession, type StepByStepSolverState } from '@/components/admin/admin-data'
+import { type ArticleContentBlock, type ArticleVocabularyEntry, type SimulationConfig, type StepByStepSolverLearnerConfig, type StepByStepSolverSession, type StepByStepSolverState } from '@/components/admin/admin-data'
 import { type PracticeExam, type PracticeExamWithQuestions, type PracticePurchase, type PracticeQuestion } from '@/components/practice/practice-data'
 import { navigateTo } from '@/lib/navigation'
 
@@ -66,6 +66,7 @@ interface EnrollmentLesson {
   estimatedDuration?: number
   articleBody?: string
   articleBlocks?: ArticleContentBlock[]
+  articleVocabulary?: ArticleVocabularyEntry[]
   articleHeaderImageUrl?: string
   baseImageUrl?: string
   interactiveHotspots?: Array<{ id: number; left: string; top: string; label: string; explanation: string }>

@@ -116,6 +116,12 @@ export type ArticleContentBlock =
   | { type: 'heading'; text: string }
   | { type: 'image'; marker?: string; imageUrl?: string; caption: string }
 
+export interface ArticleVocabularyEntry {
+  word: string
+  definition: string
+  example: string
+}
+
 export interface AdminLesson {
   id: number
   title: string
@@ -126,6 +132,7 @@ export interface AdminLesson {
   resources: LessonResource[]
   articleBody?: string
   articleBlocks?: ArticleContentBlock[]
+  articleVocabulary?: ArticleVocabularyEntry[]
   articleHeaderImageUrl?: string
   baseImageUrl?: string
   interactiveHotspots?: InteractiveHotspot[]
