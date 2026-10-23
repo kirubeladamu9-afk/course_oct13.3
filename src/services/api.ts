@@ -1,6 +1,6 @@
 import { type AdminCourse, type AdminModule, type AdminTutor, type AdminUser } from '@/components/admin/admin-data'
 import { type Course } from '@/interfaces/course'
-import { type ArticleContentBlock, type SimulationConfig } from '@/components/admin/admin-data'
+import { type ArticleContentBlock, type SimulationConfig, type StepByStepSolverLearnerConfig, type StepByStepSolverSession, type StepByStepSolverState } from '@/components/admin/admin-data'
 import { type PracticeExam, type PracticeExamWithQuestions, type PracticePurchase, type PracticeQuestion } from '@/components/practice/practice-data'
 import { navigateTo } from '@/lib/navigation'
 
@@ -59,7 +59,7 @@ export interface WeakArea {
 interface EnrollmentLesson {
   id: number
   title: string
-  type: 'video' | 'article' | 'interactive' | 'simulation' | 'quiz' | 'practice' | 'live'
+  type: 'video' | 'article' | 'interactive' | 'simulation' | 'quiz' | 'practice' | 'live' | 'stepByStepSolver'
   duration: number | null
   videoUrl?: string
   thumbnailUrl?: string
@@ -70,6 +70,7 @@ interface EnrollmentLesson {
   baseImageUrl?: string
   interactiveHotspots?: Array<{ id: number; left: string; top: string; label: string; explanation: string }>
   simulation?: SimulationConfig
+  stepByStepSolver?: StepByStepSolverLearnerConfig
   platformEngineId?: string
   curriculumTopic?: string
   resources?: Array<{ id: number; name: string; url?: string }>
@@ -1236,6 +1237,18 @@ export const saveLessonEngagement = (enrollmentId: number, lessonId: number, val
 export const completeLesson = (enrollmentId: number, lessonId: number) => requestLearningProgress<LessonProgress>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/complete`, {
   method: 'POST',
 })
+
+export const getStepByStepSolverState = (enrollmentId: number, lessonId: number) => requestLearningProgress<StepByStepSolverState>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/step-by-step-solver`, {})
+
+export const startStepByStepSolver = (enrollmentId: number, lessonId: number, problemId: number) => requestLearningProgress<StepByStepSolverSession>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/step-by-step-solver/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ problemId }) })
+
+export const checkStepByStepSolverAnswer = (enrollmentId: number, lessonId: number, sessionId: number, answer: string) => requestLearningProgress<{ session: StepByStepSolverSession; correct: boolean; feedback: string }>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/step-by-step-solver/sessions/${sessionId}/answer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answer }) })
+
+export const revealStepByStepSolverStep = (enrollmentId: number, lessonId: number, sessionId: number) => requestLearningProgress<StepByStepSolverSession>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/step-by-step-solver/sessions/${sessionId}/reveal`, { method: 'POST' })
+
+export const requestStepByStepSolverHint = (enrollmentId: number, lessonId: number, sessionId: number) => requestLearningProgress<{ hint: string }>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/step-by-step-solver/sessions/${sessionId}/hint`, { method: 'POST' })
+
+export const answerStepByStepSolverFollowUp = (enrollmentId: number, lessonId: number, sessionId: number, questionId: number, answer: string) => requestLearningProgress<{ session: StepByStepSolverSession; correct: boolean; feedback: string }>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/step-by-step-solver/sessions/${sessionId}/follow-up`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ questionId, answer }) })
 
 export const beginQuizAttempt = (enrollmentId: number, lessonId: number) => requestLearningProgress<QuizAttempt>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/quiz-attempts`, {
   method: 'POST',

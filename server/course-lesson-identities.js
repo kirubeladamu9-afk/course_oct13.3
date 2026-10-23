@@ -2,8 +2,8 @@ const getLessons = (modules) => Array.isArray(modules)
   ? modules.flatMap((module) => Array.isArray(module?.lessons) ? module.lessons : [])
   : []
 
-const getLessonIdentity = ({ title, type, curriculumTopic, platformEngineId, simulationToolId }) =>
-  JSON.stringify({ title, type, curriculumTopic, platformEngineId, simulationToolId })
+const getLessonIdentity = ({ title, type, curriculumTopic, platformEngineId, simulationToolId, stepByStepSolver }) =>
+  JSON.stringify({ title, type, curriculumTopic, platformEngineId, simulationToolId, stepByStepSolver })
 
 export const getChangedCourseLessonIds = (previousModules, nextModules) => {
   const previousLessonsById = new Map(getLessons(previousModules).map((lesson) => [String(lesson.id), lesson]))

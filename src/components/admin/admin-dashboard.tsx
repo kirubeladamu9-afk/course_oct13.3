@@ -52,6 +52,7 @@ import LockResetIcon from '@mui/icons-material/LockReset'
 import BlockIcon from '@mui/icons-material/Block'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import FormatListNumberedOutlinedIcon from '@mui/icons-material/FormatListNumberedOutlined'
 import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined'
 import MailOutlineIcon from '@mui/icons-material/MailOutline'
 import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined'
@@ -94,6 +95,7 @@ import PracticeExamManagement from './practice-exam-management'
 import SyllabusTopicsPage from './syllabus-topics-page'
 import { BookstoreAdminPage } from '@/components/bookstore/bookstore-page'
 import PlatformEngineLessonPicker from './platform-engine-lesson-picker'
+import StepByStepSolverEditor from './step-by-step-solver-editor'
 import SyllabusTopicPicker from './syllabus-topic-picker'
 import { getNextLessonId, type AdminCourse, type AdminLesson, type AdminTutor, type AdminUser, type LessonType } from './admin-data'
 import type { ImportableLessonType, ImportedQuestion, LessonImportPreview } from './lesson-docx'
@@ -225,13 +227,15 @@ const readArticleImage = (file: File) => new Promise<string>((resolve, reject) =
   reader.onerror = () => reject(new Error('This image could not be read.'))
   reader.readAsDataURL(file)
 })
-const getLessonLabel = (lesson: AdminLesson) => lesson.type === 'video' ? (lesson.duration ? formatDuration(lesson.duration) : 'Processing') : lesson.type === 'article' ? 'Article' : lesson.type === 'interactive' ? 'Interactive' : lesson.type === 'simulation' ? 'Simulation' : lesson.type === 'quiz' ? 'Quiz' : lesson.type === 'practice' ? 'Practice' : 'Live'
+const getLessonLabel = (lesson: AdminLesson) => lesson.type === 'video' ? (lesson.duration ? formatDuration(lesson.duration) : 'Processing') : lesson.type === 'article' ? 'Article' : lesson.type === 'interactive' ? 'Interactive' : lesson.type === 'simulation' ? 'Simulation' : lesson.type === 'quiz' ? 'Quiz' : lesson.type === 'practice' ? 'Practice' : lesson.type === 'stepByStepSolver' ? 'Step-by-Step Solver' : 'Live'
+const isInvalidSolverConfiguration = (config?: AdminLesson['stepByStepSolver']) => !config?.problems.length || config.problems.some((problem) => !problem.prompt.trim() || !problem.steps.length || problem.steps.some((step) => !step.instruction.trim() || !step.explanation.trim() || !step.hint.trim() || !step.correctiveFeedback.trim() || !step.correctAnswer.trim()) || !problem.followUpQuestions.length || problem.followUpQuestions.some((question) => !question.prompt.trim() || !question.correctAnswer.trim() || !question.explanation.trim() || !question.correctiveFeedback.trim()))
 
 const LessonTypeIcon: FC<{ type: LessonType; fontSize?: 'small' | 'medium' }> = ({ type, fontSize = 'small' }) => {
   if (type === 'article') return <ArticleOutlinedIcon fontSize={fontSize} />
   if (type === 'simulation') return <AssessmentOutlinedIcon fontSize={fontSize} />
   if (type === 'quiz') return <QuizOutlinedIcon fontSize={fontSize} />
   if (type === 'live') return <InsertLinkOutlinedIcon fontSize={fontSize} />
+  if (type === 'stepByStepSolver') return <FormatListNumberedOutlinedIcon fontSize={fontSize} />
   return <PlayCircleOutlineIcon fontSize={fontSize} />
 }
 
@@ -242,6 +246,7 @@ const createLesson = (id: number, type: LessonType): AdminLesson => ({
   ...(type === 'simulation' ? { simulationToolId: '' } : {}),
   ...(type === 'quiz' ? { passThreshold: 70, quizQuestions: [] } : {}),
   ...(type === 'practice' ? { practiceQuestions: [] } : {}),
+  ...(type === 'stepByStepSolver' ? { stepByStepSolver: { problems: [{ id: 1, prompt: '', steps: [{ id: 1, instruction: '', explanation: '', hint: '', correctiveFeedback: '', correctAnswer: '' }], followUpQuestions: [{ id: 1, prompt: '', correctAnswer: '', explanation: '', correctiveFeedback: '' }] }] } } : {}),
   ...(type === 'live' ? { meetingUrl: '', recurringDays: [], sessionTime: '', sessionDuration: 60, scheduledAt: '', endsAt: '', estimatedDuration: 3600 } : {}),
 })
 
@@ -277,6 +282,7 @@ const lessonTypeOptions: Array<{ type: LessonType; label: string; detail: string
   { type: 'simulation', label: 'STEM Lab Activity', detail: 'Choose a ready-made lab activity' },
   { type: 'quiz', label: 'Quiz', detail: 'Check understanding with questions' },
   { type: 'practice', label: 'Practice', detail: 'Build skills with instant feedback' },
+  { type: 'stepByStepSolver', label: 'Step-by-Step Solver', detail: 'Learn to solve problems one step at a time.' },
   { type: 'live', label: 'Live', detail: 'Schedule a session' },
 ]
 
@@ -522,7 +528,7 @@ export const CourseEditor: FC<{ course: AdminCourse; onChange: (course: AdminCou
 
   const isVideoProcessing = lessonPanel?.lesson.type === 'video' && videoUploadProgress > 0 && videoUploadProgress < 100
   const liveLessonSessionDates = lessonPanel?.lesson.type === 'live' && classSchedule ? getAvailableClassSessionDates(classSchedule) : []
-  const cannotSaveLesson = Boolean(!lessonPanel?.lesson.title.trim() || isVideoProcessing || (lessonPanel?.isNew && lessonPanel.lesson.type === 'video' && !lessonPanel.lesson.videoUrl) || (lessonPanel?.lesson.type === 'interactive' && (!lessonPanel.lesson.baseImageUrl || !(lessonPanel.lesson.interactiveHotspots?.length)))|| (lessonPanel?.lesson.type === 'simulation' && !lessonPanel.lesson.simulationToolId) || (lessonPanel?.lesson.type === 'live' && classSchedule && !lessonPanel.lesson.scheduledAt) || (lessonPanel?.lesson.type === 'quiz' && classSchedule && (!lessonPanel.lesson.scheduledAt || !Number.isFinite(Date.parse(lessonPanel.lesson.scheduledAt)))))
+  const cannotSaveLesson = Boolean(!lessonPanel?.lesson.title.trim() || isVideoProcessing || (lessonPanel?.isNew && lessonPanel.lesson.type === 'video' && !lessonPanel.lesson.videoUrl) || (lessonPanel?.lesson.type === 'interactive' && (!lessonPanel.lesson.baseImageUrl || !(lessonPanel.lesson.interactiveHotspots?.length))) || (lessonPanel?.lesson.type === 'stepByStepSolver' && isInvalidSolverConfiguration(lessonPanel.lesson.stepByStepSolver)) || (lessonPanel?.lesson.type === 'simulation' && !lessonPanel.lesson.simulationToolId) || (lessonPanel?.lesson.type === 'live' && classSchedule && !lessonPanel.lesson.scheduledAt) || (lessonPanel?.lesson.type === 'quiz' && classSchedule && (!lessonPanel.lesson.scheduledAt || !Number.isFinite(Date.parse(lessonPanel.lesson.scheduledAt)))))
   const handleThumbnailFile = (file: File) => {
     const supportedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif']
     if (!supportedTypes.includes(file.type)) {
@@ -700,6 +706,7 @@ const LessonDetailsPanel: FC<{ lessonPanel: LessonPanelState; updateLessonDraft:
       {lesson.type === 'article' && <Box><Typography variant="body2" sx={{ mb: 0.75 }}>Downloadable resources <Typography component="span" variant="caption" color="text.secondary">(optional)</Typography></Typography><Box component="label" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, minHeight: 96, p: 2, border: 1, borderColor: 'divider', borderStyle: 'dashed', borderRadius: 1, color: 'text.secondary', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', color: 'primary.main' } }}><UploadFileOutlinedIcon color="primary" fontSize="small" /><Typography variant="body2">Add files</Typography><input hidden type="file" multiple onChange={(event) => { onAddResources(event.target.files); event.target.value = '' }} aria-label="Add downloadable resources" /></Box>{lesson.resources.length > 0 && <Stack spacing={0.5} sx={{ mt: 1 }}>{lesson.resources.map((resource) => <Box key={resource.id} sx={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', alignItems: 'center', gap: 1, p: 1, border: 1, borderColor: 'divider', borderRadius: 1, backgroundColor: 'background.default' }}><InsertDriveFileOutlinedIcon color="primary" fontSize="small" /><Typography variant="body2" color="text.secondary">Downloadable resource</Typography><IconButton size="small" color="error" onClick={() => removeResource(resource.id)} aria-label="Remove downloadable resource"><DeleteOutlineIcon fontSize="small" /></IconButton></Box>)}</Stack>}</Box>}
       {lesson.type === 'interactive' && <InteractiveHotspotEditor lesson={lesson} onChange={updateLessonDraft} />}
       {lesson.type === 'simulation' && <PlatformEngineLessonPicker lesson={lesson} updateLessonDraft={updateLessonDraft} onSave={onSave} />}
+      {lesson.type === 'stepByStepSolver' && <StepByStepSolverEditor lesson={lesson} onChange={updateLessonDraft} />}
       {lesson.type === 'article' && <><ArticleBlockEditor lesson={lesson} onChange={updateLessonDraft} readImage={readArticleImage} /><Typography color="text.secondary" variant="caption">Estimated read time: {Math.max(1, Math.ceil(getArticleWordCount(lesson.articleBody ?? '') / 200))} min</Typography></>}
       {lesson.type === 'quiz' && <Stack spacing={1.5}>{classSchedule && <><TextField required fullWidth type="datetime-local" label="Quiz start date and time" value={lesson.scheduledAt && Number.isFinite(Date.parse(lesson.scheduledAt)) ? toLocalDateTime(new Date(lesson.scheduledAt)) : ''} onChange={(event) => updateLessonDraft({ ...lesson, scheduledAt: event.target.value ? new Date(event.target.value).toISOString() : '' })} InputLabelProps={{ shrink: true }} /><Typography variant="caption" color="text.secondary">Students can start at this time. The quiz timer starts when they begin and submits automatically when time runs out.</Typography></>}<QuizQuestionsEditor lesson={lesson} updateLessonDraft={updateLessonDraft} /><TextField type="number" label="Pass threshold (%)" size="small" inputProps={{ min: 0, max: 100 }} value={lesson.passThreshold ?? 70} onChange={(event) => updateLessonDraft({ ...lesson, passThreshold: Number(event.target.value) })} sx={{ maxWidth: 220 }} /></Stack>}
       {lesson.type === 'practice' && <PracticeQuestionsEditor lesson={lesson} updateLessonDraft={updateLessonDraft} />}

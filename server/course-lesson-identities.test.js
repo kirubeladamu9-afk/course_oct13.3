@@ -23,6 +23,15 @@ describe('remapReusedCourseLessonIds', () => {
     expect(result[0].lessons[0]).toEqual({ id: 3, title: 'Magnets', type: 'simulation', platformEngineId: 'magnet-lab' })
   })
 
+  it('remaps solver lessons when their authored steps change', () => {
+    const previousModules = [{ id: 1, lessons: [{ id: 8, title: 'Algebra', type: 'stepByStepSolver', stepByStepSolver: { problems: [{ id: 1, steps: [{ correctAnswer: 'x = 2' }] }] } }] }]
+    const nextModules = [{ id: 1, lessons: [{ id: 8, title: 'Algebra', type: 'stepByStepSolver', stepByStepSolver: { problems: [{ id: 1, steps: [{ correctAnswer: 'x = 3' }] }] } }] }]
+
+    const result = remapReusedCourseLessonIds(previousModules, nextModules, [8])
+
+    expect(result[0].lessons[0].id).toBe(9)
+  })
+
   it('preserves existing lesson IDs and does not change lessons without stale progress', () => {
     const previousModules = [{ id: 1, lessons: [{ id: 1, title: 'Existing activity' }] }]
     const nextModules = [{ id: 1, lessons: [{ id: 1, title: 'Existing activity' }, { id: 2, title: 'New activity' }] }]

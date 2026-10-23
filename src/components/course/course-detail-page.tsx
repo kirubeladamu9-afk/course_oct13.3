@@ -15,6 +15,7 @@ import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import VideoLibraryOutlinedIcon from '@mui/icons-material/VideoLibraryOutlined'
+import FormatListNumberedOutlinedIcon from '@mui/icons-material/FormatListNumberedOutlined'
 import { type FC, useEffect, useState } from 'react'
 import { type AdminCourse, type AdminLesson } from '@/components/admin/admin-data'
 import EnrollmentModal from '@/components/course/enrollment-modal'
@@ -36,11 +37,13 @@ const getLessonLabel = (lesson: AdminLesson) => {
   if (lesson.type === 'simulation') return 'Simulation'
   if (lesson.type === 'quiz') return 'Quiz'
   if (lesson.type === 'practice') return 'Practice'
+  if (lesson.type === 'stepByStepSolver') return 'Step-by-Step Solver'
   return 'Live'
 }
 
 const LessonTypeIcon: FC<{ type: AdminLesson['type'] }> = ({ type }) => {
   if (type === 'article') return <MenuBookOutlinedIcon fontSize="small" />
+  if (type === 'stepByStepSolver') return <FormatListNumberedOutlinedIcon fontSize="small" />
   return <PlayCircleOutlineIcon fontSize="small" />
 }
 

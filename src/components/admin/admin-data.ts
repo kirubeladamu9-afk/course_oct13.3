@@ -1,4 +1,54 @@
-export type LessonType = 'video' | 'article' | 'interactive' | 'simulation' | 'quiz' | 'practice' | 'live'
+export type LessonType = 'video' | 'article' | 'interactive' | 'simulation' | 'quiz' | 'practice' | 'live' | 'stepByStepSolver'
+
+export interface StepByStepSolverStep {
+  id: number
+  instruction: string
+  explanation: string
+  hint: string
+  correctiveFeedback: string
+  correctAnswer: string
+}
+
+export interface StepByStepSolverFollowUp {
+  id: number
+  prompt: string
+  correctAnswer: string
+  explanation: string
+  correctiveFeedback: string
+}
+
+export interface StepByStepSolverSession {
+  sessionId: number
+  problemId: number
+  problem: string
+  currentStep: number
+  totalSteps: number
+  completed: boolean
+  revealedSteps: Array<{ index: number; instruction: string; correctAnswer: string; explanation: string }>
+  activeStep: { index: number; instruction: string } | null
+  followUpQuestions: Array<{ id: number; prompt: string }>
+  followUpResults: Record<number, { correct: boolean; feedback: string }>
+}
+
+export interface StepByStepSolverState {
+  problems: Array<{ id: number; prompt: string }>
+  session: StepByStepSolverSession | null
+}
+
+export interface StepByStepSolverProblem {
+  id: number
+  prompt: string
+  steps: StepByStepSolverStep[]
+  followUpQuestions: StepByStepSolverFollowUp[]
+}
+
+export interface StepByStepSolverConfig {
+  problems: StepByStepSolverProblem[]
+}
+
+export interface StepByStepSolverLearnerConfig {
+  problems: Array<{ id: number; prompt: string }>
+}
 
 export type SimulationRule = 'pendulum-period' | 'osmosis-movement' | 'neutralization' | 'projectile-range' | 'linear'
 
@@ -79,6 +129,7 @@ export interface AdminLesson {
   baseImageUrl?: string
   interactiveHotspots?: InteractiveHotspot[]
   simulation?: SimulationConfig
+  stepByStepSolver?: StepByStepSolverConfig
   simulationToolId?: string
   platformEngineId?: string
   curriculumTopic?: string

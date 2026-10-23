@@ -84,7 +84,9 @@ import CourseCardItem from './course-card-item'
 import StudentReviews from './student-reviews'
 import InteractiveDiagramViewer from './interactive-diagram-viewer'
 import SimulationLesson from './simulation-lesson'
-import { type AdminCourse, type ArticleContentBlock, type SimulationConfig } from '@/components/admin/admin-data'
+import StepByStepSolverLesson from './step-by-step-solver-lesson'
+import FormatListNumberedOutlinedIcon from '@mui/icons-material/FormatListNumberedOutlined'
+import { type AdminCourse, type ArticleContentBlock, type SimulationConfig, type StepByStepSolverLearnerConfig } from '@/components/admin/admin-data'
 import { sanitizeArticleHtml } from '@/lib/article-content'
 import { getCurriculumTopicKey, getMathTopic, getMathTopicForLesson, STEM_CURRICULUM, type MathTopic } from '@/components/admin/stem-curriculum'
 import { getPlatformEngine, type PlatformEngineId } from '@/components/stem-lab/platform-engine-library'
@@ -177,7 +179,7 @@ const formatQuizCountdown = (seconds: number) => `${Math.floor(seconds / 60)}:${
  interface DashboardLesson {
   id: number
   title: string
-  type: 'video' | 'article' | 'interactive' | 'simulation' | 'quiz' | 'practice' | 'live'
+  type: 'video' | 'article' | 'interactive' | 'simulation' | 'quiz' | 'practice' | 'live' | 'stepByStepSolver'
   duration: string
   description: string
   articleBlocks?: ArticleContentBlock[]
@@ -187,6 +189,7 @@ const formatQuizCountdown = (seconds: number) => `${Math.floor(seconds / 60)}:${
   baseImageUrl?: string
   interactiveHotspots?: Array<{ id: number; left: string; top: string; label: string; explanation: string }>
   simulation?: SimulationConfig
+  stepByStepSolver?: StepByStepSolverLearnerConfig
   platformEngineId?: string
   curriculumTopic?: string
   topicTitle?: string
@@ -338,7 +341,7 @@ const mapEnrollmentCourse = (enrollment: MyEnrollment): DashboardCourse => ({
       id: lesson.id,
       title: lesson.title,
       type: lesson.type,
-      duration: lesson.duration ? formatDuration(lesson.duration) : lesson.type === 'article' ? 'Article' : lesson.type === 'interactive' ? 'Interactive' : lesson.type === 'simulation' ? 'Simulation' : lesson.type === 'quiz' ? 'Quiz' : lesson.type === 'practice' ? 'Practice' : 'Video',
+      duration: lesson.duration ? formatDuration(lesson.duration) : lesson.type === 'article' ? 'Article' : lesson.type === 'interactive' ? 'Interactive' : lesson.type === 'simulation' ? 'Simulation' : lesson.type === 'quiz' ? 'Quiz' : lesson.type === 'practice' ? 'Practice' : lesson.type === 'stepByStepSolver' ? 'Step-by-Step Solver' : 'Video',
       description: lesson.articleBody || (module.title === 'Biology' && lesson.title === 'Photosynthesis' ? 'See how plants make their own food using sunlight.' : module.title === 'Biology' && lesson.title === 'Cells' ? 'Discover that living things are made of tiny building blocks called cells.' : module.title === 'Chemistry' && lesson.title === 'Chemical Formulae' ? 'Assemble the correct chemical formula from elements.' : module.title === 'Chemistry' && lesson.title === 'Materials Around Us' ? 'Explore the everyday materials that make up our world.' : module.title === 'Chemistry' && lesson.title === 'Solids/Liquids/Gases' ? 'Explore the three states of matter.' : module.title === 'Chemistry' && (lesson.title === 'Properties of Materials' || lesson.title === 'Mixing Materials') ? "Compare materials by their physical properties, and explore what happens when they're mixed." : getMathTopicForLesson(module.title, lesson.curriculumTopic, lesson.title)?.description) || 'Work through this lesson at your own pace.',
       videoUrl: lesson.videoUrl,
       thumbnailUrl: lesson.thumbnailUrl,
@@ -347,6 +350,7 @@ const mapEnrollmentCourse = (enrollment: MyEnrollment): DashboardCourse => ({
       baseImageUrl: lesson.baseImageUrl,
       interactiveHotspots: lesson.interactiveHotspots,
       simulation: lesson.simulation,
+      stepByStepSolver: lesson.stepByStepSolver,
       platformEngineId: lesson.platformEngineId,
       curriculumTopic: lesson.curriculumTopic,
       topicTitle: module.title === 'Physics' ? getPhysicsActivityTopic(lesson.curriculumTopic, lesson.title) : lesson.title,
@@ -436,6 +440,7 @@ const iconForLesson = (type: DashboardLesson['type']) => {
   if (type === 'article' || type === 'interactive') return <ArticleOutlinedIcon fontSize="small" />
   if (type === 'quiz') return <QuizOutlinedIcon fontSize="small" />
   if (type === 'practice') return <QuizOutlinedIcon fontSize="small" />
+  if (type === 'stepByStepSolver') return <FormatListNumberedOutlinedIcon fontSize="small" />
   return <PlayCircleOutlineIcon fontSize="small" />
 }
 
@@ -1996,6 +2001,12 @@ const CourseViewer: FC<{ course: DashboardCourse; enrollmentId: number; progress
   if ((selectedLesson.type as string) === 'quiz') return <>
     {!quizAttempt && <Box component="button" type="button" onClick={onBack} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, p: 0, mb: 3, border: 0, background: 'none', color: 'primary.main', cursor: 'pointer', font: 'inherit' }}><ArrowBackIcon fontSize="small" /> Back to Course</Box>}
     {readOnly || isQuizFinished ? <QuizResultReview lesson={selectedLesson} result={quizResult} passingScore={passingScore} /> : <QuizLessonView lesson={selectedLesson} attempt={quizAttempt} onBegin={async () => { const next = await onQuizStart(selectedLesson.id); setQuizAttempt(next); return next }} onSave={(questionId, answer) => quizAttempt ? onQuizAnswer(selectedLesson.id, quizAttempt.id, questionId, answer) : Promise.resolve()} onSubmit={async (answers, disqualified) => { if (!quizAttempt) return null; const submitted = await onQuizSubmit(selectedLesson.id, quizAttempt.id, answers, disqualified); if (submitted) { setQuizAttempt(null); onQuizActiveChange(false); if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen().catch(() => undefined) }; return submitted }} onViolation={(violation) => quizAttempt ? onQuizViolation(selectedLesson.id, quizAttempt.id, violation) : Promise.resolve()} onActiveChange={onQuizActiveChange} now={now} requiresSchedule={isClass} result={quizResult} passingScore={passingScore} strikeThreshold={3} />}
+  </>
+
+  if (selectedLesson.type === 'stepByStepSolver') return <>
+    <Box component="button" type="button" onClick={onBack} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, p: 0, mb: 3, border: 0, background: 'none', color: 'primary.main', cursor: 'pointer', font: 'inherit' }}><ArrowBackIcon fontSize="small" /> Back to My Courses</Box>
+    <Box sx={{ mb: 3 }}><Typography variant="h4" sx={{ mb: 1 }}>{course.title}</Typography><Typography color="text.secondary">{selectedLesson.title} · {selectedLesson.description}</Typography></Box>
+    <StepByStepSolverLesson key={selectedLesson.id} config={selectedLesson.stepByStepSolver ?? { problems: [] }} enrollmentId={enrollmentId} lessonId={selectedLesson.id} onCompleted={() => { void onCompleteLesson(selectedLesson.id) }} />
   </>
 
   return <>

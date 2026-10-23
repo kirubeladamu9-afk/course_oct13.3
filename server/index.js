@@ -6,6 +6,7 @@ import express from 'express'
 import postgres from 'postgres'
 import { getChangedCourseLessonIds, remapReusedCourseLessonIds } from './course-lesson-identities.js'
 import { getLatestSubmittedQuizAttempts } from './quiz-performance.js'
+import { areSolverFollowUpsComplete, getStepByStepSolverSessionView, isValidStepByStepSolverConfig, normalizeSolverAnswer } from './step-by-step-solver-engine.js'
 import { expireQuizAnswers, getQuizDeadline, getQuizTimeLimitSeconds, hasScheduledClassQuizzes, isQuizExpired } from './quiz-timing.js'
 
 const databaseUrl = process.env.DATABASE_URL
@@ -417,7 +418,35 @@ const initializeDatabase = async () => {
       PRIMARY KEY (enrollment_id, lesson_id)
     )
   `
-
+  await sql`
+    CREATE TABLE IF NOT EXISTS step_by_step_solver_sessions (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      enrollment_id BIGINT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
+      lesson_id BIGINT NOT NULL,
+      problem_id BIGINT NOT NULL,
+      current_step INTEGER NOT NULL DEFAULT 0 CHECK (current_step >= 0),
+      revealed_steps JSONB NOT NULL DEFAULT '[]'::jsonb,
+      follow_up_results JSONB NOT NULL DEFAULT '{}'::jsonb,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      completed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS step_by_step_solver_active_session_idx ON step_by_step_solver_sessions (enrollment_id, lesson_id) WHERE is_active = TRUE`
+  await sql`CREATE INDEX IF NOT EXISTS step_by_step_solver_session_history_idx ON step_by_step_solver_sessions (enrollment_id, lesson_id, created_at DESC)`
+  await sql`
+    CREATE TABLE IF NOT EXISTS step_by_step_solver_attempts (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      session_id BIGINT NOT NULL REFERENCES step_by_step_solver_sessions(id) ON DELETE CASCADE,
+      attempt_kind TEXT NOT NULL CHECK (attempt_kind IN ('step', 'reveal', 'follow-up')),
+      item_id BIGINT NOT NULL,
+      answer TEXT NOT NULL DEFAULT '',
+      is_correct BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS step_by_step_solver_attempt_session_idx ON step_by_step_solver_attempts (session_id, created_at)`
 
   await sql`
     CREATE TABLE IF NOT EXISTS class_attendance (
@@ -903,8 +932,9 @@ const parseCoursePayload = (body) => {
   const learningOutcomes = Array.isArray(body.learningOutcomes) && body.learningOutcomes.every((value) => typeof value === 'string') ? body.learningOutcomes : null
   const requirements = Array.isArray(body.requirements) && body.requirements.every((value) => typeof value === 'string') ? body.requirements : null
   const modules = Array.isArray(body.modules) ? body.modules : null
+  const hasInvalidSolverLesson = modules && getCourseLessons(modules).some((lesson) => lesson?.type === 'stepByStepSolver' && !isValidStepByStepSolverConfig(lesson.stepByStepSolver))
 
-  if (!title || !category || !level || !isValidCourseCover(cover) || !status || !Number.isFinite(price) || price < 0 || !Number.isInteger(students) || students < 0 || !learningOutcomes || !requirements || !modules || typeof body.description !== 'string' || typeof body.longDescription !== 'string' || typeof body.certificate !== 'boolean') {
+  if (!title || !category || !level || !isValidCourseCover(cover) || !status || !Number.isFinite(price) || price < 0 || !Number.isInteger(students) || students < 0 || !learningOutcomes || !requirements || !modules || hasInvalidSolverLesson || typeof body.description !== 'string' || typeof body.longDescription !== 'string' || typeof body.certificate !== 'boolean') {
     return null
   }
 
@@ -950,11 +980,12 @@ const sanitizeModulesForLearner = (modules) => Array.isArray(modules)
   ? modules.map((module) => ({
     ...module,
     lessons: Array.isArray(module?.lessons)
-      ? module.lessons.map(({ quizQuestions, ...lesson }) => ({
+      ? module.lessons.map(({ quizQuestions, stepByStepSolver, ...lesson }) => ({
         ...lesson,
         quizQuestions: Array.isArray(quizQuestions)
           ? quizQuestions.map(({ correctOption, ...question }) => question)
           : quizQuestions,
+        ...(lesson.type === 'stepByStepSolver' ? { stepByStepSolver: { problems: (stepByStepSolver?.problems ?? []).map(({ id, prompt }) => ({ id, prompt })) } } : {}),
       }))
       : [],
   }))
@@ -2014,6 +2045,162 @@ const selectedOptionFromRecord = (record, question) => {
   return Number.isInteger(value) && value >= 0 && value < (question?.options?.length ?? 0) ? value : null
 }
 
+const getOwnedSolverLesson = async (transaction, userId, enrollmentId, lessonId) => {
+  const enrollment = await getOwnedEnrollment(transaction, userId, enrollmentId)
+  if (!enrollment) return { missingEnrollment: true }
+  const lesson = findCourseLesson(enrollment.modules, lessonId)
+  if (!lesson || lesson.type !== 'stepByStepSolver' || !isValidStepByStepSolverConfig(lesson.stepByStepSolver)) return { error: 'Step-by-Step Solver lesson not found.' }
+  return { enrollment, lesson, config: lesson.stepByStepSolver }
+}
+
+const getOwnedSolverSession = async (transaction, userId, enrollmentId, lessonId, sessionId, lock = false) => {
+  const owned = await getOwnedSolverLesson(transaction, userId, enrollmentId, lessonId)
+  if (owned.missingEnrollment || owned.error) return owned
+  const [session] = lock
+    ? await transaction`SELECT * FROM step_by_step_solver_sessions WHERE id = ${sessionId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} FOR UPDATE`
+    : await transaction`SELECT * FROM step_by_step_solver_sessions WHERE id = ${sessionId} AND enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}`
+  const problem = owned.config.problems.find((item) => item.id === Number(session?.problem_id))
+  return session && problem ? { ...owned, session, problem } : { error: 'Solver session not found.' }
+}
+
+app.get('/api/enrollments/:enrollmentId/lessons/:lessonId/step-by-step-solver', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  if (enrollmentId === null || lessonId === null) return response.status(400).json({ message: 'Invalid solver lesson.' })
+  const result = await sql.begin(async (transaction) => {
+    const owned = await getOwnedSolverLesson(transaction, request.userId, enrollmentId, lessonId)
+    if (owned.missingEnrollment) return null
+    if (owned.error) return { error: owned.error }
+    const [record] = await transaction`SELECT * FROM step_by_step_solver_sessions WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND (is_active = TRUE OR completed_at IS NOT NULL) ORDER BY created_at DESC LIMIT 1`
+    const problem = owned.config.problems.find((item) => item.id === Number(record?.problem_id))
+    return { problems: owned.config.problems.map(({ id, prompt }) => ({ id, prompt })), session: getStepByStepSolverSessionView(record, problem) }
+  })
+  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (result.error) return response.status(404).json({ message: result.error })
+  return response.json(result)
+})
+
+app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/step-by-step-solver/sessions', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  const problemId = parseEnrollmentId(String(request.body?.problemId ?? ''))
+  if (enrollmentId === null || lessonId === null || problemId === null) return response.status(400).json({ message: 'Choose a valid worked problem.' })
+  const result = await sql.begin(async (transaction) => {
+    const owned = await getOwnedSolverLesson(transaction, request.userId, enrollmentId, lessonId)
+    if (owned.missingEnrollment) return null
+    if (owned.error) return { error: owned.error }
+    const problem = owned.config.problems.find((item) => item.id === problemId)
+    if (!problem) return { error: 'Worked problem not found.' }
+    await transaction`UPDATE step_by_step_solver_sessions SET is_active = FALSE, updated_at = NOW() WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND is_active = TRUE`
+    const [record] = await transaction`
+      INSERT INTO step_by_step_solver_sessions (enrollment_id, lesson_id, problem_id)
+      VALUES (${enrollmentId}, ${lessonId}, ${problemId})
+      RETURNING *
+    `
+    await transaction`
+      INSERT INTO student_lesson_progress (enrollment_id, lesson_id)
+      VALUES (${enrollmentId}, ${lessonId})
+      ON CONFLICT (enrollment_id, lesson_id) DO UPDATE SET last_accessed_at = NOW()
+    `
+    return getStepByStepSolverSessionView(record, problem)
+  })
+  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (result.error) return response.status(404).json({ message: result.error })
+  return response.status(201).json(result)
+})
+
+app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/step-by-step-solver/sessions/:sessionId/answer', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  const sessionId = parseEnrollmentId(request.params.sessionId)
+  const answer = request.body?.answer
+  if (enrollmentId === null || lessonId === null || sessionId === null || typeof answer !== 'string' || !answer.trim() || answer.length > 5000) return response.status(400).json({ message: 'Enter an answer up to 5000 characters.' })
+  const result = await sql.begin(async (transaction) => {
+    const owned = await getOwnedSolverSession(transaction, request.userId, enrollmentId, lessonId, sessionId, true)
+    if (owned.missingEnrollment) return null
+    if (owned.error) return { error: owned.error }
+    const { session, problem } = owned
+    const stepIndex = Number(session.current_step)
+    const step = problem.steps[stepIndex]
+    if (!session.is_active || session.completed_at || !step) return { error: 'There is no active solution step.' }
+    const correct = normalizeSolverAnswer(answer) === normalizeSolverAnswer(step.correctAnswer)
+    await transaction`INSERT INTO step_by_step_solver_attempts (session_id, attempt_kind, item_id, answer, is_correct) VALUES (${sessionId}, 'step', ${step.id}, ${answer.trim()}, ${correct})`
+    if (!correct) return { session: getStepByStepSolverSessionView(session, problem), correct: false, feedback: step.correctiveFeedback }
+    const revealedSteps = [...(deserializeJson(session.revealed_steps) ?? []), { index: stepIndex, instruction: step.instruction, correctAnswer: step.correctAnswer, explanation: step.explanation }]
+    const [updated] = await transaction`UPDATE step_by_step_solver_sessions SET current_step = ${stepIndex + 1}, revealed_steps = ${JSON.stringify(revealedSteps)}::jsonb, updated_at = NOW() WHERE id = ${sessionId} RETURNING *`
+    return { session: getStepByStepSolverSessionView(updated, problem), correct: true, feedback: 'Correct. The next step is ready.' }
+  })
+  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (result.error) return response.status(409).json({ message: result.error })
+  return response.json(result)
+})
+
+app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/step-by-step-solver/sessions/:sessionId/reveal', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  const sessionId = parseEnrollmentId(request.params.sessionId)
+  if (enrollmentId === null || lessonId === null || sessionId === null) return response.status(400).json({ message: 'Invalid solver session.' })
+  const result = await sql.begin(async (transaction) => {
+    const owned = await getOwnedSolverSession(transaction, request.userId, enrollmentId, lessonId, sessionId, true)
+    if (owned.missingEnrollment) return null
+    if (owned.error) return { error: owned.error }
+    const { session, problem } = owned
+    const stepIndex = Number(session.current_step)
+    const step = problem.steps[stepIndex]
+    if (!session.is_active || session.completed_at || !step) return { error: 'There is no active solution step to reveal.' }
+    const revealedSteps = [...(deserializeJson(session.revealed_steps) ?? []), { index: stepIndex, instruction: step.instruction, correctAnswer: step.correctAnswer, explanation: step.explanation }]
+    const [updated] = await transaction`UPDATE step_by_step_solver_sessions SET current_step = ${stepIndex + 1}, revealed_steps = ${JSON.stringify(revealedSteps)}::jsonb, updated_at = NOW() WHERE id = ${sessionId} RETURNING *`
+    await transaction`INSERT INTO step_by_step_solver_attempts (session_id, attempt_kind, item_id) VALUES (${sessionId}, 'reveal', ${step.id})`
+    return getStepByStepSolverSessionView(updated, problem)
+  })
+  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (result.error) return response.status(409).json({ message: result.error })
+  return response.json(result)
+})
+
+app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/step-by-step-solver/sessions/:sessionId/hint', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  const sessionId = parseEnrollmentId(request.params.sessionId)
+  if (enrollmentId === null || lessonId === null || sessionId === null) return response.status(400).json({ message: 'Invalid solver session.' })
+  const owned = await sql.begin((transaction) => getOwnedSolverSession(transaction, request.userId, enrollmentId, lessonId, sessionId))
+  if (!owned || owned.missingEnrollment) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (owned.error) return response.status(404).json({ message: owned.error })
+  const step = owned.problem.steps[Number(owned.session.current_step)]
+  if (!owned.session.is_active || owned.session.completed_at || !step) return response.status(409).json({ message: 'There is no active step for a hint.' })
+  return response.json({ hint: step.hint })
+})
+
+app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/step-by-step-solver/sessions/:sessionId/follow-up', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  const sessionId = parseEnrollmentId(request.params.sessionId)
+  const questionId = parseEnrollmentId(String(request.body?.questionId ?? ''))
+  const answer = request.body?.answer
+  if (enrollmentId === null || lessonId === null || sessionId === null || questionId === null || typeof answer !== 'string' || !answer.trim() || answer.length > 5000) return response.status(400).json({ message: 'Enter a valid answer for the follow-up problem.' })
+  const result = await sql.begin(async (transaction) => {
+    const owned = await getOwnedSolverSession(transaction, request.userId, enrollmentId, lessonId, sessionId, true)
+    if (owned.missingEnrollment) return null
+    if (owned.error) return { error: owned.error }
+    const { session, problem } = owned
+    if (!session.is_active || session.completed_at || Number(session.current_step) < problem.steps.length) return { error: 'Finish the worked steps before attempting practice problems.' }
+    const question = problem.followUpQuestions.find((item) => item.id === questionId)
+    if (!question) return { error: 'Follow-up problem not found.' }
+    const previousResult = deserializeJson(session.follow_up_results)?.[String(questionId)]
+    if (previousResult?.correct) return { session: getStepByStepSolverSessionView(session, problem), correct: true, feedback: previousResult.feedback }
+    const correct = normalizeSolverAnswer(answer) === normalizeSolverAnswer(question.correctAnswer)
+    const feedback = correct ? question.explanation : question.correctiveFeedback
+    await transaction`INSERT INTO step_by_step_solver_attempts (session_id, attempt_kind, item_id, answer, is_correct) VALUES (${sessionId}, 'follow-up', ${questionId}, ${answer.trim()}, ${correct})`
+    const followUpResults = { ...(deserializeJson(session.follow_up_results) ?? {}), [String(questionId)]: { correct, feedback } }
+    const completed = areSolverFollowUpsComplete(problem, followUpResults)
+    const [updated] = await transaction`UPDATE step_by_step_solver_sessions SET follow_up_results = ${JSON.stringify(followUpResults)}::jsonb, completed_at = ${completed ? sql`NOW()` : sql`NULL`}, is_active = ${!completed}, updated_at = NOW() WHERE id = ${sessionId} RETURNING *`
+    if (completed) await transaction`UPDATE student_lesson_progress SET completed_at = COALESCE(completed_at, NOW()), last_accessed_at = NOW() WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}`
+    return { session: getStepByStepSolverSessionView(updated, problem), correct, feedback }
+  })
+  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (result.error) return response.status(409).json({ message: result.error })
+  return response.json(result)
+})
 
 app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/engagement', requireAuthenticated, async (request, response) => {
   const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
@@ -2080,6 +2267,10 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/complete', requireAut
     const lesson = findCourseLesson(enrollment.modules, lessonId)
     if (!lesson) return { error: 'Lesson not found.' }
 
+    if (lesson.type === 'stepByStepSolver') {
+      const [completedSession] = await transaction`SELECT id FROM step_by_step_solver_sessions WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND completed_at IS NOT NULL LIMIT 1`
+      if (!completedSession) return { error: 'Complete the solver problem and follow-up practice before completing this lesson.' }
+    }
     if (lesson.type === 'quiz') {
       const [completedAttempt] = await transaction`
         SELECT id
@@ -2955,7 +3146,7 @@ app.put('/api/tutor/courses/:id/curriculum', requireTutor, async (request, respo
   const courseId = parseCourseId(request.params.id)
   const modules = request.body?.modules
   const lessons = getCourseLessons(modules)
-  if (courseId === null || !Array.isArray(modules) || lessons.some((lesson) => !['video', 'article', 'interactive', 'quiz'].includes(lesson?.type))) {
+  if (courseId === null || !Array.isArray(modules) || lessons.some((lesson) => !['video', 'article', 'interactive', 'quiz', 'stepByStepSolver'].includes(lesson?.type) || (lesson?.type === 'stepByStepSolver' && !isValidStepByStepSolverConfig(lesson.stepByStepSolver)))) {
     return response.status(400).json({ message: 'Enter valid course curriculum lessons.' })
   }
   const [updated] = await sql`
@@ -2972,7 +3163,7 @@ app.put('/api/tutor/classes/:id/curriculum', requireTutor, async (request, respo
   const classId = parseCourseId(request.params.id)
   const modules = request.body?.modules
   const lessons = getCourseLessons(modules)
-  if (classId === null || !Array.isArray(modules) || lessons.some((lesson) => !['video', 'article', 'interactive', 'quiz', 'live'].includes(lesson?.type)) || !hasScheduledClassQuizzes(modules)) {
+  if (classId === null || !Array.isArray(modules) || lessons.some((lesson) => !['video', 'article', 'interactive', 'quiz', 'live', 'stepByStepSolver'].includes(lesson?.type) || (lesson?.type === 'stepByStepSolver' && !isValidStepByStepSolverConfig(lesson.stepByStepSolver))) || !hasScheduledClassQuizzes(modules)) {
     return response.status(400).json({ message: 'Enter valid class curriculum lessons.' })
   }
   const [updated] = await sql`
@@ -4236,13 +4427,14 @@ const parseClassPayload = (body, fixedStartDate, previousModules = []) => {
   const schedule = body.schedule
   const meetingLink = typeof body.meeting_link === 'string' ? body.meeting_link.trim() : ''
   const modules = Array.isArray(body.modules) ? body.modules : []
+  const hasInvalidSolverLesson = getCourseLessons(modules).some((lesson) => lesson?.type === 'stepByStepSolver' && !isValidStepByStepSolverConfig(lesson.stepByStepSolver))
   const price = Number(body.price)
   const published = body.published
   const gradeLevel = body.grade_level ?? null
   const examDate = programId === 'ministry-exam-prep' ? body.exam_date ?? null : null
   const today = new Date().toISOString().slice(0, 10)
   const validSchedule = schedule && typeof schedule === 'object' && !Array.isArray(schedule) && isValidClassDate(schedule.startDate) && isValidClassDate(schedule.endDate) && (schedule.startDate >= today || schedule.startDate === fixedStartDate) && schedule.endDate >= today && schedule.endDate > schedule.startDate
-  if (!title || title.length > 200 || (cover && !isValidCourseCover(cover)) || !classPrograms.includes(programId) || !Number.isInteger(tutorId) || tutorId < 1 || !Number.isInteger(capacity) || capacity < 1 || !validSchedule || !hasScheduledClassQuizzes(modules, previousModules) || meetingLink.length > 2000 || !Number.isFinite(price) || price < 0 || typeof published !== 'boolean' || (gradeLevel !== null && (!Number.isInteger(gradeLevel) || gradeLevel < 1 || gradeLevel > 12)) || (examDate !== null && !isValidClassDate(examDate))) return null
+  if (hasInvalidSolverLesson || !title || title.length > 200 || (cover && !isValidCourseCover(cover)) || !classPrograms.includes(programId) || !Number.isInteger(tutorId) || tutorId < 1 || !Number.isInteger(capacity) || capacity < 1 || !validSchedule || !hasScheduledClassQuizzes(modules, previousModules) || meetingLink.length > 2000 || !Number.isFinite(price) || price < 0 || typeof published !== 'boolean' || (gradeLevel !== null && (!Number.isInteger(gradeLevel) || gradeLevel < 1 || gradeLevel > 12)) || (examDate !== null && !isValidClassDate(examDate))) return null
   return { program_id: programId, title, cover, tutor_id: tutorId, capacity, schedule, meeting_link: meetingLink, modules, price, published, grade_level: gradeLevel, exam_date: examDate }
 }
 
