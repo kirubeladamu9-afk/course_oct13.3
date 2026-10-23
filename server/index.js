@@ -1089,8 +1089,7 @@ const getAdminWeakAreas = async (classId = null) => {
     SELECT enrollments.student_id AS "studentId",
            CASE WHEN classes.id IS NULL THEN courses.modules ELSE classes.modules END AS modules,
            quiz_summary."quizAttempts",
-           practice_summary."practiceAnswers",
-
+           practice_summary."practiceAnswers"
     FROM enrollments
     INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
     LEFT JOIN courses ON courses.id = enrollments.course_id
