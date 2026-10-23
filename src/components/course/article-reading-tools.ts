@@ -19,13 +19,11 @@ type HighlightConstructor = new (range: Range) => unknown
 const HIGHLIGHT_NAME = 'article-read-aloud'
 const BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, figcaption, div'
 const SENTENCE_PATTERN = /[^.!?]+(?:[.!?]+["'”’)\]]*)?|[.!?]+/g
-const WORD_PATTERN = /^[\p{L}\p{M}'’-]+$/u
+const WORD_CHARACTER_PATTERN = /[\p{L}\p{M}'’-]/u
 
 export const normalizeWord = (word: string) => word.trim().toLowerCase().replace(/^['’-]+|['’-]+$/g, '')
 
-export const isSingleWord = (text: string) => WORD_PATTERN.test(text)
-
-const isWordCharacter = (character: string | undefined) => Boolean(character && /[\p{L}\p{M}'’-]/u.test(character))
+const isWordCharacter = (character: string | undefined) => Boolean(character && WORD_CHARACTER_PATTERN.test(character))
 
 const caretAt = (x: number, y: number): { node: Node; offset: number } | null => {
   const range = document.caretRangeFromPoint?.(x, y)
@@ -93,7 +91,7 @@ const highlightSegment = (segment: ReadingSegment) => {
 
 const clearHighlight = () => highlightRegistry()?.delete(HIGHLIGHT_NAME)
 
-export const useReadAloud = (rootRef: RefObject<HTMLElement | null>, resetKey: unknown) => {
+export const useReadAloud = (rootRef: RefObject<HTMLElement | null>) => {
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window
   const [status, setStatus] = useState<ReadAloudStatus>('idle')
   const [rate, setRate] = useState(1)
@@ -108,7 +106,7 @@ export const useReadAloud = (rootRef: RefObject<HTMLElement | null>, resetKey: u
     setStatus('idle')
   }, [supported])
 
-  const speakFrom = useCallback((session: number, index: number, speed: number) => {
+  const speakFrom: (session: number, index: number, speed: number) => void = useCallback((session, index, speed) => {
     const segment = segmentsRef.current[index]
     if (!segment) {
       stop()
@@ -141,14 +139,16 @@ export const useReadAloud = (rootRef: RefObject<HTMLElement | null>, resetKey: u
   }, [rootRef, supported, speakFrom, rate])
 
   const pause = useCallback(() => {
+    if (!supported) return
     window.speechSynthesis.pause()
     setStatus('paused')
-  }, [])
+  }, [supported])
 
   const resume = useCallback(() => {
+    if (!supported) return
     window.speechSynthesis.resume()
     setStatus('playing')
-  }, [])
+  }, [supported])
 
   const changeRate = useCallback((next: number) => {
     setRate(next)
@@ -159,7 +159,7 @@ export const useReadAloud = (rootRef: RefObject<HTMLElement | null>, resetKey: u
     speakFrom(sessionRef.current, indexRef.current, next)
   }, [speakFrom, status])
 
-  useEffect(() => stop, [resetKey, stop])
+  useEffect(() => stop, [stop])
 
   return { supported, status, rate, setRate: changeRate, play, pause, resume, stop }
 }

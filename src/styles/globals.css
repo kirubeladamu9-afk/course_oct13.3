@@ -32,6 +32,11 @@
   --color-scrollbar-hover: #62736e;
 }
 
+::highlight(article-read-aloud) {
+  background-color: rgba(246, 183, 60, 0.45);
+  color: inherit;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
