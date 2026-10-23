@@ -25,6 +25,8 @@ interface OverviewCourse {
 interface OverviewClass {
   id: number
   title: string
+  category: string
+  level: string
   tutor: string
   progress: number
 }
@@ -108,7 +110,7 @@ const LearningCompleteBanner = ({ lessonCount, averageQuizScore, learningStreak 
 const StudentDashboardOverview = ({ displayName, courses, classes, lessonCount, averageQuizScore, quizCount, quizAverageNeedsAttention, learningStreak, enrollmentCount, session, readiness, onOpenCourse, onOpenClass, onSelectView, children }: StudentDashboardOverviewProps) => {
   const learningItems: LearningSlide[] = [
     ...courses.map((course) => ({ key: `course-${course.id}`, kind: 'course' as const, id: course.id, title: course.title, meta: `${course.category} · ${course.level} · with ${course.tutor}`, progress: course.progress })),
-    ...classes.map((classItem) => ({ key: `class-${classItem.id}`, kind: 'class' as const, id: classItem.id, title: classItem.title, meta: `with ${classItem.tutor}`, progress: classItem.progress })),
+    ...classes.map((classItem) => ({ key: `class-${classItem.id}`, kind: 'class' as const, id: classItem.id, title: classItem.title, meta: `${classItem.category} · ${classItem.level} · with ${classItem.tutor}`, progress: classItem.progress })),
   ]
   const incompleteItems = learningItems.filter((item) => item.progress < 100)
   const slideCount = incompleteItems.length
