@@ -1,6 +1,5 @@
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined'
-import FavoriteBorderRoundedIcon from '@mui/icons-material/FavoriteBorderRounded'
 import MailOutlineIcon from '@mui/icons-material/MailOutline'
 import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
 import Box from '@mui/material/Box'
@@ -36,17 +35,9 @@ const AboutPage: FC = () => <Box component="main" sx={{ backgroundColor: (theme)
           <Chip icon={<AutoAwesomeOutlinedIcon />} label="ABOUT COURSESPACE" size="small" sx={{ mb: 2.5, px: 0.5, color: 'common.white', backgroundColor: 'rgba(255,255,255,.12)', '& .MuiChip-icon': { color: '#b9f0dd' }, fontWeight: 700, letterSpacing: '.06em' }} />
           <Typography component="h1" sx={{ maxWidth: 700, mb: 2, fontSize: { xs: '2.5rem', sm: '3.25rem', md: '4rem' }, fontWeight: 800, lineHeight: 1.05, letterSpacing: '-.045em' }}>Learning that meets you where you are.</Typography>
           <Typography sx={{ maxWidth: 590, mb: 3.5, color: 'rgba(255,255,255,.78)', fontSize: { xs: '1rem', md: '1.1rem' }, lineHeight: 1.7 }}>CourseSpace helps learners build practical skills through clear courses, supportive tutors, and relaxed practice.</Typography>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
-            <Button variant="contained" onClick={() => navigateTo('/courses')} endIcon={<ArrowForwardRoundedIcon />} sx={{ px: 2.5, py: 1.15, color: '#123e39', backgroundColor: '#c8f1df', fontWeight: 700, '&:hover': { backgroundColor: '#a9e7ce' } }}>Explore courses</Button>
-            <Button variant="outlined" href="/contact-us" sx={{ px: 2.5, py: 1.15, color: 'common.white', borderColor: 'rgba(255,255,255,.4)', fontWeight: 700, '&:hover': { borderColor: 'common.white', backgroundColor: 'rgba(255,255,255,.08)' } }}>Contact us</Button>
-          </Stack>
         </Grid>
-        <Grid item xs={12} md={5}>
-          <Paper elevation={0} sx={{ p: { xs: 2.5, sm: 3.5 }, border: 1, borderColor: 'rgba(255,255,255,.18)', borderRadius: 3.5, color: 'common.white', backgroundColor: 'rgba(255,255,255,.09)', backdropFilter: 'blur(8px)' }}>
-            <Box sx={{ display: 'grid', placeItems: 'center', width: 48, height: 48, mb: 2.5, borderRadius: 2, color: '#c8f1df', backgroundColor: 'rgba(255,255,255,.12)' }}><FavoriteBorderRoundedIcon /></Box>
-            <Typography variant="h5" sx={{ mb: 1, fontWeight: 750 }}>Your success matters</Typography>
-            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,.75)', lineHeight: 1.65 }}>We build every course, practice session, and tutor relationship around helping you keep moving forward.</Typography>
-          </Paper>
+        <Grid item xs={12} md={5} sx={{ position: 'relative', minHeight: { xs: 220, sm: 280, md: 360 } }}>
+          <Box component="img" src="/images/about-study-group-banner.webp" alt="Students studying together around a laptop" sx={{ position: 'absolute', top: 77, right: 0, height: '100%', width: 'auto', maxWidth: 'none' }} />
         </Grid>
       </Grid>
     </Container>
