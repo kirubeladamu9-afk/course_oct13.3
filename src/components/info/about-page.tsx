@@ -96,13 +96,13 @@ const AboutPage: FC = () => {
 
     <Grid container spacing={2} alignItems="center" sx={{ mb: { xs: 4, md: 5 } }}>
       <Grid item xs={12} sm={4}>
-        <Box component="img" src="/images/home-feature.png" alt="Student learning with a notebook" sx={{ display: 'block', width: '100%', height: { xs: 210, sm: 190, md: 220 }, borderRadius: 3, objectFit: 'cover' }} />
+        <Box component="img" src="/images/about-students-collaborating.webp" alt="Students collaborating around a laptop" sx={{ display: 'block', width: '100%', height: { xs: 210, sm: 190, md: 220 }, borderRadius: 3, objectFit: 'cover' }} />
       </Grid>
       <Grid item xs={12} sm={4}>
-        <Box component="img" src="/images/about-study-group-banner.webp" alt="Students learning together around a laptop" sx={{ display: 'block', width: '100%', height: { xs: 230, sm: 230, md: 270 }, borderRadius: 3, objectFit: 'cover' }} />
+        <Box component="img" src="/images/about-ai-classroom.webp" alt="Students learning with computers in a classroom" sx={{ display: 'block', width: '100%', height: { xs: 230, sm: 230, md: 270 }, borderRadius: 3, objectFit: 'cover' }} />
       </Grid>
       <Grid item xs={12} sm={4}>
-        <Box component="img" src="/images/home-testimonial.png" alt="Student sharing their learning experience" sx={{ display: 'block', width: '100%', height: { xs: 210, sm: 190, md: 220 }, borderRadius: 3, objectFit: 'cover' }} />
+        <Box component="img" src="/images/about-young-learners.webp" alt="Young learners exploring a laptop together" sx={{ display: 'block', width: '100%', height: { xs: 210, sm: 190, md: 220 }, borderRadius: 3, objectFit: 'cover' }} />
       </Grid>
     </Grid>
 
@@ -128,13 +128,13 @@ const AboutPage: FC = () => {
         </Stack>
       </Grid>
       <Grid item xs={12} md={6}>
-        <Box component="img" src="/images/courses/annie-spratt-QckxruozjRg-unsplash.jpg" alt="Learners working together on computers" sx={{ display: 'block', width: '100%', height: { xs: 240, md: 330 }, borderRadius: 3, objectFit: 'cover' }} />
+        <Box component="img" src="/images/about-ai-classroom.webp" alt="Students using computers in a classroom" sx={{ display: 'block', width: '100%', height: { xs: 240, md: 330 }, borderRadius: 3, objectFit: 'cover' }} />
       </Grid>
     </Grid>
 
     <Grid container spacing={{ xs: 4, md: 7 }} alignItems="center" sx={{ mt: { xs: 4, md: 6 } }}>
       <Grid item xs={12} md={6}>
-        <Box component="img" src="/images/contact-support-banner.webp" alt="Support professional ready to help a learner" sx={{ display: 'block', width: '100%', height: { xs: 240, md: 330 }, borderRadius: 3, objectFit: 'cover' }} />
+        <Box component="img" src="/images/about-young-learners.webp" alt="Young students learning together" sx={{ display: 'block', width: '100%', height: { xs: 240, md: 330 }, borderRadius: 3, objectFit: 'cover' }} />
       </Grid>
       <Grid item xs={12} md={6}>
         <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: .8 }}>SUPPORT THAT GROWS WITH YOU</Typography>
