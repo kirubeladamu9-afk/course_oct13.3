@@ -115,7 +115,7 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mt: { xs: 1.5, sm: 2, md: 5 } }}>
                 <Typography variant="caption" color="text.secondary">© {new Date().getFullYear()} Coursesharp</Typography>
-                <Link href="/contact-us" underline="hover" variant="caption" color="text.secondary">Contact Us</Link>
+                <Link href="/contact-us" onClick={(event) => { event.preventDefault(); navigateTo('/contact-us') }} underline="hover" variant="caption" color="text.secondary">Contact Us</Link>
               </Box>
             </>
           )}

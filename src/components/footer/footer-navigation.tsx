@@ -2,6 +2,7 @@ import Grid from '@mui/material/Grid'
 import MuiLink from '@mui/material/Link'
 import Typography from '@mui/material/Typography'
 import type { Navigation } from '@/interfaces/navigation'
+import { navigateTo } from '@/lib/navigation'
 import FooterSectionTitle from './footer-section-title'
 import type { FC } from 'react'
 
@@ -32,7 +33,7 @@ interface NavigationItemProps {
 }
 
 const NavigationItem: FC<NavigationItemProps> = ({ label, path }) => (
-  <MuiLink href={path} underline="hover" sx={{ display: 'block', mb: 1, color: 'text.secondary', fontSize: '0.875rem' }}>
+  <MuiLink href={path} onClick={path.includes('#') ? undefined : (event) => { event.preventDefault(); navigateTo(path) }} underline="hover" sx={{ display: 'block', mb: 1, color: 'text.secondary', fontSize: '0.875rem' }}>
     {label}
   </MuiLink>
 )
