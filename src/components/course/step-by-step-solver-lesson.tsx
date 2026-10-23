@@ -40,8 +40,9 @@ const StepByStepSolverLesson = ({ config, enrollmentId, lessonId, onCompleted }:
     void getStepByStepSolverState(enrollmentId, lessonId).then((state) => {
       if (!active) return
       setSession(state.session)
-      setCompletedProblemIds(state.completedProblemIds)
-      if (state.problems.length > 0 && state.problems.every((problem) => state.completedProblemIds.includes(problem.id))) notifyCompletion()
+      const finished = state.completedProblemIds ?? []
+      setCompletedProblemIds(finished)
+      if (state.problems.length > 0 && state.problems.every((problem) => finished.includes(problem.id))) notifyCompletion()
     }).catch((reason) => {
       if (active) setError(reason instanceof Error ? reason.message : 'Unable to load solver progress.')
     }).finally(() => { if (active) setIsLoading(false) })
