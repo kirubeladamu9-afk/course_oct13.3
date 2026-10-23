@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import type { Theme } from '@mui/material/styles'
 import { Box, Button, Chip, LinearProgress, Paper, Stack, Typography } from '@mui/material'
 import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
@@ -32,6 +33,15 @@ interface OverviewSession {
   title: string
   courseTitle: string
   startsAt: string
+}
+
+interface LearningSlide {
+  key: string
+  kind: 'course' | 'class'
+  id: number
+  title: string
+  meta: string
+  progress: number
 }
 
 interface OverviewMetricProps {
@@ -69,6 +79,7 @@ interface StudentDashboardOverviewProps {
   quizCount: number
   quizAverageNeedsAttention: boolean
   learningStreak: number
+  enrollmentCount: number
   session?: OverviewSession
   readiness?: ReactNode
   onOpenCourse: (courseId: number) => void
@@ -77,10 +88,40 @@ interface StudentDashboardOverviewProps {
   children: ReactNode
 }
 
-const StudentDashboardOverview = ({ displayName, courses, classes, lessonCount, averageQuizScore, quizCount, quizAverageNeedsAttention, learningStreak, session, readiness, onOpenCourse, onOpenClass, onSelectView, children }: StudentDashboardOverviewProps) => {
-  const featuredCourse = courses[0]
-  const featuredClass = featuredCourse ? undefined : classes[0]
-  const featuredLearning = featuredCourse ?? featuredClass
+const heroGradient = (theme: Theme) => theme.palette.mode === 'dark' ? 'linear-gradient(120deg, #103b39 0%, #145d53 58%, #147b68 100%)' : 'linear-gradient(120deg, #123e3a 0%, #17675c 58%, #168773 100%)'
+
+const LearningCompleteBanner = ({ lessonCount, averageQuizScore, learningStreak }: { lessonCount: number; averageQuizScore: number | null; learningStreak: number }) => <Paper elevation={0} sx={{ p: { xs: 2.5, sm: 3.5, md: 4 }, mb: 2.25, borderRadius: { xs: 3.5, md: 4.5 }, color: '#fff', background: heroGradient }}>
+  <Chip size="small" icon={<CheckCircleOutlineRoundedIcon />} label="ALL CAUGHT UP" sx={{ color: '#e6fff8', bgcolor: 'rgba(255,255,255,.13)', '& .MuiChip-icon': { color: 'inherit' }, fontWeight: 700, letterSpacing: '.04em' }} />
+  <Typography variant="h4" sx={{ mt: 2, fontSize: { xs: '1.55rem', sm: '2rem' }, fontWeight: 800, letterSpacing: '-.035em', lineHeight: 1.2 }}>Every course and class is complete</Typography>
+  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 2, sm: 4 }} sx={{ mt: 3 }}>
+    {[
+      { label: 'Lessons completed', value: String(lessonCount) },
+      { label: 'Learning streak', value: `${learningStreak} ${learningStreak === 1 ? 'day' : 'days'}` },
+      { label: 'Quiz average', value: averageQuizScore === null ? '—' : `${averageQuizScore}%` },
+    ].map((stat) => <Box key={stat.label}>
+      <Typography variant="h5" sx={{ fontWeight: 800 }}>{stat.value}</Typography>
+      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,.72)' }}>{stat.label}</Typography>
+    </Box>)}
+  </Stack>
+</Paper>
+
+const StudentDashboardOverview = ({ displayName, courses, classes, lessonCount, averageQuizScore, quizCount, quizAverageNeedsAttention, learningStreak, enrollmentCount, session, readiness, onOpenCourse, onOpenClass, onSelectView, children }: StudentDashboardOverviewProps) => {
+  const learningItems: LearningSlide[] = [
+    ...courses.map((course) => ({ key: `course-${course.id}`, kind: 'course' as const, id: course.id, title: course.title, meta: `${course.category} · ${course.level} · with ${course.tutor}`, progress: course.progress })),
+    ...classes.map((classItem) => ({ key: `class-${classItem.id}`, kind: 'class' as const, id: classItem.id, title: classItem.title, meta: `with ${classItem.tutor}`, progress: classItem.progress })),
+  ]
+  const incompleteItems = learningItems.filter((item) => item.progress < 100)
+  const slideCount = incompleteItems.length
+  const [slideIndex, setSlideIndex] = useState(0)
+  useEffect(() => {
+    if (slideCount < 2) return
+    const timer = window.setInterval(() => setSlideIndex((index) => (index + 1) % slideCount), 6000)
+    return () => window.clearInterval(timer)
+  }, [slideCount])
+  const activeSlide = slideCount ? incompleteItems[slideIndex % slideCount] : undefined
+  const featuredLearning = activeSlide
+  const featuredClass = activeSlide?.kind === 'class' ? activeSlide : undefined
+  const featuredCourse = activeSlide?.kind === 'course' ? activeSlide : undefined
 
   return <Box sx={{ maxWidth: 1260, mx: 'auto', pb: 2 }}>
     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'flex-end' }} spacing={2.5} sx={{ mb: 3 }}>
@@ -99,9 +140,9 @@ const StudentDashboardOverview = ({ displayName, courses, classes, lessonCount, 
       </Button>
     </Stack>
 
-    <Paper elevation={0} sx={{ position: 'relative', overflow: 'hidden', mb: 2.25, borderRadius: { xs: 3.5, md: 4.5 }, color: '#fff', background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(120deg, #103b39 0%, #145d53 58%, #147b68 100%)' : 'linear-gradient(120deg, #123e3a 0%, #17675c 58%, #168773 100%)' }}>
+    {enrollmentCount > 0 && !activeSlide ? <LearningCompleteBanner lessonCount={lessonCount} averageQuizScore={averageQuizScore} learningStreak={learningStreak} /> : <Paper elevation={0} sx={{ position: 'relative', overflow: 'hidden', mb: 2.25, borderRadius: { xs: 3.5, md: 4.5 }, color: '#fff', background: heroGradient }}>
       <Box aria-hidden="true" sx={{ position: 'absolute', width: 420, height: 420, right: { xs: -250, md: 70 }, top: -280, borderRadius: '50%', border: '1px solid rgba(255,255,255,.11)', boxShadow: '0 0 0 42px rgba(255,255,255,.035), 0 0 0 84px rgba(255,255,255,.025)' }} />
-      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} spacing={3} sx={{ position: 'relative', p: { xs: 2.5, sm: 3.5, md: 4 } }}>
+      <Stack key={activeSlide?.key} direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} spacing={3} sx={{ position: 'relative', p: { xs: 2.5, sm: 3.5, md: 4 }, animation: 'learningSlideIn .5s ease', '@keyframes learningSlideIn': { from: { opacity: 0, transform: 'translateY(6px)' }, to: { opacity: 1, transform: 'none' } } }}>
         <Box sx={{ maxWidth: 650 }}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
             <Chip size="small" icon={<SchoolOutlinedIcon />} label={featuredLearning ? featuredClass ? 'PICK UP YOUR CLASS' : 'PICK UP WHERE YOU LEFT OFF' : 'YOUR LEARNING PLAN'} sx={{ color: '#e6fff8', bgcolor: 'rgba(255,255,255,.13)', '& .MuiChip-icon': { color: 'inherit' }, fontWeight: 700, letterSpacing: '.04em' }} />
@@ -110,7 +151,7 @@ const StudentDashboardOverview = ({ displayName, courses, classes, lessonCount, 
             {featuredLearning?.title ?? 'Your next chapter starts here'}
           </Typography>
           <Typography sx={{ mt: 1, color: 'rgba(255,255,255,.76)', maxWidth: 540 }}>
-            {featuredLearning ? `${featuredLearning.category} · ${featuredLearning.level} · with ${featuredLearning.tutor}` : 'Explore your learning plan and find a course to get started.'}
+            {featuredLearning ? featuredLearning.meta : 'Explore your learning plan and find a course to get started.'}
           </Typography>
           {featuredLearning && <Box sx={{ mt: 3, maxWidth: 480 }}>
             <Stack direction="row" justifyContent="space-between" sx={{ mb: .8 }}>
@@ -133,7 +174,7 @@ const StudentDashboardOverview = ({ displayName, courses, classes, lessonCount, 
           </Box>
         </Box>
       </Stack>
-    </Paper>
+    </Paper>}
 
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.25, sm: 1.75 }, mb: 2.25 }}>
       <OverviewMetric label="Active learning" value={String(courses.length + classes.length)} detail={`${courses.length} courses · ${classes.length} classes`} icon={<MenuBookOutlinedIcon fontSize="small" />} tone="teal" />

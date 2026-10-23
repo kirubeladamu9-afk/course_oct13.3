@@ -908,6 +908,7 @@ const OverviewView: FC<{ enrollments: DashboardEnrollment[]; completedLessons: R
     quizCount={quizCount}
     quizAverageNeedsAttention={quizAverageNeedsAttention}
     learningStreak={gamificationData.stats.current_streak}
+    enrollmentCount={enrollments.filter((enrollment) => enrollment.type === 'course' || enrollment.type === 'class').length}
     session={nextSession ? { title: nextSession.lesson.title, courseTitle: nextSession.classRecord.course?.title ?? nextSession.classRecord.title, startsAt: nextSession.lesson.scheduledAt! } : undefined}
     readiness={readinessCards.length > 0 ? <Stack spacing={2.25} sx={{ mb: 2.25 }}>
       {readinessCards.map(({ classRecord, readiness, daysUntilExam }) => <ExamReadinessCard key={classRecord.id} classRecord={classRecord} readiness={readiness} daysUntilExam={daysUntilExam} onViewStudyPlan={() => onSelectView('study-planner')} />)}
