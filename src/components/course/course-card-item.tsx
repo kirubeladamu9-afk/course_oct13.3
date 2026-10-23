@@ -4,6 +4,7 @@ import Rating from '@mui/material/Rating'
 import Typography from '@mui/material/Typography'
 import IconButton, { iconButtonClasses } from '@mui/material/IconButton'
 import ArrowForward from '@mui/icons-material/ArrowForward'
+import { alpha } from '@mui/material/styles'
 import { Course } from '@/interfaces/course'
 import { navigateTo } from '@/lib/navigation'
 
@@ -80,7 +81,7 @@ const CourseCardItem: FC<Props> = ({ item, onOpen }) => {
             color="primary"
             aria-label={`Open ${item.title} course`}
             onClick={() => onOpen ? onOpen(item) : navigateTo(`/courses/${item.id}`)}
-            sx={{ '&:hover': { backgroundColor: 'primary.main', color: 'primary.contrastText' } }}
+            sx={{ backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.1), '&:hover': { backgroundColor: 'primary.main', color: 'primary.contrastText' } }}
           >
             <ArrowForward />
           </IconButton>

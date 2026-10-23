@@ -11,8 +11,14 @@ import { socialLinks } from '@/components/footer/footer-social-links'
 import { toast } from '@/components/toast'
 import { getAuthenticatedUser, signOut } from '@/services/api'
 import { navigateTo } from '@/lib/navigation'
-import { useTheme } from '@mui/material/styles'
+import { alpha, type Theme, useTheme } from '@mui/material/styles'
 import { Close, DarkModeOutlined, LightModeOutlined, Menu } from '@mui/icons-material'
+
+const iconButtonSx = {
+  color: 'primary.main',
+  backgroundColor: (theme: Theme) => alpha(theme.palette.primary.main, 0.1),
+  '&:hover': { backgroundColor: (theme: Theme) => alpha(theme.palette.primary.main, 0.18) },
+}
 
 interface Props {
   darkMode: boolean
@@ -45,6 +51,7 @@ const Header: FC<Props> = ({ darkMode, showSocialLinks = false, onToggleDarkMode
               onClick={() => setVisibleMenu(!visibleMenu)}
               aria-label={visibleMenu ? 'Close navigation menu' : 'Open navigation menu'}
               aria-expanded={visibleMenu}
+              sx={iconButtonSx}
             >
               <Menu />
             </IconButton>
@@ -80,7 +87,7 @@ const Header: FC<Props> = ({ darkMode, showSocialLinks = false, onToggleDarkMode
                 </Box>)}
               </Box>}
               <Tooltip title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
-                <IconButton onClick={onToggleDarkMode} aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
+                <IconButton onClick={onToggleDarkMode} aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'} sx={iconButtonSx}>
                   {darkMode ? <LightModeOutlined /> : <DarkModeOutlined />}
                 </IconButton>
               </Tooltip>
@@ -89,6 +96,7 @@ const Header: FC<Props> = ({ darkMode, showSocialLinks = false, onToggleDarkMode
             {visibleMenu && matchMobileView && (
               <IconButton
                 sx={{
+                  ...iconButtonSx,
                   position: 'fixed',
                   top: 10,
                   right: 10,
