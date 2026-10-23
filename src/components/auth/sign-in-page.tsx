@@ -53,7 +53,7 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
 
   return <Box sx={{ background: 'var(--app-auth-backdrop)', backgroundColor: 'background.default', height: 'calc(100vh - 88px)', minHeight: 0, display: 'flex', alignItems: 'center', overflow: 'hidden', boxSizing: 'border-box', py: 'clamp(0.5rem, 3vh, 2rem)' }}>
     <Container maxWidth="lg" sx={{ maxHeight: '100%', display: 'flex', alignItems: 'center', px: { xs: 2, sm: 2, md: 3 } }}>
-      <Paper elevation={8} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 0.9fr) minmax(0, 1.1fr)' }, width: '100%', boxSizing: 'border-box', maxWidth: 1080, maxHeight: '100%', minHeight: 0, mx: 'auto', overflow: 'hidden', borderRadius: { xs: 3, md: 5 } }}>
+      <Paper elevation={8} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 0.9fr) minmax(0, 1.1fr)' }, width: '100%', boxSizing: 'border-box', maxWidth: 840, maxHeight: '100%', minHeight: 0, mx: 'auto', overflow: 'hidden', borderRadius: { xs: 3, md: 5 } }}>
         <Box sx={{ display: { xs: 'none', md: 'flex' }, flexDirection: 'column', justifyContent: 'space-between', p: { xs: 1.5, sm: 3, md: 4 }, pb: { xs: 3, sm: 4, md: 5 }, color: 'common.white', background: 'var(--app-auth-panel)', minHeight: 0 }}>
           <Box>
             <Typography variant="overline" sx={{ letterSpacing: 1.2, color: 'rgba(255,255,255,0.72)' }}>Coursesharp learning platform</Typography>
@@ -68,7 +68,7 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
           </Box>
           <Box component="img" src="/images/home-hero.png" alt="Learner studying with Coursesharp" sx={{ display: 'block', flex: 'none', width: '80%', alignSelf: 'center', height: { md: 'min(36vh, 340px)' }, mt: { xs: 1, md: 0 }, position: { md: 'relative' }, top: { md: 40 }, objectFit: 'cover', objectPosition: 'bottom' }} />
         </Box>
-        <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 0, p: { xs: 2, sm: 2.5, md: 5 }, backgroundColor: 'background.paper' }}>
+        <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 0, p: { xs: 2, sm: 2.5, md: 4 }, backgroundColor: 'background.paper' }}>
           {isRedirecting ? (
             <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }} aria-live="polite">
               <CircularProgress aria-label="Signing in" />
