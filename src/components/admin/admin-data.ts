@@ -2,6 +2,7 @@ export type LessonType = 'video' | 'article' | 'interactive' | 'interactiveTool'
 export type InteractiveToolSubject = 'Mathematics' | 'Physics' | 'Chemistry' | 'Biology' | 'Other'
 export type InteractiveToolDifficulty = 'Beginner' | 'Intermediate' | 'Advanced'
 export type InteractiveToolTask = 'Automatic' | 'Equation solving' | 'Arithmetic' | 'Geometry'
+export type InteractiveToolLearningMode = 'Guided' | 'Independent' | 'Demonstration'
 
 export interface InteractiveToolConfig {
   subject: InteractiveToolSubject
@@ -11,6 +12,8 @@ export interface InteractiveToolConfig {
   difficulty: InteractiveToolDifficulty
   learningObjectives: string[]
   task: InteractiveToolTask
+  learningMode?: InteractiveToolLearningMode
+  exampleProblem?: string
 }
 
 export interface InteractiveToolProgress {

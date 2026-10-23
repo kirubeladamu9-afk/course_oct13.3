@@ -1,4 +1,4 @@
-import { Alert, Box, Button, Chip, CircularProgress, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material'
+import { Alert, Box, Button, Chip, CircularProgress, Paper, Stack, TextField, Typography } from '@mui/material'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -13,7 +13,7 @@ const newProgress = (problem: string, task: InteractiveToolProgress['task']): In
 
 const InteractiveToolSolver = ({ config, enrollmentId, lessonId, onCompleted }: Props) => {
   const [progress, setProgress] = useState<InteractiveToolProgress | null>(null)
-  const [problemInput, setProblemInput] = useState('')
+  const [problemInput, setProblemInput] = useState(config.exampleProblem ?? config.examples[0] ?? '')
   const [selectedTask, setSelectedTask] = useState(config.task)
   const [answerInput, setAnswerInput] = useState('')
   const [feedback, setFeedback] = useState<'correct' | 'retry' | null>(null)
@@ -21,6 +21,9 @@ const InteractiveToolSolver = ({ config, enrollmentId, lessonId, onCompleted }: 
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
+  const learningMode = config.learningMode ?? 'Guided'
+  const demonstrationProblem = config.exampleProblem ?? config.examples[0] ?? ''
+  const demonstrationSolution = useMemo(() => demonstrationProblem ? solveMathProblem(demonstrationProblem, taskForSolver(config.task)) : null, [demonstrationProblem, config.task])
   const solution = useMemo(() => progress ? solveMathProblem(progress.problem, taskForSolver(progress.task)) : null, [progress?.problem, progress?.task])
   const step = solution?.steps[progress?.currentStep ?? -1]
 
@@ -128,8 +131,14 @@ const InteractiveToolSolver = ({ config, enrollmentId, lessonId, onCompleted }: 
         {config.learningObjectives.length > 0 && <Box sx={{ mt: 1.5 }}><Typography variant="body2" sx={{ fontWeight: 700 }}>Learning objectives</Typography>{config.learningObjectives.map((objective) => <Typography key={objective} variant="body2" color="text.secondary">• {objective}</Typography>)}</Box>}
       </Box>
       {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
+      {learningMode === 'Demonstration' && !progress && demonstrationSolution ? <Stack spacing={1.5}>
+        <Alert severity="info">Worked demonstration</Alert>
+        <Paper elevation={0} sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1.5 }}><Typography variant="caption" color="text.secondary">Example problem</Typography><Typography sx={{ fontWeight: 700 }}>{demonstrationProblem}</Typography></Paper>
+        {demonstrationSolution.steps.map((demonstrationStep, index) => <Paper key={`${index}-${demonstrationStep.title}`} elevation={0} sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1.5 }}><Typography variant="caption" color="text.secondary">Step {index + 1}</Typography><Typography sx={{ fontWeight: 700 }}>{demonstrationStep.title}</Typography>{demonstrationStep.formula && <Typography sx={{ mt: 0.5, fontFamily: 'monospace' }}>{demonstrationStep.formula}</Typography>}<Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{demonstrationStep.reasoning}</Typography></Paper>)}
+        <Alert severity="success">Final answer: {demonstrationSolution.answer}</Alert>
+        <Button variant="contained" onClick={onCompleted} sx={{ alignSelf: 'flex-start' }}>Complete lesson</Button>
+      </Stack> : <>
       {!progress && <Stack spacing={1.5}>
-        <TextField select fullWidth label="Task" value={selectedTask} onChange={(event) => setSelectedTask(event.target.value as InteractiveToolConfig['task'])}>{['Automatic', 'Equation solving', 'Arithmetic', 'Geometry'].map((task) => <MenuItem key={task} value={task}>{task}</MenuItem>)}</TextField>
         <TextField fullWidth multiline minRows={2} label="Enter a problem or question" placeholder="For example: 3x + 2 = 14" value={problemInput} onChange={(event) => setProblemInput(event.target.value)} inputProps={{ maxLength: 500 }} />
         {config.examples.length > 0 && <Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>Example problems</Typography><Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">{config.examples.map((example) => <Chip key={example} label={example} clickable onClick={() => { setProblemInput(example); setError('') }} variant="outlined" />)}</Stack></Box>}
         <Button variant="contained" onClick={() => beginProblem()} disabled={!problemInput.trim() || isSaving} startIcon={<PlayArrowIcon />} sx={{ alignSelf: 'flex-start' }}>{isSaving ? 'Saving…' : 'Start solving'}</Button>
@@ -137,10 +146,10 @@ const InteractiveToolSolver = ({ config, enrollmentId, lessonId, onCompleted }: 
       {progress && !solution && <Alert severity="error">The saved problem can no longer be solved. Start a new problem to continue.</Alert>}
       {progress && solution && !progress.isCompleted && step && <Stack spacing={2}>
         <Paper elevation={0} sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1.5 }}><Typography variant="caption" color="text.secondary">Problem</Typography><Typography sx={{ fontWeight: 700 }}>{progress.problem}</Typography><Typography variant="caption" color="text.secondary">Step {progress.currentStep + 1} of {solution.steps.length}</Typography></Paper>
-        <Box><Typography variant="h6" sx={{ fontWeight: 700 }}>{step.title}</Typography><Typography color="text.secondary" sx={{ mt: 0.5 }}>{step.reasoning}</Typography>{step.formula && <Paper elevation={0} sx={{ p: 1.5, mt: 1.25, bgcolor: 'background.default', border: 1, borderColor: 'divider' }}><Typography sx={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}>{step.formula}</Typography></Paper>}</Box>
+        <Box><Typography variant="h6" sx={{ fontWeight: 700 }}>{step.title}</Typography>{learningMode !== 'Independent' && <><Typography color="text.secondary" sx={{ mt: 0.5 }}>{step.reasoning}</Typography>{step.formula && <Paper elevation={0} sx={{ p: 1.5, mt: 1.25, bgcolor: 'background.default', border: 1, borderColor: 'divider' }}><Typography sx={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}>{step.formula}</Typography></Paper>}</>}</Box>
         <TextField fullWidth label={step.prompt} value={answerInput} onChange={(event) => { setAnswerInput(event.target.value); setFeedback(null) }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); checkAnswer() } }} />
-        <Stack direction={{ xs: 'column-reverse', sm: 'row' }} justifyContent="space-between" spacing={1}><Button startIcon={<LightbulbOutlinedIcon />} onClick={requestHint} disabled={isSaving}>Request a hint</Button><Button variant="contained" onClick={checkAnswer} disabled={!answerInput.trim() || isSaving}>{isSaving ? 'Saving…' : 'Check my work'}</Button></Stack>
-        {hintOpen && <Alert severity="info">{step.hint}</Alert>}
+        <Stack direction={{ xs: 'column-reverse', sm: 'row' }} justifyContent="space-between" spacing={1}>{learningMode === 'Guided' && <Button startIcon={<LightbulbOutlinedIcon />} onClick={requestHint} disabled={isSaving}>Request a hint</Button>}<Button variant="contained" onClick={checkAnswer} disabled={!answerInput.trim() || isSaving}>{isSaving ? 'Saving…' : 'Check my work'}</Button></Stack>
+        {learningMode === 'Guided' && hintOpen && <Alert severity="info">{step.hint}</Alert>}
         {feedback === 'retry' && <Alert severity="warning">Not quite yet. Review the reasoning, use a hint if helpful, and correct your answer before moving on.</Alert>}
         {feedback === 'correct' && <Alert severity="success">That step is correct. Continue to the next step.</Alert>}
       </Stack>}
@@ -149,6 +158,7 @@ const InteractiveToolSolver = ({ config, enrollmentId, lessonId, onCompleted }: 
         <Paper elevation={0} sx={{ p: 2, bgcolor: 'background.default', border: 1, borderColor: 'divider' }}><Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Why this is the answer</Typography><Typography color="text.secondary" sx={{ mt: 0.5 }}>{solution.explanation}</Typography></Paper>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}><Button variant="contained" onClick={startPractice} disabled={isSaving}>Try a similar problem</Button><Button variant="outlined" onClick={() => void resetProblem()} disabled={isSaving}>Solve another problem</Button></Stack>
       </Stack>}
+      </>}
     </Stack>
   </Paper>
 }
