@@ -94,16 +94,23 @@ const heroGradient = (theme: Theme) => theme.palette.mode === 'dark' ? 'linear-g
 
 const LearningCompleteBanner = ({ lessonCount, averageQuizScore, learningStreak }: { lessonCount: number; averageQuizScore: number | null; learningStreak: number }) => <Paper elevation={0} sx={{ p: { xs: 2.5, sm: 3.5, md: 4 }, mb: 2.25, borderRadius: { xs: 3.5, md: 4.5 }, color: '#fff', background: heroGradient }}>
   <Chip size="small" icon={<CheckCircleOutlineRoundedIcon />} label="ALL CAUGHT UP" sx={{ color: '#e6fff8', bgcolor: 'rgba(255,255,255,.13)', '& .MuiChip-icon': { color: 'inherit' }, fontWeight: 700, letterSpacing: '.04em' }} />
-  <Typography variant="h4" sx={{ mt: 2, fontSize: { xs: '1.55rem', sm: '2rem' }, fontWeight: 800, letterSpacing: '-.035em', lineHeight: 1.2 }}>Every course and class is complete</Typography>
-  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 2, sm: 4 }} sx={{ mt: 3 }}>
-    {[
-      { label: 'Lessons completed', value: String(lessonCount) },
-      { label: 'Learning streak', value: `${learningStreak} ${learningStreak === 1 ? 'day' : 'days'}` },
-      { label: 'Quiz average', value: averageQuizScore === null ? '—' : `${averageQuizScore}%` },
-    ].map((stat) => <Box key={stat.label}>
-      <Typography variant="h5" sx={{ fontWeight: 800 }}>{stat.value}</Typography>
-      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,.72)' }}>{stat.label}</Typography>
-    </Box>)}
+  <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={3}>
+    <Box>
+      <Typography variant="h4" sx={{ mt: 2, fontSize: { xs: '1.55rem', sm: '2rem' }, fontWeight: 800, letterSpacing: '-.035em', lineHeight: 1.2 }}>Every course and class is complete</Typography>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 2, sm: 4 }} sx={{ mt: 3 }}>
+        {[
+          { label: 'Lessons completed', value: String(lessonCount) },
+          { label: 'Learning streak', value: `${learningStreak} ${learningStreak === 1 ? 'day' : 'days'}` },
+          { label: 'Quiz average', value: averageQuizScore === null ? '—' : `${averageQuizScore}%` },
+        ].map((stat) => <Box key={stat.label}>
+          <Typography sx={{ fontSize: { xs: '1.9rem', sm: '2.4rem' }, fontWeight: 800, lineHeight: 1.1, letterSpacing: '-.03em' }}>{stat.value}</Typography>
+          <Typography variant="body2" sx={{ mt: .5, color: 'rgba(255,255,255,.72)' }}>{stat.label}</Typography>
+        </Box>)}
+      </Stack>
+    </Box>
+    <Box aria-hidden="true" sx={{ display: { xs: 'none', md: 'grid' }, placeItems: 'center', width: 116, height: 116, flexShrink: 0, borderRadius: '50%', bgcolor: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.18)' }}>
+      <CheckCircleOutlineRoundedIcon sx={{ fontSize: 64, color: '#b8f0d9' }} />
+    </Box>
   </Stack>
 </Paper>
 
