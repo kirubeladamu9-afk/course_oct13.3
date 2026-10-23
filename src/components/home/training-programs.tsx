@@ -9,11 +9,13 @@ import Grid from '@mui/material/Grid'
 import IconButton from '@mui/material/IconButton'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CloseIcon from '@mui/icons-material/Close'
-import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined'
-import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined'
-import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
+import EventAvailableIcon from '@mui/icons-material/EventAvailable'
+import MenuBookIcon from '@mui/icons-material/MenuBook'
+import SchoolIcon from '@mui/icons-material/School'
+import { alpha } from '@mui/material/styles'
 import { type FC, useEffect, useMemo, useState } from 'react'
 import { toast } from '@/components/toast'
 import EnrollmentModal from '@/components/course/enrollment-modal'
@@ -48,7 +50,7 @@ const programs: ProgramDefinition[] = [
     description: 'Live, engaging online classes designed to build confidence and sharpen thinking with guided instruction and practice.',
     features: ['Ages 8–18', 'Live online instruction', 'Flexible scheduling after payment'],
     accent: '#127C71',
-    icon: <SchoolOutlinedIcon fontSize="small" />,
+    icon: <SchoolIcon sx={{ fontSize: 22 }} />,
   },
   {
     id: 'summer-camp',
@@ -59,7 +61,7 @@ const programs: ProgramDefinition[] = [
     description: 'Make school breaks count with focused, social learning in small live cohorts.',
     features: ['Small live learning groups', 'Weekday camp schedules', 'Tutor-led practice and support'],
     accent: '#D0821C',
-    icon: <EventAvailableOutlinedIcon fontSize="small" />,
+    icon: <EventAvailableIcon sx={{ fontSize: 22 }} />,
   },
   {
     id: 'ministry-exam-prep',
@@ -70,7 +72,7 @@ const programs: ProgramDefinition[] = [
     description: 'Structured revision and exam-focused support aligned to each learner’s grade level.',
     features: ['Grade-specific preparation', 'Linked course curriculum', 'Small-group exam support'],
     accent: '#127C71',
-    icon: <MenuBookOutlinedIcon fontSize="small" />,
+    icon: <MenuBookIcon sx={{ fontSize: 22 }} />,
   },
 ]
 
@@ -231,7 +233,7 @@ const ProgramCard: FC<ProgramCardProps> = ({ program, classes, onEnroll }) => {
     <Card elevation={0} sx={{ position: 'relative', height: '100%', overflow: 'hidden', border: 1, borderTop: 3, borderColor: 'divider', borderTopColor: program.accent, borderRadius: 3, backgroundColor: 'background.paper' }}>
       <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column', p: { xs: 2.5, md: 3 }, '&:last-child': { pb: { xs: 2.5, md: 3 } } }}>
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1} sx={{ mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, borderRadius: '50%', color: program.accent, backgroundColor: program.id === 'summer-camp' ? 'rgba(255, 175, 53, 0.16)' : 'rgba(159, 241, 210, 0.4)' }}>{program.icon}</Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 42, height: 42, borderRadius: '50%', color: '#fff', backgroundColor: program.accent, boxShadow: `0 6px 14px ${alpha(program.accent, 0.35)}` }}>{program.icon}</Box>
           <Chip label={program.eyebrow} size="small" variant="outlined" sx={{ borderColor: 'divider', fontSize: 11 }} />
         </Stack>
         <Typography component="h3" variant="h5" sx={{ mb: 0.75 }}>{program.title}</Typography>
@@ -241,9 +243,9 @@ const ProgramCard: FC<ProgramCardProps> = ({ program, classes, onEnroll }) => {
         </Stack>
         <Typography color="text.secondary" variant="body2" sx={{ minHeight: 68, lineHeight: 1.55, mb: 2 }}>{program.description}</Typography>
         <Stack spacing={1} sx={{ mb: 2.5 }}>
-          {program.features.map((feature) => <Box key={feature} sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.75 }}><CheckCircleOutlineIcon sx={{ mt: 0.15, color: 'primary.main', fontSize: 15 }} /><Typography variant="caption" color="text.secondary">{feature}</Typography></Box>)}
+          {program.features.map((feature) => <Box key={feature} sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.75 }}><CheckCircleIcon sx={{ mt: 0.15, color: 'primary.main', fontSize: 16 }} /><Typography variant="caption" color="text.secondary">{feature}</Typography></Box>)}
         </Stack>
-        {isBatchProgram && <Box component="button" type="button" onClick={() => setIsDrawerOpen((current) => !current)} aria-expanded={isDrawerOpen} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', p: 0, mb: 1.5, border: 0, background: 'none', color: 'text.primary', cursor: 'pointer', font: 'inherit', textAlign: 'left' }}><Typography variant="body2" sx={{ fontWeight: 700 }}>{program.id === 'summer-camp' ? 'View open batches' : 'View exam prep batches'}</Typography><Typography aria-hidden="true" sx={{ color: 'primary.main', fontSize: 27, lineHeight: 0.7, fontWeight: 400 }}>{isDrawerOpen ? '×' : '›'}</Typography></Box>}
+        {isBatchProgram && <Box component="button" type="button" onClick={() => setIsDrawerOpen((current) => !current)} aria-expanded={isDrawerOpen} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', p: 0, mb: 1.5, border: 0, background: 'none', color: 'text.primary', cursor: 'pointer', font: 'inherit', textAlign: 'left' }}><Typography variant="body2" sx={{ fontWeight: 700 }}>{program.id === 'summer-camp' ? 'View open batches' : 'View exam prep batches'}</Typography>{isDrawerOpen ? <CloseIcon aria-hidden="true" sx={{ color: 'primary.main', fontSize: 20 }} /> : <ChevronRightIcon aria-hidden="true" sx={{ color: 'primary.main', fontSize: 22 }} />}</Box>}
         {isBatchProgram && <Divider sx={{ mb: 2 }} />}
         <Box sx={{ mt: 'auto' }}>
           <Button fullWidth variant="contained" onClick={() => isBatchProgram ? setIsDrawerOpen(true) : onEnroll(undefined, true)}>{program.id === 'international-online-interactive' ? 'Enroll Now' : 'Choose a batch'}</Button>
