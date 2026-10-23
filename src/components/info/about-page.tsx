@@ -14,9 +14,7 @@ import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import type { FC } from 'react'
 import { MentorCardItem } from '@/components/mentor'
-import HomeFeature from '@/components/home/feature'
 import { data as mentorData } from '@/components/home/mentors.data'
-import HomeTestimonial from '@/components/home/testimonial'
 import { navigateTo } from '@/lib/navigation'
 
 const valueCards = [
@@ -57,9 +55,6 @@ const AboutPage: FC = () => <Box component="main" sx={{ backgroundColor: (theme)
     </Grid>
   </Container>
 
-  <HomeFeature />
-
-  <HomeTestimonial />
 
   <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 } }}>
     <Box sx={{ mb: 3.5, textAlign: 'center' }}>
