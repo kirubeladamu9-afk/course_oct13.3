@@ -3,6 +3,7 @@ import { promisify } from 'node:util'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
+import helmet from 'helmet'
 import postgres from 'postgres'
 import { getChangedCourseLessonIds, remapReusedCourseLessonIds } from './course-lesson-identities.js'
 import { getLatestSubmittedQuizAttempts } from './quiz-performance.js'
@@ -19,6 +20,24 @@ const sql = postgres(databaseUrl, { max: 10, ssl: 'require', prepare: false })
 const scrypt = promisify(scryptCallback)
 const app = express()
 app.set('trust proxy', 1)
+app.use(helmet({
+  hsts: false,
+  contentSecurityPolicy: {
+    useDefaults: true,
+    reportOnly: true,
+    directives: {
+      'default-src': ["'self'"],
+      'script-src': ["'self'"],
+      'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
+      'img-src': ["'self'", 'data:', 'blob:', 'https:'],
+      'media-src': ["'self'", 'blob:', 'https:'],
+      'frame-src': ['https://www.youtube-nocookie.com', 'https://player.vimeo.com', 'https://maps.google.com', 'https://www.google.com'],
+      'connect-src': ["'self'"],
+      'report-uri': ['/api/csp-report'],
+    },
+  },
+}))
 const port = Number(process.env.PORT ?? 3001)
 const distDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist')
 const isTestChapa = process.env.CHAPA_MODE !== 'live'
@@ -1550,6 +1569,11 @@ const updatePaymentStatus = async (reference, status, verification = {}) => sql.
 })
 
 app.use(express.json({ limit: '30mb' }))
+
+app.post('/api/csp-report', express.json({ type: ['application/csp-report', 'application/reports+json'] }), (request, response) => {
+  console.warn('CSP violation report', JSON.stringify(request.body))
+  response.status(204).end()
+})
 
 app.get('/api/health', async (_request, response) => {
   await sql`SELECT 1`
