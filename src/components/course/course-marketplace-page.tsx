@@ -105,7 +105,7 @@ const CourseMarketplacePage: FC<CourseMarketplacePageProps> = ({ courses, darkMo
               <Typography sx={{ maxWidth: 590, mb: 3.5, color: 'rgba(255,255,255,.78)', fontSize: { xs: '1rem', md: '1.1rem' }, lineHeight: 1.7 }}>Explore practical learning experiences, discover new interests, and build skills at your own pace.</Typography>
             </Grid>
             <Grid item xs={12} md={5} sx={{ position: 'relative', minHeight: { xs: 220, sm: 280, md: 360 } }}>
-              <Box component="img" src="/images/courses-banner-student.webp" alt="Smiling student holding a notebook with learning illustrations" sx={{ position: 'absolute', top: 0, right: 0, height: '100%', width: 'auto', maxWidth: 'none' }} />
+              <Box component="img" src="/images/courses-banner-student.webp" alt="Smiling student holding a notebook with learning illustrations" sx={{ position: 'absolute', top: 77, right: 0, height: '100%', width: 'auto', maxWidth: 'none' }} />
             </Grid>
           </Grid>
         </Container>
