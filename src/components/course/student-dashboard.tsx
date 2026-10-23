@@ -62,6 +62,8 @@ import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
 import TranslateOutlinedIcon from '@mui/icons-material/TranslateOutlined'
 import VideoCallOutlinedIcon from '@mui/icons-material/VideoCallOutlined'
 import CloseIcon from '@mui/icons-material/Close'
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import SearchIcon from '@mui/icons-material/Search'
 import FilterListOutlinedIcon from '@mui/icons-material/FilterListOutlined'
 import SortOutlinedIcon from '@mui/icons-material/SortOutlined'
@@ -262,6 +264,7 @@ const formatQuizCountdown = (seconds: number) => `${Math.floor(seconds / 60)}:${
 }
 
 const drawerWidth = 272
+const collapsedDrawerWidth = 80
 const sessionJoinWindowMs = 15 * 60 * 1000
 const formatDuration = (seconds: number) => {
   const totalMinutes = Math.max(1, Math.round(seconds / 60))
@@ -504,9 +507,10 @@ const DashboardHeader: FC<{ title: string; darkMode: boolean; language: string; 
 interface SidebarProps {
   activeView: DashboardView
   onSelectView: (view: DashboardView) => void
+  collapsed: boolean
 }
 
-const DashboardSidebar: FC<SidebarProps> = ({ activeView, onSelectView }) => {
+const DashboardSidebar: FC<SidebarProps> = ({ activeView, onSelectView, collapsed }) => {
   const enrollmentActive = activeView === 'courses' || activeView === 'classes' || activeView === 'study-planner' || activeView === 'course-view'
   const [isEnrollmentExpanded, setIsEnrollmentExpanded] = useState(enrollmentActive)
 
@@ -515,37 +519,44 @@ const DashboardSidebar: FC<SidebarProps> = ({ activeView, onSelectView }) => {
   }, [enrollmentActive])
 
   const toggleEnrollment = () => {
+    if (collapsed) {
+      onSelectView('courses')
+      return
+    }
     setIsEnrollmentExpanded((current) => !current)
     if (!enrollmentActive) onSelectView('courses')
   }
   const user = getAuthenticatedUser()
   const displayName = user?.name || 'Alex Morgan'
-  const navItem = (view: DashboardView, label: string, icon: ReactNode, active: boolean, endIcon?: ReactNode, onClick?: () => void, ariaExpanded?: boolean) => <Box component="button" type="button" aria-expanded={ariaExpanded} onClick={onClick ?? (() => onSelectView(view))} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1.25, border: 0, borderRadius: 2.5, px: 1.5, py: 1.05, mb: .45, backgroundColor: active ? 'primary.main' : 'transparent', color: active ? 'primary.contrastText' : 'text.secondary', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all .18s ease', boxShadow: active ? (theme) => `0 7px 16px ${alpha(theme.palette.primary.main, 0.22)}` : 'none', '&:hover': { backgroundColor: active ? 'primary.dark' : 'action.hover', color: active ? 'primary.contrastText' : 'primary.main', transform: active ? 'none' : 'translateX(2px)' } }}><Box sx={{ display: 'flex', opacity: active ? 1 : .82 }}>{icon}</Box><Typography variant="body2" sx={{ flex: 1, fontWeight: active ? 700 : 500 }}>{label}</Typography>{endIcon}</Box>
+  const navItem = (view: DashboardView, label: string, icon: ReactNode, active: boolean, endIcon?: ReactNode, onClick?: () => void, ariaExpanded?: boolean) => {
+    const button = <Box component="button" type="button" aria-label={collapsed ? label : undefined} aria-expanded={collapsed ? undefined : ariaExpanded} onClick={onClick ?? (() => onSelectView(view))} sx={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 1.25, border: 0, borderRadius: 2.5, px: collapsed ? 0 : 1.5, py: 1.05, mb: .45, backgroundColor: active ? 'primary.main' : 'transparent', color: active ? 'primary.contrastText' : 'text.secondary', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all .18s ease', boxShadow: active ? (theme) => `0 7px 16px ${alpha(theme.palette.primary.main, 0.22)}` : 'none', '&:hover': { backgroundColor: active ? 'primary.dark' : 'action.hover', color: active ? 'primary.contrastText' : 'primary.main', transform: active ? 'none' : 'translateX(2px)' } }}><Box sx={{ display: 'flex', opacity: active ? 1 : .82 }}>{icon}</Box>{!collapsed && <><Typography variant="body2" sx={{ flex: 1, fontWeight: active ? 700 : 500 }}>{label}</Typography>{endIcon}</>}</Box>
+    return collapsed ? <Tooltip title={label} placement="right">{button}</Tooltip> : button
+  }
 
-  return <Box sx={{ width: drawerWidth, height: '100%', overflowY: 'auto', backgroundColor: 'background.paper', display: 'flex', flexDirection: 'column', borderRight: 1, borderColor: 'divider' }}>
-    <Box sx={{ px: 3, pt: 2.5, pb: 2.25, borderBottom: 1, borderColor: 'divider' }}><Box sx={{ transform: 'scale(.82)', transformOrigin: 'left center', width: '122%' }}><Logo /></Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: .2 }}>Your personal learning space</Typography></Box>
-    <Box component="nav" aria-label="Student dashboard navigation" sx={{ px: 1.75, py: 2, flex: 1 }}>
-      <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Overview</Typography>
+  return <Box sx={{ width: collapsed ? collapsedDrawerWidth : drawerWidth, height: '100%', overflowY: 'auto', backgroundColor: 'background.paper', display: 'flex', flexDirection: 'column', borderRight: 1, borderColor: 'divider', transition: 'width .2s ease' }}>
+    <Box sx={{ px: collapsed ? 1 : 3, pt: 2.5, pb: 2.25, borderBottom: 1, borderColor: 'divider' }}>{!collapsed && <><Box sx={{ transform: 'scale(.82)', transformOrigin: 'left center', width: '122%' }}><Logo /></Box><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: .2 }}>Your personal learning space</Typography></>}</Box>
+    <Box component="nav" aria-label="Student dashboard navigation" sx={{ px: collapsed ? 1 : 1.75, py: 2, flex: 1 }}>
+      {!collapsed && <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Overview</Typography>}
       {navItem('overview', 'Dashboard', <DashboardOutlinedIcon fontSize="small" />, activeView === 'overview')}
       {navItem('calendar', 'Calendar', <CalendarTodayOutlinedIcon fontSize="small" />, activeView === 'calendar')}
       <Box>
         {navItem('courses', 'My Enrollments', <MenuBookOutlinedIcon fontSize="small" />, enrollmentActive, <ExpandMoreIcon fontSize="small" sx={{ transform: isEnrollmentExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 160ms ease' }} />, toggleEnrollment, isEnrollmentExpanded)}
-        {isEnrollmentExpanded && <Box sx={{ ml: 2, mb: 1 }}>
+        {isEnrollmentExpanded && !collapsed && <Box sx={{ ml: 2, mb: 1 }}>
           <Box component="button" type="button" onClick={() => onSelectView('courses')} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1, border: 0, borderLeft: 2, borderColor: activeView === 'courses' || activeView === 'course-view' ? 'primary.main' : 'divider', py: 0.75, pl: 1.5, pr: 1, backgroundColor: 'transparent', color: activeView === 'courses' || activeView === 'course-view' ? 'primary.main' : 'text.secondary', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: activeView === 'courses' || activeView === 'course-view' ? 600 : 400, textAlign: 'left' }}><MenuBookOutlinedIcon fontSize="small" />My Courses</Box>
           <Box component="button" type="button" onClick={() => onSelectView('classes')} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1, border: 0, borderLeft: 2, borderColor: activeView === 'classes' ? 'primary.main' : 'divider', py: 0.75, pl: 1.5, pr: 1, backgroundColor: 'transparent', color: activeView === 'classes' ? 'primary.main' : 'text.secondary', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: activeView === 'classes' ? 600 : 400, textAlign: 'left' }}><ClassOutlinedIcon fontSize="small" />My Classes</Box>
           <Box component="button" type="button" onClick={() => onSelectView('study-planner')} sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1, border: 0, borderLeft: 2, borderColor: activeView === 'study-planner' ? 'primary.main' : 'divider', py: 0.75, pl: 1.5, pr: 1, backgroundColor: 'transparent', color: activeView === 'study-planner' ? 'primary.main' : 'text.secondary', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: activeView === 'study-planner' ? 600 : 400, textAlign: 'left' }}><CalendarTodayOutlinedIcon fontSize="small" />Study Planner</Box>
         </Box>}
       </Box>
-      <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mt: 2.25, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Learning</Typography>
+      {collapsed ? <Divider sx={{ my: 1.5 }} /> : <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mt: 2.25, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Learning</Typography>}
       {navItem('quizzes', 'Quizzes & Results', <QuizOutlinedIcon fontSize="small" />, activeView === 'quizzes')}
       {navItem('purchases', 'My Purchases', <PaymentsOutlinedIcon fontSize="small" />, activeView === 'purchases')}
-      <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mt: 2.25, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Account</Typography>
+      {collapsed ? <Divider sx={{ my: 1.5 }} /> : <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mt: 2.25, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Account</Typography>}
       {navItem('profile', 'Profile', <PersonOutlineIcon fontSize="small" />, activeView === 'profile')}
       {navItem('payments', 'Payment History', <PaymentsOutlinedIcon fontSize="small" />, activeView === 'payments')}
     </Box>
-    <Box sx={{ p: 1.75, pt: 1, borderTop: 1, borderColor: 'divider' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, p: 1.25, mb: 1.25, borderRadius: 3, background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.10)}, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.10 : 0.04)})` }}><Box sx={{ position: 'relative' }}><Avatar sx={{ width: 34, height: 34, bgcolor: 'primary.main', fontSize: 14 }}>{displayName.charAt(0)}</Avatar><Box sx={{ position: 'absolute', right: -1, bottom: 0, width: 9, height: 9, borderRadius: '50%', bgcolor: 'success.main', border: (theme) => `2px solid ${theme.palette.background.paper}` }} /></Box><Box sx={{ minWidth: 0 }}><Typography variant="body2" noWrap sx={{ fontWeight: 800 }}>{displayName}</Typography><Typography variant="caption" color="text.secondary">Student account</Typography></Box></Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1, py: .7 }}><SchoolOutlinedIcon sx={{ color: 'primary.main' }} fontSize="small" /><Typography variant="caption" color="text.secondary">Keep learning at your own pace.</Typography></Box>
+    <Box sx={{ p: collapsed ? 1 : 1.75, pt: 1, borderTop: 1, borderColor: 'divider' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, p: 1.25, mb: 1.25, borderRadius: 3, background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.22 : 0.10)}, ${alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.10 : 0.04)})` }}><Box sx={{ position: 'relative' }}><Avatar sx={{ width: 34, height: 34, bgcolor: 'primary.main', fontSize: 14 }}>{displayName.charAt(0)}</Avatar><Box sx={{ position: 'absolute', right: -1, bottom: 0, width: 9, height: 9, borderRadius: '50%', bgcolor: 'success.main', border: (theme) => `2px solid ${theme.palette.background.paper}` }} /></Box>{!collapsed && <Box sx={{ minWidth: 0 }}><Typography variant="body2" noWrap sx={{ fontWeight: 800 }}>{displayName}</Typography><Typography variant="caption" color="text.secondary">Student account</Typography></Box>}</Box>
+      {!collapsed && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1, py: .7 }}><SchoolOutlinedIcon sx={{ color: 'primary.main' }} fontSize="small" /><Typography variant="caption" color="text.secondary">Keep learning at your own pace.</Typography></Box>}
     </Box>
   </Box>
 }
@@ -2122,6 +2133,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   const [selectedCatalogClassId, setSelectedCatalogClassId] = useState<number | null>(() => catalogClassIdFromPath(window.location.pathname))
   const [quizActive, setQuizActive] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [language, setLanguage] = useState('EN')
   const [now, setNow] = useState(() => new Date())
   const [enrollments, setEnrollments] = useState<DashboardEnrollment[]>([])
@@ -2481,13 +2493,13 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   }
   const classCheckoutCourse = classToEnroll ? { id: classToEnroll.courseId ?? classToEnroll.id, title: classToEnroll.title, price: classToEnroll.price } : null
 
-  const sidebar = <DashboardSidebar activeView={activeView} onSelectView={selectView} />
+  const sidebar = <DashboardSidebar activeView={activeView} onSelectView={selectView} collapsed={!isMobile && sidebarCollapsed} />
   const isLessonPlayer = activeView === 'course-view'
   const isQuizPlayer = isLessonPlayer && quizActive
 
   return <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
-    {!isLessonPlayer && !isQuizPlayer && (isMobile ? <Drawer open={mobileOpen} onClose={() => setMobileOpen(false)}>{sidebar}<IconButton onClick={() => setMobileOpen(false)} aria-label="Close dashboard navigation" sx={{ position: 'absolute', top: 10, right: 10 }}><CloseIcon /></IconButton></Drawer> : <Box sx={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: drawerWidth, zIndex: 'drawer' }}>{sidebar}</Box>)}
-    <Box sx={{ flex: 1, minWidth: 0, ml: isLessonPlayer ? 0 : { xs: 0, md: `${drawerWidth}px` } }}>
+    {!isLessonPlayer && !isQuizPlayer && (isMobile ? <Drawer open={mobileOpen} onClose={() => setMobileOpen(false)}>{sidebar}<IconButton onClick={() => setMobileOpen(false)} aria-label="Close dashboard navigation" sx={{ position: 'absolute', top: 10, right: 10 }}><CloseIcon /></IconButton></Drawer> : <Box sx={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: sidebarCollapsed ? collapsedDrawerWidth : drawerWidth, zIndex: 'drawer', transition: 'width .2s ease' }}>{sidebar}<IconButton onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarCollapsed} sx={{ position: 'absolute', top: 28, right: -14, zIndex: 1, width: 28, height: 28, bgcolor: 'background.paper', border: 1, borderColor: 'divider', boxShadow: 1, '&:hover': { bgcolor: 'action.hover' } }}>{sidebarCollapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}</IconButton></Box>)}
+    <Box sx={{ flex: 1, minWidth: 0, ml: isLessonPlayer ? 0 : { xs: 0, md: `${sidebarCollapsed ? collapsedDrawerWidth : drawerWidth}px` }, transition: 'margin-left .2s ease' }}>
       {!isLessonPlayer && !isQuizPlayer && <DashboardHeader title={pageTitle} darkMode={darkMode} language={language} onLanguageChange={() => setLanguage((current) => current === 'EN' ? 'AM' : 'EN')} onToggleDarkMode={onToggleDarkMode} onOpenMenu={() => setMobileOpen(true)} />}
       <Box component="main" sx={{ display: isQuizPlayer ? 'flex' : undefined, alignItems: isQuizPlayer ? 'center' : undefined, justifyContent: isQuizPlayer ? 'center' : undefined, width: isQuizPlayer ? '100%' : undefined, boxSizing: isQuizPlayer ? 'border-box' : undefined, mx: isQuizPlayer ? 'auto' : undefined, p: { xs: 2, md: 3.5 }, maxWidth: isLessonPlayer ? 1600 : 1540, minHeight: isLessonPlayer ? '100vh' : 'calc(100vh - 82px)', background: (theme) => activeView === 'courses' ? theme.palette.mode === 'dark' ? theme.palette.background.default : '#fff' : theme.palette.mode === 'dark' ? `linear-gradient(135deg, ${theme.palette.background.default} 0%, #142420 100%)` : 'linear-gradient(135deg, #f9fcfd 0%, #f4f8ff 100%)' }}>
         {profileMessage && <Alert severity="success" onClose={() => setProfileMessage('')} sx={{ mb: 3 }}>{profileMessage}</Alert>}
