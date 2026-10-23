@@ -52,10 +52,10 @@ const ContactPage: FC = () => {
       <Container maxWidth="lg" sx={{ position: 'relative', py: { xs: 6, md: 9 } }}>
         <Grid container spacing={{ xs: 4, md: 6 }} alignItems="center">
           <Grid item xs={12} md={12} lg={7}>
-            <Box sx={{ maxWidth: { sm: 390 } }}>
+            <Box sx={{ maxWidth: 700 }}>
               <Typography variant="overline" sx={{ color: '#b9f0dd', fontWeight: 800, letterSpacing: 1.1 }}>GET IN TOUCH</Typography>
               <Typography component="h1" sx={{ mt: .75, mb: 1.5, fontSize: { xs: '2.5rem', sm: '3.25rem', md: '4rem' }, lineHeight: 1.05, letterSpacing: '-.045em', fontWeight: 800 }}>Contact Us</Typography>
-              <Typography sx={{ maxWidth: 450, color: 'rgba(255,255,255,.78)', lineHeight: 1.7, fontSize: { xs: '1rem', md: '1.1rem' } }}>We’d love to hear from you! Whether you have a question, need support, or just want to say hello — we’re here to help.</Typography>
+              <Typography sx={{ maxWidth: 590, color: 'rgba(255,255,255,.78)', lineHeight: 1.7, fontSize: { xs: '1rem', md: '1.1rem' } }}>We’d love to hear from you! Whether you have a question, need support, or just want to say hello — we’re here to help.</Typography>
               <Stack direction="row" spacing={{ xs: 2, sm: 2.5 }} sx={{ mt: { xs: 2.5, sm: 3 } }}>
                 <Stack direction="row" spacing={.75} alignItems="center"><MenuBookOutlinedIcon sx={{ color: '#b9f0dd' }} fontSize="small" /><Typography variant="body1" sx={{ color: 'rgba(255,255,255,.88)', fontWeight: 600, lineHeight: 1.3 }}>Better Learning<br />Together</Typography></Stack>
                 <Stack direction="row" spacing={.75} alignItems="center"><FavoriteBorderRoundedIcon sx={{ color: '#b9f0dd' }} fontSize="small" /><Typography variant="body1" sx={{ color: 'rgba(255,255,255,.88)', fontWeight: 600, lineHeight: 1.3 }}>Your Success<br />Matters</Typography></Stack>
