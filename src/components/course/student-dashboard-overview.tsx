@@ -62,13 +62,13 @@ const metricTones = {
 }
 
 const OverviewMetric = ({ label, value, detail, icon, tone }: OverviewMetricProps) => (
-  <Paper elevation={0} sx={{ p: { xs: 1.75, sm: 2.25 }, border: 1, borderColor: 'divider', borderRadius: 3.5, minWidth: 0 }}>
+  <Paper elevation={0} sx={{ p: { xs: 2, sm: 2.75 }, border: 1, borderColor: 'divider', borderRadius: 3.5, minWidth: 0 }}>
     <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
       <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>{label}</Typography>
       <Box sx={{ display: 'grid', placeItems: 'center', width: 36, height: 36, flexShrink: 0, borderRadius: 2.25, color: metricTones[tone].color, bgcolor: metricTones[tone].background }}>{icon}</Box>
     </Stack>
-    <Typography variant="h4" sx={{ mt: 1.25, fontWeight: 800, letterSpacing: '-.04em' }}>{value}</Typography>
-    <Typography variant="caption" color="text.secondary">{detail}</Typography>
+    <Typography variant="h4" sx={{ mt: 1.75, fontWeight: 800, letterSpacing: '-.04em' }}>{value}</Typography>
+    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: .5 }}>{detail}</Typography>
   </Paper>
 )
 
@@ -185,7 +185,7 @@ const StudentDashboardOverview = ({ displayName, courses, classes, lessonCount, 
       </Stack>
     </Paper>}
 
-    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.25, sm: 1.75 }, mb: 2.25 }}>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' }, gap: { xs: 1.5, sm: 2.25 }, mb: 2.25 }}>
       <OverviewMetric label="Active learning" value={String(courses.length + classes.length)} detail={`${courses.length} courses · ${classes.length} classes`} icon={<MenuBookOutlinedIcon fontSize="small" />} tone="teal" />
       <OverviewMetric label="Lessons completed" value={String(lessonCount)} detail="Keep the streak going" icon={<CheckCircleOutlineRoundedIcon fontSize="small" />} tone="blue" />
       <OverviewMetric label="Quiz average" value={averageQuizScore === null ? '—' : `${averageQuizScore}%`} detail={quizAverageNeedsAttention ? 'One or more quizzes need review' : quizCount ? `From ${quizCount} completed ${quizCount === 1 ? 'quiz' : 'quizzes'}` : 'No completed quizzes yet'} icon={quizAverageNeedsAttention ? <WarningAmberOutlinedIcon fontSize="small" /> : <QuizOutlinedIcon fontSize="small" />} tone={quizAverageNeedsAttention ? 'amber' : 'violet'} />
