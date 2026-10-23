@@ -1,4 +1,27 @@
-export type LessonType = 'video' | 'article' | 'interactive' | 'simulation' | 'quiz' | 'practice' | 'live'
+export type LessonType = 'video' | 'article' | 'interactive' | 'interactiveTool' | 'simulation' | 'quiz' | 'practice' | 'live'
+export type InteractiveToolSubject = 'Mathematics' | 'Physics' | 'Chemistry' | 'Biology' | 'Other'
+export type InteractiveToolDifficulty = 'Beginner' | 'Intermediate' | 'Advanced'
+export type InteractiveToolTask = 'Automatic' | 'Equation solving' | 'Arithmetic' | 'Geometry'
+
+export interface InteractiveToolConfig {
+  subject: InteractiveToolSubject
+  toolType: 'step-by-step-solver'
+  instructions: string
+  examples: string[]
+  difficulty: InteractiveToolDifficulty
+  learningObjectives: string[]
+  task: InteractiveToolTask
+}
+
+export interface InteractiveToolProgress {
+  problem: string
+  task: InteractiveToolTask
+  currentStep: number
+  answers: Record<number, string>
+  attempts: Record<number, number>
+  hintsUsed: Record<number, number>
+  isCompleted: boolean
+}
 
 export type SimulationRule = 'pendulum-period' | 'osmosis-movement' | 'neutralization' | 'projectile-range' | 'linear'
 
@@ -78,6 +101,7 @@ export interface AdminLesson {
   articleHeaderImageUrl?: string
   baseImageUrl?: string
   interactiveHotspots?: InteractiveHotspot[]
+  interactiveTool?: InteractiveToolConfig
   simulation?: SimulationConfig
   simulationToolId?: string
   platformEngineId?: string

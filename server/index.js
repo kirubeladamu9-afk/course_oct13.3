@@ -419,6 +419,16 @@ const initializeDatabase = async () => {
   `
 
   await sql`
+    CREATE TABLE IF NOT EXISTS student_interactive_tool_progress (
+      enrollment_id BIGINT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
+      lesson_id BIGINT NOT NULL,
+      progress JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (enrollment_id, lesson_id)
+    )
+  `
+
+  await sql`
     CREATE TABLE IF NOT EXISTS class_attendance (
       enrollment_id BIGINT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
       lesson_id BIGINT NOT NULL,
@@ -2064,6 +2074,78 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/engagement', requireA
   return response.json(progress.lessonProgress)
 })
 
+const isValidInteractiveToolProgress = (progress) => isPlainObject(progress)
+  && typeof progress.problem === 'string' && progress.problem.trim().length > 0 && progress.problem.length <= 500
+  && ['Automatic', 'Equation solving', 'Arithmetic', 'Geometry'].includes(progress.task)
+  && Number.isInteger(progress.currentStep) && progress.currentStep >= 0 && progress.currentStep <= 20
+  && isPlainObject(progress.answers) && Object.entries(progress.answers).length <= 20 && Object.entries(progress.answers).every(([step, answer]) => /^\d+$/.test(step) && typeof answer === 'string' && answer.length <= 300)
+  && isPlainObject(progress.attempts) && Object.entries(progress.attempts).length <= 20 && Object.entries(progress.attempts).every(([step, count]) => /^\d+$/.test(step) && Number.isInteger(count) && count >= 0 && count <= 100)
+  && isPlainObject(progress.hintsUsed) && Object.entries(progress.hintsUsed).length <= 20 && Object.entries(progress.hintsUsed).every(([step, count]) => /^\d+$/.test(step) && Number.isInteger(count) && count >= 0 && count <= 100)
+  && typeof progress.isCompleted === 'boolean'
+
+app.get('/api/enrollments/:enrollmentId/lessons/:lessonId/interactive-tool-progress', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  if (enrollmentId === null || lessonId === null) return response.status(400).json({ message: 'Invalid lesson.' })
+  const result = await sql.begin(async (transaction) => {
+    const enrollment = await getOwnedEnrollment(transaction, request.userId, enrollmentId)
+    if (!enrollment) return null
+    const lesson = findCourseLesson(enrollment.modules, lessonId)
+    if (!lesson || lesson.type !== 'interactiveTool') return { error: 'Interactive tool lesson not found.' }
+    const [record] = await transaction`SELECT progress FROM student_interactive_tool_progress WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}`
+    return { progress: record ? deserializeJson(record.progress) : null }
+  })
+  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (result.error) return response.status(404).json({ message: result.error })
+  return response.json(result.progress)
+})
+
+app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/interactive-tool-progress', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  const progress = request.body
+  if (enrollmentId === null || lessonId === null || !isValidInteractiveToolProgress(progress)) return response.status(400).json({ message: 'Invalid interactive tool progress.' })
+  const result = await sql.begin(async (transaction) => {
+    const enrollment = await getOwnedEnrollment(transaction, request.userId, enrollmentId)
+    if (!enrollment) return null
+    const lesson = findCourseLesson(enrollment.modules, lessonId)
+    if (!lesson || lesson.type !== 'interactiveTool' || lesson.interactiveTool?.toolType !== 'step-by-step-solver') return { error: 'Interactive tool lesson not found.' }
+    await transaction`
+      INSERT INTO student_lesson_progress (enrollment_id, lesson_id)
+      VALUES (${enrollmentId}, ${lessonId})
+      ON CONFLICT (enrollment_id, lesson_id) DO UPDATE SET last_accessed_at = NOW()
+    `
+    const [saved] = await transaction`
+      INSERT INTO student_interactive_tool_progress (enrollment_id, lesson_id, progress)
+      VALUES (${enrollmentId}, ${lessonId}, ${JSON.stringify(progress)}::jsonb)
+      ON CONFLICT (enrollment_id, lesson_id) DO UPDATE
+      SET progress = EXCLUDED.progress, updated_at = NOW()
+      RETURNING progress
+    `
+    return { progress: deserializeJson(saved.progress) }
+  })
+  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (result.error) return response.status(404).json({ message: result.error })
+  return response.json(result.progress)
+})
+
+app.delete('/api/enrollments/:enrollmentId/lessons/:lessonId/interactive-tool-progress', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  if (enrollmentId === null || lessonId === null) return response.status(400).json({ message: 'Invalid lesson.' })
+  const result = await sql.begin(async (transaction) => {
+    const enrollment = await getOwnedEnrollment(transaction, request.userId, enrollmentId)
+    if (!enrollment) return null
+    const lesson = findCourseLesson(enrollment.modules, lessonId)
+    if (!lesson || lesson.type !== 'interactiveTool') return { error: 'Interactive tool lesson not found.' }
+    await transaction`DELETE FROM student_interactive_tool_progress WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}`
+    return { success: true }
+  })
+  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (result.error) return response.status(404).json({ message: result.error })
+  return response.status(204).end()
+})
+
 app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/complete', requireAuthenticated, async (request, response) => {
   const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
   const lessonId = parseEnrollmentId(request.params.lessonId)
@@ -2075,6 +2157,10 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/complete', requireAut
     const lesson = findCourseLesson(enrollment.modules, lessonId)
     if (!lesson) return { error: 'Lesson not found.' }
 
+    if (lesson.type === 'interactiveTool') {
+      const [savedProgress] = await transaction`SELECT progress FROM student_interactive_tool_progress WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}`
+      if (!savedProgress || !deserializeJson(savedProgress.progress)?.isCompleted) return { error: 'Complete the interactive tool before completing this lesson.' }
+    }
     if (lesson.type === 'quiz') {
       const [completedAttempt] = await transaction`
         SELECT id
@@ -2950,7 +3036,7 @@ app.put('/api/tutor/courses/:id/curriculum', requireTutor, async (request, respo
   const courseId = parseCourseId(request.params.id)
   const modules = request.body?.modules
   const lessons = getCourseLessons(modules)
-  if (courseId === null || !Array.isArray(modules) || lessons.some((lesson) => !['video', 'article', 'interactive', 'quiz'].includes(lesson?.type))) {
+  if (courseId === null || !Array.isArray(modules) || lessons.some((lesson) => !['video', 'article', 'interactive', 'interactiveTool', 'quiz'].includes(lesson?.type))) {
     return response.status(400).json({ message: 'Enter valid course curriculum lessons.' })
   }
   const [updated] = await sql`

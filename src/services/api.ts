@@ -1,6 +1,6 @@
 import { type AdminCourse, type AdminModule, type AdminTutor, type AdminUser } from '@/components/admin/admin-data'
 import { type Course } from '@/interfaces/course'
-import { type ArticleContentBlock, type SimulationConfig } from '@/components/admin/admin-data'
+import { type ArticleContentBlock, type InteractiveToolConfig, type InteractiveToolProgress, type SimulationConfig } from '@/components/admin/admin-data'
 import { type PracticeExam, type PracticeExamWithQuestions, type PracticePurchase, type PracticeQuestion } from '@/components/practice/practice-data'
 import { navigateTo } from '@/lib/navigation'
 
@@ -59,7 +59,7 @@ export interface WeakArea {
 interface EnrollmentLesson {
   id: number
   title: string
-  type: 'video' | 'article' | 'interactive' | 'simulation' | 'quiz' | 'practice' | 'live'
+  type: 'video' | 'article' | 'interactive' | 'interactiveTool' | 'simulation' | 'quiz' | 'practice' | 'live'
   duration: number | null
   videoUrl?: string
   thumbnailUrl?: string
@@ -69,6 +69,7 @@ interface EnrollmentLesson {
   articleHeaderImageUrl?: string
   baseImageUrl?: string
   interactiveHotspots?: Array<{ id: number; left: string; top: string; label: string; explanation: string }>
+  interactiveTool?: InteractiveToolConfig
   simulation?: SimulationConfig
   platformEngineId?: string
   curriculumTopic?: string
@@ -1236,6 +1237,19 @@ export const saveLessonEngagement = (enrollmentId: number, lessonId: number, val
 export const completeLesson = (enrollmentId: number, lessonId: number) => requestLearningProgress<LessonProgress>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/complete`, {
   method: 'POST',
 })
+
+export const getInteractiveToolProgress = (enrollmentId: number, lessonId: number) => requestLearningProgress<InteractiveToolProgress | null>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/interactive-tool-progress`, {})
+
+export const saveInteractiveToolProgress = (enrollmentId: number, lessonId: number, progress: InteractiveToolProgress) => requestLearningProgress<InteractiveToolProgress>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/interactive-tool-progress`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(progress),
+})
+
+export const resetInteractiveToolProgress = async (enrollmentId: number, lessonId: number) => {
+  const response = await requestApi(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/interactive-tool-progress`, { method: 'DELETE' })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
 
 export const beginQuizAttempt = (enrollmentId: number, lessonId: number) => requestLearningProgress<QuizAttempt>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/quiz-attempts`, {
   method: 'POST',
