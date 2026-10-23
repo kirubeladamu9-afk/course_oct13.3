@@ -27,7 +27,7 @@ const InteractiveToolLessonEditor = ({ lesson, onChange }: Props) => {
   const updateConfig = (update: Partial<InteractiveToolConfig>) => onChange({ ...lesson, interactiveTool: { ...config, ...update } })
   const parseLines = (value: string) => value.split('\n').map((line) => line.trim()).filter(Boolean)
   const toolOptions = toolsBySubject[config.subject]
-  const learningMode = config.learningMode ?? 'Guided'
+  const learningMode = config.learningMode === 'Practice' ? 'Practice' : 'Guided'
   const exampleProblem = config.exampleProblem ?? config.examples[0] ?? ''
   const [preview, setPreview] = useState<Preview | null>(null)
   const [isChecking, setIsChecking] = useState(false)

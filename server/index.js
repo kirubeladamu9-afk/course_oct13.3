@@ -442,6 +442,7 @@ const initializeDatabase = async () => {
   `
   await sql`ALTER TABLE interactive_tool_sessions ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ`
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS interactive_tool_one_active_session ON interactive_tool_sessions (enrollment_id, lesson_id) WHERE is_active = TRUE`
+  await sql`CREATE INDEX IF NOT EXISTS interactive_tool_session_history_idx ON interactive_tool_sessions (enrollment_id, lesson_id, created_at DESC)`
   await sql`
     CREATE TABLE IF NOT EXISTS interactive_tool_step_attempts (
       id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -453,6 +454,7 @@ const initializeDatabase = async () => {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `
+  await sql`CREATE INDEX IF NOT EXISTS interactive_tool_attempt_session_idx ON interactive_tool_step_attempts (session_id, step_index, created_at)`
 
   await sql`
     CREATE TABLE IF NOT EXISTS class_attendance (

@@ -227,8 +227,8 @@ const solveMathSystem = (problem, toolType) => {
 }
 
 const solveMath = ({ problem, difficulty, toolType }) => {
-  if (difficulty === 'Advanced' && /[;\n]/.test(problem)) return solveMathSystem(problem, toolType)
-  if (difficulty === 'Advanced' && /x\s*\^\s*2/i.test(problem)) return solveQuadratic(problem, toolType)
+  if (toolType === 'step-by-step-solver' && difficulty === 'Advanced' && /[;\n]/.test(problem)) return solveMathSystem(problem, toolType)
+  if (toolType === 'step-by-step-solver' && difficulty === 'Advanced' && /x\s*\^\s*2/i.test(problem)) return solveQuadratic(problem, toolType)
   if (/\^/.test(problem)) return null
   if (toolType === 'word-problems') {
     const equation = parseMathWordProblem(problem)
