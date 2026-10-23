@@ -43,7 +43,9 @@ const ContactPage: FC = () => {
     const name = String(formData.get('fullName') ?? '')
     const email = String(formData.get('email') ?? '')
     const body = `Name: ${name}\nEmail: ${email}\nSubject: ${subject}\n\n${message}`
-    window.location.href = `mailto:${emailAddress}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+    const link = document.createElement('a')
+    link.href = `mailto:${emailAddress}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+    link.click()
   }
 
   return <Box component="main" sx={{ backgroundColor: (theme) => theme.palette.mode === 'dark' ? theme.palette.background.default : '#f8fbfb', color: 'text.primary' }}>
