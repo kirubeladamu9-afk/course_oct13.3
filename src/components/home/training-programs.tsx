@@ -228,7 +228,7 @@ const ProgramCard: FC<ProgramCardProps> = ({ program, classes, onEnroll }) => {
   const isBatchProgram = program.id !== 'international-online-interactive'
 
   return (
-    <Card elevation={0} sx={{ position: 'relative', height: '100%', minHeight: { xs: 560, md: 600 }, overflow: 'hidden', border: 1, borderTop: 3, borderColor: 'divider', borderTopColor: program.accent, borderRadius: 3, backgroundColor: 'background.paper' }}>
+    <Card elevation={0} sx={{ position: 'relative', height: '100%', overflow: 'hidden', border: 1, borderTop: 3, borderColor: 'divider', borderTopColor: program.accent, borderRadius: 3, backgroundColor: 'background.paper' }}>
       <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column', p: { xs: 2.5, md: 3 }, '&:last-child': { pb: { xs: 2.5, md: 3 } } }}>
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1} sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, borderRadius: '50%', color: program.accent, backgroundColor: program.id === 'summer-camp' ? 'rgba(255, 175, 53, 0.16)' : 'rgba(159, 241, 210, 0.4)' }}>{program.icon}</Box>
