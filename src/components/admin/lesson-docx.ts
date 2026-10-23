@@ -72,11 +72,11 @@ const questionTemplateParagraphs = (type: 'quiz' | 'practice') => {
 }
 
 const solverTemplateParagraphs = () => [
+  paragraph('LESSON TYPE: STEP-BY-STEP SOLVER'),
   paragraph('Step-by-Step Solver template instructions'),
   paragraph('Replace the Heading 1 text with the lesson title. Each problem is a Heading 2 named Problem 1, Problem 2, and so on. Under each problem, add Heading 3 sections named Step 1, Step 2, and so on, then Follow-up 1, Follow-up 2, and so on.'),
   paragraph('For each problem use: Problem: text. For each step use, in this order: Instruction: text, Correct answer: text, Explanation: text, Hint: text, and Corrective feedback: text. For each follow-up question use, in this order: Question: text, Correct answer: text, Explanation: text, and Corrective feedback: text. Use one paragraph per line.'),
   paragraph('Every field is required. Each problem needs at least one step and one follow-up question. Any problem with a missing field is skipped during import, and the import review lists why. The first problem is an example; replace it or remove it.'),
-  paragraph('LESSON TYPE: STEP-BY-STEP SOLVER'),
   paragraph('[Enter lesson title]', HeadingLevel.HEADING_1),
   paragraph('Problem 1', HeadingLevel.HEADING_2),
   paragraph('Problem: What is 12 + 7?'),
