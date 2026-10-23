@@ -51,18 +51,18 @@ const ContactPage: FC = () => {
       <Box aria-hidden="true" sx={{ position: 'absolute', width: 440, height: 440, borderRadius: '50%', right: { xs: -240, md: -90 }, top: -225, border: '1px solid rgba(255,255,255,.12)', boxShadow: '0 0 0 48px rgba(255,255,255,.035), 0 0 0 96px rgba(255,255,255,.025)' }} />
       <Container maxWidth="lg" sx={{ position: 'relative', py: { xs: 6, md: 9 } }}>
         <Grid container spacing={{ xs: 4, md: 6 }} alignItems="center">
-          <Grid item xs={12} md={7}>
+          <Grid item xs={12} md={12} lg={7}>
             <Box sx={{ maxWidth: { sm: 390 } }}>
               <Typography variant="overline" sx={{ color: '#b9f0dd', fontWeight: 800, letterSpacing: 1.1 }}>GET IN TOUCH</Typography>
               <Typography component="h1" sx={{ mt: .75, mb: 1.5, fontSize: { xs: '2.5rem', sm: '3.25rem', md: '4rem' }, lineHeight: 1.05, letterSpacing: '-.045em', fontWeight: 800 }}>Contact Us</Typography>
               <Typography sx={{ maxWidth: 450, color: 'rgba(255,255,255,.78)', lineHeight: 1.7, fontSize: { xs: '1rem', md: '1.1rem' } }}>We’d love to hear from you! Whether you have a question, need support, or just want to say hello — we’re here to help.</Typography>
               <Stack direction="row" spacing={{ xs: 2, sm: 2.5 }} sx={{ mt: { xs: 2.5, sm: 3 } }}>
-                <Stack direction="row" spacing={.75} alignItems="center"><MenuBookOutlinedIcon sx={{ color: '#b9f0dd' }} fontSize="small" /><Typography variant="caption" sx={{ color: 'rgba(255,255,255,.88)', fontWeight: 600, lineHeight: 1.3 }}>Better Learning<br />Together</Typography></Stack>
-                <Stack direction="row" spacing={.75} alignItems="center"><FavoriteBorderRoundedIcon sx={{ color: '#b9f0dd' }} fontSize="small" /><Typography variant="caption" sx={{ color: 'rgba(255,255,255,.88)', fontWeight: 600, lineHeight: 1.3 }}>Your Success<br />Matters</Typography></Stack>
+                <Stack direction="row" spacing={.75} alignItems="center"><MenuBookOutlinedIcon sx={{ color: '#b9f0dd' }} fontSize="small" /><Typography variant="body1" sx={{ color: 'rgba(255,255,255,.88)', fontWeight: 600, lineHeight: 1.3 }}>Better Learning<br />Together</Typography></Stack>
+                <Stack direction="row" spacing={.75} alignItems="center"><FavoriteBorderRoundedIcon sx={{ color: '#b9f0dd' }} fontSize="small" /><Typography variant="body1" sx={{ color: 'rgba(255,255,255,.88)', fontWeight: 600, lineHeight: 1.3 }}>Your Success<br />Matters</Typography></Stack>
               </Stack>
             </Box>
           </Grid>
-          <Grid item xs={12} md={5} sx={{ position: 'relative', minHeight: { xs: 220, sm: 280, md: 360 } }}>
+          <Grid item xs={12} md={5} lg={5} sx={{ display: { xs: 'none', lg: 'block' }, position: 'relative', minHeight: { xs: 220, sm: 280, md: 360 } }}>
             <Box component="img" src={contactHeroImage} alt="Support professional wearing a headset at a laptop" sx={{ position: 'absolute', top: 77, right: 0, height: '100%', width: 'auto', maxWidth: 'none' }} />
           </Grid>
         </Grid>

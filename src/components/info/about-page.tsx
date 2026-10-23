@@ -31,12 +31,12 @@ const AboutPage: FC = () => <Box component="main" sx={{ backgroundColor: (theme)
     <Box aria-hidden="true" sx={{ position: 'absolute', width: 440, height: 440, borderRadius: '50%', right: { xs: -240, md: -90 }, top: -225, border: '1px solid rgba(255,255,255,.12)', boxShadow: '0 0 0 48px rgba(255,255,255,.035), 0 0 0 96px rgba(255,255,255,.025)' }} />
     <Container maxWidth="lg" sx={{ position: 'relative', py: { xs: 6, md: 9 } }}>
       <Grid container spacing={{ xs: 4, md: 6 }} alignItems="center">
-        <Grid item xs={12} md={7}>
+        <Grid item xs={12} md={12} lg={7}>
           <Chip icon={<AutoAwesomeOutlinedIcon />} label="ABOUT COURSESPACE" size="small" sx={{ mb: 2.5, px: 0.5, color: 'common.white', backgroundColor: 'rgba(255,255,255,.12)', '& .MuiChip-icon': { color: '#b9f0dd' }, fontWeight: 700, letterSpacing: '.06em' }} />
           <Typography component="h1" sx={{ maxWidth: 700, mb: 2, fontSize: { xs: '2.5rem', sm: '3.25rem', md: '4rem' }, fontWeight: 800, lineHeight: 1.05, letterSpacing: '-.045em' }}>Learning that meets you where you are.</Typography>
           <Typography sx={{ maxWidth: 590, mb: 3.5, color: 'rgba(255,255,255,.78)', fontSize: { xs: '1rem', md: '1.1rem' }, lineHeight: 1.7 }}>CourseSpace helps learners build practical skills through clear courses, supportive tutors, and relaxed practice.</Typography>
         </Grid>
-        <Grid item xs={12} md={5} sx={{ position: 'relative', minHeight: { xs: 220, sm: 280, md: 360 } }}>
+        <Grid item xs={12} md={5} lg={5} sx={{ display: { xs: 'none', lg: 'block' }, position: 'relative', minHeight: { xs: 220, sm: 280, md: 360 } }}>
           <Box component="img" src="/images/about-study-group-banner.webp" alt="Students studying together around a laptop" sx={{ position: 'relative', top: 84, right: '56%', height: '100%', width: 'auto', maxWidth: 'none' }} />
         </Grid>
       </Grid>

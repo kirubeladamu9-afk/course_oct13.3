@@ -99,12 +99,12 @@ const CourseMarketplacePage: FC<CourseMarketplacePageProps> = ({ courses, darkMo
         <Box aria-hidden="true" sx={{ position: 'absolute', width: 440, height: 440, borderRadius: '50%', right: { xs: -240, md: -90 }, top: -225, border: '1px solid rgba(255,255,255,.12)', boxShadow: '0 0 0 48px rgba(255,255,255,.035), 0 0 0 96px rgba(255,255,255,.025)' }} />
         <Container maxWidth="lg" sx={{ position: 'relative', py: { xs: 6, md: 9 } }}>
           <Grid container spacing={{ xs: 4, md: 6 }} alignItems="center">
-            <Grid item xs={12} md={7}>
+            <Grid item xs={12} md={12} lg={7}>
               <Chip icon={<AutoAwesomeOutlinedIcon />} label="THE COURSESPACE CATALOG" size="small" sx={{ mb: 2.5, px: 0.5, color: 'common.white', backgroundColor: 'rgba(255,255,255,.12)', '& .MuiChip-icon': { color: '#b9f0dd' }, fontWeight: 700, letterSpacing: '.06em' }} />
               <Typography component="h1" sx={{ maxWidth: 700, mb: 2, fontSize: { xs: '2.5rem', sm: '3.25rem', md: '4rem' }, fontWeight: 800, lineHeight: 1.05, letterSpacing: '-.045em' }}>Find the course that moves you forward.</Typography>
               <Typography sx={{ maxWidth: 590, mb: 3.5, color: 'rgba(255,255,255,.78)', fontSize: { xs: '1rem', md: '1.1rem' }, lineHeight: 1.7 }}>Explore practical learning experiences, discover new interests, and build skills at your own pace.</Typography>
             </Grid>
-            <Grid item xs={12} md={5} sx={{ position: 'relative', minHeight: { xs: 220, sm: 280, md: 360 } }}>
+            <Grid item xs={12} md={5} lg={5} sx={{ display: { xs: 'none', lg: 'block' }, position: 'relative', minHeight: { xs: 220, sm: 280, md: 360 } }}>
               <Box component="img" src="/images/courses-banner-student.webp" alt="Smiling student holding a notebook with learning illustrations" sx={{ position: 'absolute', top: 77, right: 0, height: '100%', width: 'auto', maxWidth: 'none' }} />
             </Grid>
           </Grid>

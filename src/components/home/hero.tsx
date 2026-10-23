@@ -51,7 +51,7 @@ const HomeHero: FC = () => {
     <Box id="hero" sx={{ backgroundColor: 'background.paper', position: 'relative', pt: { xs: 6, md: 8 }, pb: { xs: 8, md: 10 } }}>
       <Container maxWidth="lg">
         <Grid container spacing={0} sx={{ flexDirection: { xs: 'column', md: 'unset' } }}>
-          <Grid item xs={12} md={7}>
+          <Grid item xs={12} md={12} lg={7}>
             <Box
               sx={{
                 textAlign: { xs: 'center', md: 'left' },
@@ -156,7 +156,7 @@ const HomeHero: FC = () => {
               </Box>
             </Box>
           </Grid>
-          <Grid item xs={12} md={5} sx={{ position: 'relative' }}>
+          <Grid item xs={12} md={5} lg={5} sx={{ display: { xs: 'none', lg: 'block' }, position: 'relative' }}>
             {/* Sertificate badge */}
             <Box
               sx={{
