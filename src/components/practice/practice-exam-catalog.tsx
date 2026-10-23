@@ -3,6 +3,7 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
+import Container from '@mui/material/Container'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import FormControl from '@mui/material/FormControl'
@@ -74,12 +75,15 @@ const PracticeExamCatalog: React.FC<PracticeExamCatalogProps> = ({ darkMode, onT
 
   return <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default' }}>
     <Header darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
+    <Box sx={{ position: 'relative', overflow: 'hidden', color: 'common.white', background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(120deg, #102b3f 0%, #0b514b 100%)' : 'linear-gradient(120deg, #102b3f 0%, #12685d 68%, #168276 100%)' }}>
+      <Box aria-hidden="true" sx={{ position: 'absolute', width: 440, height: 440, borderRadius: '50%', right: { xs: -240, md: -90 }, top: -225, border: '1px solid rgba(255,255,255,.12)', boxShadow: '0 0 0 48px rgba(255,255,255,.035), 0 0 0 96px rgba(255,255,255,.025)' }} />
+      <Container maxWidth="lg" sx={{ position: 'relative', py: { xs: 6, md: 9 } }}>
+        <Chip label="PRACTICE AT YOUR PACE" size="small" sx={{ mb: 2.5, px: 0.5, color: 'common.white', backgroundColor: 'rgba(255,255,255,.12)', fontWeight: 700, letterSpacing: '.06em' }} />
+        <Typography component="h1" sx={{ maxWidth: 700, mb: 2, fontSize: { xs: '2.5rem', sm: '3.25rem', md: '4rem' }, fontWeight: 800, lineHeight: 1.05, letterSpacing: '-.045em' }}>Practice exams for confident learning</Typography>
+        <Typography sx={{ maxWidth: 590, color: 'rgba(255,255,255,.78)', fontSize: { xs: '1rem', md: '1.1rem' }, lineHeight: 1.7 }}>Work through one question at a time, see the explanation right away, and build understanding without a timer or pressure.</Typography>
+      </Container>
+    </Box>
     <Box component="main" sx={{ maxWidth: 1200, mx: 'auto', px: { xs: 2, md: 4 }, py: { xs: 5, md: 8 } }}>
-      <Box sx={{ maxWidth: 720, mb: 5 }}>
-        <Chip label="Practice at your pace" color="primary" variant="outlined" sx={{ mb: 2 }} />
-        <Typography variant="h2" sx={{ fontSize: { xs: '2.25rem', md: '3.5rem' }, mb: 1.5 }}>Practice exams for confident learning</Typography>
-        <Typography color="text.secondary" sx={{ fontSize: '1.1rem' }}>Work through one question at a time, see the explanation right away, and build understanding without a timer or pressure.</Typography>
-      </Box>
       <Typography variant="h5" sx={{ mb: 2.5 }}>Published practice exams</Typography>
       {isLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading practice exams" /></Box> : error ? <Alert severity="error">{error}</Alert> : exams.length === 0 ? <Alert severity="info">There are no published practice exams available yet.</Alert> : <>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 3 }}>
