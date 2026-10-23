@@ -1,4 +1,3 @@
-import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined'
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import Box from '@mui/material/Box'
@@ -93,8 +92,6 @@ const CourseMarketplacePage: FC<CourseMarketplacePageProps> = ({ courses, darkMo
     setCurrentPage(1)
   }
 
-  const scrollToCatalog = () => document.getElementById('course-catalog')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-
   return <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default' }}>
     <Header darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
     <Box component="main">
@@ -106,10 +103,6 @@ const CourseMarketplacePage: FC<CourseMarketplacePageProps> = ({ courses, darkMo
               <Chip icon={<AutoAwesomeOutlinedIcon />} label="THE COURSESPACE CATALOG" size="small" sx={{ mb: 2.5, px: 0.5, color: 'common.white', backgroundColor: 'rgba(255,255,255,.12)', '& .MuiChip-icon': { color: '#b9f0dd' }, fontWeight: 700, letterSpacing: '.06em' }} />
               <Typography component="h1" sx={{ maxWidth: 700, mb: 2, fontSize: { xs: '2.5rem', sm: '3.25rem', md: '4rem' }, fontWeight: 800, lineHeight: 1.05, letterSpacing: '-.045em' }}>Find the course that moves you forward.</Typography>
               <Typography sx={{ maxWidth: 590, mb: 3.5, color: 'rgba(255,255,255,.78)', fontSize: { xs: '1rem', md: '1.1rem' }, lineHeight: 1.7 }}>Explore practical learning experiences, discover new interests, and build skills at your own pace.</Typography>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
-                <Button variant="contained" onClick={scrollToCatalog} endIcon={<ArrowForwardRoundedIcon />} sx={{ px: 2.5, py: 1.15, color: '#123e39', backgroundColor: '#c8f1df', fontWeight: 700, '&:hover': { backgroundColor: '#a9e7ce' } }}>Explore courses</Button>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,.72)' }}>{isLoading ? 'Loading the catalog…' : `${courses.length} ${courses.length === 1 ? 'course' : 'courses'} to explore`}</Typography>
-              </Stack>
             </Grid>
             <Grid item xs={12} md={5} sx={{ position: 'relative', minHeight: { xs: 220, sm: 280, md: 360 } }}>
               <Box component="img" src="/images/courses-banner-student.webp" alt="Smiling student holding a notebook with learning illustrations" sx={{ position: 'absolute', top: 0, right: 0, height: '100%', width: 'auto', maxWidth: 'none' }} />
