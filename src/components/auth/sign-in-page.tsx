@@ -66,7 +66,7 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
               Build practical skills with focused courses, supportive tutors, and relaxed practice that keeps you moving forward.
             </Typography>
           </Box>
-          <Box component="img" src="/images/home-hero.png" alt="Learner studying with Coursesharp" sx={{ display: 'block', alignSelf: 'center', width: { xs: '86%', sm: '82%', md: '86%' }, height: 'auto', maxHeight: { xs: 48, sm: 120, md: 180 }, mt: { xs: 1, md: 2 }, objectFit: 'contain', objectPosition: 'center bottom' }} />
+          <Box component="img" src="/images/home-hero.png" alt="Learner studying with Coursesharp" sx={{ display: 'block', flex: 1, minHeight: 0, width: '100%', mt: { xs: 1, md: 2 }, objectFit: 'contain', objectPosition: 'center bottom' }} />
         </Box>
         <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 0, p: { xs: 2, sm: 2.5, md: 5 }, backgroundColor: 'background.paper' }}>
           {isRedirecting ? (
