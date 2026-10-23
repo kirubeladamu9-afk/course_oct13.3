@@ -28,7 +28,7 @@ const StyledDots = styled('ul')(({ theme }) => ({
   },
 }))
 
-const HomeOurMentors: FC = () => {
+const HomeOurMentors: FC<{ autoplay?: boolean }> = ({ autoplay = false }) => {
   const { breakpoints } = useTheme()
   const matchMobileView = useMediaQuery(breakpoints.down('md'))
 
@@ -36,7 +36,7 @@ const HomeOurMentors: FC = () => {
 
   const sliderConfig: Settings = {
     infinite: true,
-    // autoplay: true,
+    autoplay: true,
     speed: 300,
     slidesToShow: matchMobileView ? 1 : 3,
     slidesToScroll: 1,

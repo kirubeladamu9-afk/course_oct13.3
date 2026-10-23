@@ -13,8 +13,7 @@ import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import type { FC } from 'react'
-import { MentorCardItem } from '@/components/mentor'
-import { data as mentorData } from '@/components/home/mentors.data'
+import HomeOurMentors from '@/components/home/mentors'
 import { navigateTo } from '@/lib/navigation'
 
 const valueCards = [
@@ -56,17 +55,7 @@ const AboutPage: FC = () => <Box component="main" sx={{ backgroundColor: (theme)
   </Container>
 
 
-  <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 } }}>
-    <Box sx={{ mb: 3.5, textAlign: 'center' }}>
-      <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: .9 }}>OUR TUTORS</Typography>
-      <Typography component="h2" variant="h4" sx={{ mt: .25, fontWeight: 800 }}>Meet our tutors</Typography>
-    </Box>
-    <Grid container spacing={0}>
-      {mentorData.map((item) => <Grid key={item.id} item xs={12} sm={6} md={4}>
-        <MentorCardItem item={item} />
-      </Grid>)}
-    </Grid>
-  </Container>
+  <HomeOurMentors autoplay />
 
   <Container maxWidth="lg" sx={{ pb: { xs: 6, md: 8 } }}>
     <Paper elevation={0} sx={{ p: { xs: 3, sm: 4, md: 4.5 }, border: 1, borderColor: 'divider', borderRadius: 3.5, boxShadow: '0 10px 35px rgba(15, 60, 70, .055)', background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(145deg, #143b3a, #173032)' : 'linear-gradient(145deg, #e9f8f4, #f3fbf8)' }}>
