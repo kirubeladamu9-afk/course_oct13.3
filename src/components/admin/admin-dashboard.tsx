@@ -241,7 +241,7 @@ const createLesson = (id: number, type: LessonType): AdminLesson => ({
   ...(type === 'article' ? { articleBody: '' } : {}),
   ...(type === 'interactive' ? { baseImageUrl: '', interactiveHotspots: [] } : {}),
   ...(type === 'simulation' ? { simulationToolId: '' } : {}),
-  ...(type === 'interactiveTool' ? { interactiveTool: { subject: 'Mathematics', toolType: 'step-by-step-solver', instructions: 'Solve the equation by isolating x.', examples: ['2x + 3 = 11'], difficulty: 'Beginner', learningObjectives: ['Show the reasoning used to solve a problem.', 'Check and correct each step before proceeding.'], task: 'Automatic', learningMode: 'Guided', exampleProblem: '2x + 3 = 11' } } : {}),
+  ...(type === 'interactiveTool' ? { interactiveTool: { subject: 'Mathematics', toolType: 'step-by-step-solver', instructions: 'Solve the equation by isolating x.', examples: ['2x + 3 = 11'], difficulty: 'Beginner', learningObjectives: ['Show the reasoning used to solve a problem.', 'Check and correct each step before proceeding.'], learningMode: 'Guided', exampleProblem: '2x + 3 = 11' } } : {}),
   ...(type === 'quiz' ? { passThreshold: 70, quizQuestions: [] } : {}),
   ...(type === 'practice' ? { practiceQuestions: [] } : {}),
   ...(type === 'live' ? { meetingUrl: '', recurringDays: [], sessionTime: '', sessionDuration: 60, scheduledAt: '', endsAt: '', estimatedDuration: 3600 } : {}),

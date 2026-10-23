@@ -1,29 +1,33 @@
 export type LessonType = 'video' | 'article' | 'interactive' | 'interactiveTool' | 'simulation' | 'quiz' | 'practice' | 'live'
 export type InteractiveToolSubject = 'Mathematics' | 'Physics' | 'Chemistry' | 'Biology' | 'Other'
 export type InteractiveToolDifficulty = 'Beginner' | 'Intermediate' | 'Advanced'
-export type InteractiveToolTask = 'Automatic' | 'Equation solving' | 'Arithmetic' | 'Geometry'
-export type InteractiveToolLearningMode = 'Guided' | 'Independent' | 'Demonstration'
+export type InteractiveToolLearningMode = 'Guided' | 'Practice'
+export type InteractiveToolType = 'step-by-step-solver' | 'word-problems'
 
 export interface InteractiveToolConfig {
   subject: InteractiveToolSubject
-  toolType: 'step-by-step-solver'
+  toolType: InteractiveToolType
   instructions: string
   examples: string[]
   difficulty: InteractiveToolDifficulty
   learningObjectives: string[]
-  task: InteractiveToolTask
   learningMode?: InteractiveToolLearningMode
   exampleProblem?: string
 }
 
-export interface InteractiveToolProgress {
+export interface InteractiveToolSession {
+  sessionId: number
+  subject: InteractiveToolSubject
+  toolType: InteractiveToolType
+  difficulty: InteractiveToolDifficulty
+  learningMode: InteractiveToolLearningMode
   problem: string
-  task: InteractiveToolTask
+  topic: string
   currentStep: number
-  answers: Record<number, string>
-  attempts: Record<number, number>
-  hintsUsed: Record<number, number>
+  totalSteps: number
   isCompleted: boolean
+  step: { title: string; prompt: string; reasoning?: string; topic: string } | null
+  result: { finalAnswer: string; explanation: string; topic: string } | null
 }
 
 export type SimulationRule = 'pendulum-period' | 'osmosis-movement' | 'neutralization' | 'projectile-range' | 'linear'
