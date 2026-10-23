@@ -12,45 +12,14 @@ import IconArrowForward from '@mui/icons-material/ArrowForward'
 import { TestimonialItem } from '@/components/testimonial'
 import { data } from './testimonial.data'
 
-interface SliderArrowArrow {
-  onClick?: () => void
-  type: 'next' | 'prev'
-  className?: 'string'
-}
-
-const SliderArrow: FC<SliderArrowArrow> = (props) => {
-  const { onClick, type, className } = props
-  return (
-    <IconButton
-      sx={{
-        backgroundColor: 'background.paper',
-        color: 'primary.main',
-        '&:hover': { backgroundColor: 'primary.main', color: 'primary.contrastText' },
-        bottom: { xs: '-28px !important', md: '64px !important' },
-        left: 'unset !important',
-        right: type === 'prev' ? '90px !important' : '30px !important',
-        zIndex: 10,
-        boxShadow: 1,
-      }}
-      disableRipple
-      color="inherit"
-      aria-label={type === 'next' ? 'Next testimonials' : 'Previous testimonials'}
-      onClick={onClick}
-      className={className}
-    >
-      {type === 'next' ? <IconArrowForward sx={{ fontSize: 22 }} /> : <IconArrowBack sx={{ fontSize: 22 }} />}
-    </IconButton>
-  )
-}
-
 const StyledSlickContainer = styled('div')(() => ({
   position: 'relative',
 
-  '& .slick-list': { marginLeft: '-30px', marginBottom: '24px' },
+  '& .slick-list': { marginLeft: '-30px' },
 }))
 
 const HomeTestimonial: FC = () => {
-  const sliderRef = useRef(null)
+  const sliderRef = useRef<Slider | null>(null)
 
   const sliderConfig: Settings = {
     infinite: true,
@@ -58,8 +27,7 @@ const HomeTestimonial: FC = () => {
     speed: 300,
     slidesToShow: 1,
     slidesToScroll: 1,
-    prevArrow: <SliderArrow type="prev" />,
-    nextArrow: <SliderArrow type="next" />,
+    arrows: false,
   }
 
   return (
@@ -112,6 +80,34 @@ const HomeTestimonial: FC = () => {
                 ))}
               </Slider>
             </StyledSlickContainer>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
+              <IconButton
+                sx={{
+                  backgroundColor: 'background.paper',
+                  color: 'primary.main',
+                  '&:hover': { backgroundColor: 'primary.main', color: 'primary.contrastText' },
+                  boxShadow: 1,
+                }}
+                disableRipple
+                aria-label="Previous testimonials"
+                onClick={() => sliderRef.current?.slickPrev()}
+              >
+                <IconArrowBack sx={{ fontSize: 22 }} />
+              </IconButton>
+              <IconButton
+                sx={{
+                  backgroundColor: 'background.paper',
+                  color: 'primary.main',
+                  '&:hover': { backgroundColor: 'primary.main', color: 'primary.contrastText' },
+                  boxShadow: 1,
+                }}
+                disableRipple
+                aria-label="Next testimonials"
+                onClick={() => sliderRef.current?.slickNext()}
+              >
+                <IconArrowForward sx={{ fontSize: 22 }} />
+              </IconButton>
+            </Box>
           </Grid>
           <Grid item xs={12} md={6} sx={{ display: { xs: 'none', md: 'block' } }}>
             <Box sx={{ width: { xs: '100%', md: '90%' } }}>
