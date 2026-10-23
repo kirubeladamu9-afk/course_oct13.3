@@ -172,8 +172,8 @@ const AboutPage: FC = () => {
     </Stack>
   </Container>
 
-  <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1, mb: { xs: -6, md: -8 } }}>
-    <Paper elevation={0} sx={{ overflow: 'hidden', p: { xs: 3.5, sm: 5, md: 6 }, borderRadius: 3, textAlign: 'center', color: 'common.white', background: 'radial-gradient(circle at 50% 45%, rgba(180, 255, 248, .38), transparent 42%), linear-gradient(120deg, #34b7b6, #42c4c5 55%, #37aeb5)' }}>
+  <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1, pb: { xs: 6, md: 8 } }}>
+    <Paper elevation={0} sx={{ overflow: 'hidden', p: { xs: 3.5, sm: 5, md: 6 }, borderRadius: 3, textAlign: 'center', color: 'common.white', background: (theme) => theme.palette.mode === 'dark' ? 'linear-gradient(120deg, #102b3f 0%, #0b514b 100%)' : 'linear-gradient(120deg, #102b3f 0%, #12685d 68%, #168276 100%)' }}>
       <Typography component="h2" variant="h4" sx={{ fontWeight: 800, letterSpacing: '-.025em', fontSize: { xs: '1.75rem', md: '2.5rem' } }}>Let’s make your next step count</Typography>
       <Typography sx={{ mt: 1, color: 'rgba(255,255,255,.9)' }}>Find a course, meet a tutor, and build skills with confidence.</Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="center" spacing={1.5} sx={{ mt: 3 }}>
