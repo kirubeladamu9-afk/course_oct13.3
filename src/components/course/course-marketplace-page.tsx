@@ -1,8 +1,6 @@
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined'
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
-import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
-import StarRoundedIcon from '@mui/icons-material/StarRounded'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
@@ -113,13 +111,8 @@ const CourseMarketplacePage: FC<CourseMarketplacePageProps> = ({ courses, darkMo
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,.72)' }}>{isLoading ? 'Loading the catalog…' : `${courses.length} ${courses.length === 1 ? 'course' : 'courses'} to explore`}</Typography>
               </Stack>
             </Grid>
-            <Grid item xs={12} md={5}>
-              <Paper elevation={0} sx={{ p: { xs: 2.5, sm: 3.5 }, border: 1, borderColor: 'rgba(255,255,255,.18)', borderRadius: 3.5, color: 'common.white', backgroundColor: 'rgba(255,255,255,.09)', backdropFilter: 'blur(8px)' }}>
-                <Box sx={{ display: 'grid', placeItems: 'center', width: 48, height: 48, mb: 2.5, borderRadius: 2, color: '#c8f1df', backgroundColor: 'rgba(255,255,255,.12)' }}><SchoolOutlinedIcon /></Box>
-                <Typography variant="h5" sx={{ mb: 1, fontWeight: 750 }}>Learning that fits your next step</Typography>
-                <Typography variant="body2" sx={{ mb: 2.5, color: 'rgba(255,255,255,.75)', lineHeight: 1.65 }}>Browse the catalog, compare course details, and find a learning path that matches your goals.</Typography>
-                <Stack direction="row" spacing={1} alignItems="center"><StarRoundedIcon sx={{ color: '#f6cb68', fontSize: 19 }} /><Typography variant="body2" sx={{ color: 'rgba(255,255,255,.82)' }}>Ratings and course information from learners</Typography></Stack>
-              </Paper>
+            <Grid item xs={12} md={5} sx={{ position: 'relative', minHeight: { xs: 220, sm: 280, md: 360 } }}>
+              <Box component="img" src="/images/courses-banner-student.webp" alt="Smiling student holding a notebook with learning illustrations" sx={{ position: 'absolute', top: 0, right: 0, height: '100%', width: 'auto', maxWidth: 'none' }} />
             </Grid>
           </Grid>
         </Container>
