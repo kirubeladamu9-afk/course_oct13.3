@@ -1,12 +1,9 @@
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
-import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded'
-import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined'
 import FavoriteBorderRoundedIcon from '@mui/icons-material/FavoriteBorderRounded'
 import FaqOutlinedIcon from '@mui/icons-material/QuizOutlined'
 import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined'
 import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined'
-import PhoneOutlinedIcon from '@mui/icons-material/PhoneOutlined'
 import SendRoundedIcon from '@mui/icons-material/SendRounded'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -68,24 +65,7 @@ const ContactPage: FC = () => {
       </Container>
     </Box>
 
-    <Container maxWidth="lg" sx={{ py: { xs: 6, md: 7 } }}>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }, gap: { xs: 2.5, sm: 3 } }}>
-        <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, boxShadow: '0 8px 26px rgba(15, 60, 70, .055)', transition: 'transform .2s, box-shadow .2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 14px 32px rgba(15, 60, 70, .1)' } }}>
-          <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 3.25 }, '&:last-child': { pb: { xs: 2.5, sm: 3, md: 3.25 } } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2.5, borderRadius: 2, color: '#168c7d', backgroundColor: '#e4f6f1' }}><PhoneOutlinedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Phone</Typography><Link href="tel:+25121297831" underline="hover" color="text.primary" sx={{ display: 'inline-block', mt: .5, fontSize: '.9rem', fontWeight: 650 }}>+251 212 97831</Link><Typography display="block" variant="caption" color="text.secondary" sx={{ mt: .75 }}>Mon – Fri, 8:00 AM – 5:00 PM (EAT)</Typography></CardContent>
-        </Card>
-        <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, boxShadow: '0 8px 26px rgba(15, 60, 70, .055)', transition: 'transform .2s, box-shadow .2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 14px 32px rgba(15, 60, 70, .1)' } }}>
-          <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 3.25 }, '&:last-child': { pb: { xs: 2.5, sm: 3, md: 3.25 } } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2.5, borderRadius: 2, color: '#2782b4', backgroundColor: '#e8f3fb' }}><EmailOutlinedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Email</Typography><Link href={`mailto:${emailAddress}`} underline="hover" color="primary.main" sx={{ display: 'inline-block', mt: .5, fontSize: '.9rem', fontWeight: 650 }}>{emailAddress}</Link><Typography display="block" variant="caption" color="text.secondary" sx={{ mt: .75 }}>We usually reply within 24 hours.</Typography></CardContent>
-        </Card>
-        <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, boxShadow: '0 8px 26px rgba(15, 60, 70, .055)', transition: 'transform .2s, box-shadow .2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 14px 32px rgba(15, 60, 70, .1)' } }}>
-          <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 3.25 }, '&:last-child': { pb: { xs: 2.5, sm: 3, md: 3.25 } } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2.5, borderRadius: 2, color: '#7455b5', backgroundColor: '#f0ebfa' }}><LocationOnOutlinedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Office Address</Typography><Typography sx={{ mt: .5, fontSize: '.9rem', fontWeight: 600 }}>{officeAddress}</Typography><Typography display="block" variant="caption" color="text.secondary" sx={{ mt: .75 }}>Near Bole International Airport</Typography></CardContent>
-        </Card>
-        <Card elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 3, boxShadow: '0 8px 26px rgba(15, 60, 70, .055)', transition: 'transform .2s, box-shadow .2s', '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 14px 32px rgba(15, 60, 70, .1)' } }}>
-          <CardContent sx={{ p: { xs: 2.5, sm: 3, md: 3.25 }, '&:last-child': { pb: { xs: 2.5, sm: 3, md: 3.25 } } }}><Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, mb: 2.5, borderRadius: 2, color: '#b27c12', backgroundColor: '#fff4dc' }}><ChatBubbleOutlineRoundedIcon fontSize="small" /></Box><Typography variant="subtitle1" sx={{ fontWeight: 750 }}>Live Chat</Typography><Typography sx={{ mt: .5, fontSize: '.9rem', fontWeight: 600 }}>Live chat isn’t available yet.</Typography><Link href={`mailto:${emailAddress}?subject=Support%20request`} underline="hover" color="text.secondary" sx={{ display: 'inline-block', mt: .75, fontSize: '.8rem' }}>Email our support team instead</Link></CardContent>
-        </Card>
-      </Box>
-    </Container>
-
-    <Container maxWidth="lg" sx={{ py: { xs: 3, md: 4 } }}>
+    <Container maxWidth="lg" sx={{ pt: { xs: 6, md: 7 }, pb: { xs: 3, md: 4 } }}>
       <Paper elevation={0} sx={{ p: { xs: 3, sm: 4, md: 4.5 }, border: 1, borderColor: 'divider', borderRadius: 3.5, boxShadow: '0 10px 35px rgba(15, 60, 70, .055)' }}>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.65fr .85fr' }, gap: { xs: 4, md: 5 } }}>
           <Box component="form" onSubmit={handleSubmit} sx={{ p: { xs: .5, md: 1 }, minWidth: 0 }}>
