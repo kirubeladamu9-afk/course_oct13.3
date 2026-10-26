@@ -8,12 +8,18 @@ import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import AdminDataTable, { type DataColumn } from './admin-data-table'
 import { getAdminSecurity, revokeAdminSession, type AdminSecurityData } from '@/services/api'
+import { SessionDetailValue, SessionDeviceValue } from '@/components/security/session-details'
+import { describeBrowser, describeDevice, describeOs, notAvailableLabel, type SessionDetails } from '@/lib/security-sessions'
 
 type SessionRow = {
   id: string
   account: string
   email: string
-  details: string
+  nickname: string
+  device: string
+  browser: string
+  os: string
+  session: SessionDetails
   role: string
   location: string
   clientIp: string
@@ -25,12 +31,14 @@ const locationText = (city: string | null, country: string | null) => [city, cou
 
 const columns: DataColumn<SessionRow>[] = [
   { key: 'account', label: 'Account' },
-  { key: 'email', label: 'Email' },
-  { key: 'details', label: 'Device' },
-  { key: 'role', label: 'Role' },
-  { key: 'location', label: 'Approx. location' },
-  { key: 'clientIp', label: 'IP' },
-  { key: 'lastActiveAt', label: 'Last active', render: (value) => dateText(String(value)) },
+  { key: 'email', label: 'Email', collapsible: true },
+  { key: 'device', label: 'Device', collapsible: true, render: (_, row) => <SessionDeviceValue session={row.session} /> },
+  { key: 'browser', label: 'Browser', collapsible: true, render: (_, row) => { const browser = describeBrowser(row.session); return <SessionDetailValue name={browser.name} detail={browser.version} /> } },
+  { key: 'os', label: 'OS', collapsible: true, render: (_, row) => { const os = describeOs(row.session); return <SessionDetailValue name={os.name} detail={os.version} /> } },
+  { key: 'role', label: 'Role', collapsible: true },
+  { key: 'location', label: 'Approx. location', collapsible: true },
+  { key: 'clientIp', label: 'IP', collapsible: true },
+  { key: 'lastActiveAt', label: 'Last active', collapsible: true, render: (value) => dateText(String(value)) },
 ]
 
 const SecurityPage: FC = () => {
@@ -54,16 +62,24 @@ const SecurityPage: FC = () => {
     finally { setBusy(false) }
   }
 
-  const rows = useMemo<SessionRow[]>(() => (data?.sessions ?? []).map((session) => ({
-    id: session.sessionId,
-    account: session.userName,
-    email: session.email,
-    details: `${session.browser} · ${session.os} · ${session.deviceType}`,
-    role: session.role,
-    location: locationText(session.city, session.country),
-    clientIp: session.clientIp,
-    lastActiveAt: session.lastActiveAt,
-  })), [data])
+  const rows = useMemo<SessionRow[]>(() => (data?.sessions ?? []).map((session) => {
+    const browser = describeBrowser(session)
+    const os = describeOs(session)
+    return {
+      id: session.sessionId,
+      account: session.userName,
+      email: session.email,
+      nickname: session.nickname ?? '',
+      device: describeDevice(session) ?? notAvailableLabel,
+      browser: [browser.name, browser.version].filter(Boolean).join(' ') || notAvailableLabel,
+      os: [os.name, os.version].filter(Boolean).join(' ') || notAvailableLabel,
+      session,
+      role: session.role,
+      location: locationText(session.city, session.country),
+      clientIp: session.clientIp,
+      lastActiveAt: session.lastActiveAt,
+    }
+  }), [data])
 
   return <>
     <Box sx={{ mb: 3 }}><Typography component="h1" variant="h4" sx={{ fontWeight: 800 }}>Security</Typography><Typography color="text.secondary">Review and sign out active sessions.</Typography></Box>
@@ -73,7 +89,7 @@ const SecurityPage: FC = () => {
         <Typography variant="h6" sx={{ fontWeight: 800 }}>Active sessions</Typography>
         <Typography variant="body2" color="text.secondary">{rows.length} records</Typography>
       </Paper>
-      <AdminDataTable rows={rows} columns={columns} searchPlaceholder="Filter active sessions" searchKeys={['account', 'email', 'details', 'role', 'location', 'clientIp']} actions={(row) => <Button size="small" color="error" disabled={busy} onClick={() => void revoke(row.id)}>Revoke</Button>} />
+      <AdminDataTable rows={rows} columns={columns} searchPlaceholder="Filter active sessions" searchKeys={['account', 'email', 'nickname', 'device', 'browser', 'os', 'role', 'location', 'clientIp']} actions={(row) => <Button size="small" color="error" disabled={busy} onClick={() => void revoke(row.id)}>Revoke</Button>} />
     </Stack>}
   </>
 }

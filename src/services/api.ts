@@ -3,6 +3,7 @@ import { type Course } from '@/interfaces/course'
 import { type ArticleContentBlock, type ArticleVocabularyEntry, type SimulationConfig, type StepByStepSolverLearnerConfig, type StepByStepSolverSession, type StepByStepSolverState } from '@/components/admin/admin-data'
 import { type PracticeExam, type PracticeExamWithQuestions, type PracticePurchase, type PracticeQuestion } from '@/components/practice/practice-data'
 import { navigateTo } from '@/lib/navigation'
+import { readClientHints } from '@/lib/client-hints'
 
 export interface AuthUser {
   id: number | string
@@ -23,8 +24,13 @@ export interface SecuritySession {
   country: string | null
   city: string | null
   browser: string
+  browserVersion: string | null
   os: string
+  osVersion: string | null
   deviceType: string
+  deviceVendor: string | null
+  deviceModel: string | null
+  nickname: string | null
   isCurrent: boolean
 }
 
@@ -1160,7 +1166,7 @@ export const submitCredentials = async (mode: 'sign-in' | 'sign-up', email: stri
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, ...accountDetails, ...challenges }),
+    body: JSON.stringify({ email, password, ...accountDetails, ...challenges, clientHints: await readClientHints() }),
   })
   const body = await response.json().catch(() => null)
   if (!response.ok) throw new AuthFlowError(body?.message ?? 'Unable to complete your request.', body ?? {})
@@ -1276,6 +1282,11 @@ export const getSecuritySessions = async (): Promise<SecuritySession[]> => {
   const response = await requestApi('/api/auth/security/sessions')
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
+}
+
+export const updateSecuritySessionNickname = async (sessionId: string, nickname: string): Promise<void> => {
+  const response = await requestApi(`/api/auth/security/sessions/${sessionId}/nickname`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname }) })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
 }
 
 export const revokeSecuritySession = async (sessionId: string): Promise<void> => {

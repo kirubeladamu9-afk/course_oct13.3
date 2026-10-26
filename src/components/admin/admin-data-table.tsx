@@ -1,6 +1,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import Box from '@mui/material/Box'
+import IconButton from '@mui/material/IconButton'
 import Paper from '@mui/material/Paper'
+import Stack from '@mui/material/Stack'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
@@ -11,11 +13,16 @@ import TableRow from '@mui/material/TableRow'
 import TableSortLabel from '@mui/material/TableSortLabel'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import useMediaQuery from '@mui/material/useMediaQuery'
+import { useTheme } from '@mui/material/styles'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 
 export interface DataColumn<T> {
   key: keyof T
   label: string
   render?: (value: T[keyof T], row: T) => ReactNode
+  collapsible?: boolean
 }
 
 interface Props<T extends { id: number | string }> {
@@ -33,6 +40,17 @@ const AdminDataTable = <T extends { id: number | string }>({ rows, columns, sear
   const [rowsPerPage, setRowsPerPage] = useState(5)
   const [sortKey, setSortKey] = useState<keyof T>(columns[0].key)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [expandedIds, setExpandedIds] = useState<Array<T['id']>>([])
+  const theme = useTheme()
+  const narrow = useMediaQuery(theme.breakpoints.down('sm'))
+  const collapseEnabled = narrow && columns.some((column) => column.collapsible)
+  const visibleColumns = collapseEnabled ? columns.filter((column) => !column.collapsible) : columns
+  const collapsedColumns = collapseEnabled ? columns.filter((column) => column.collapsible) : []
+  const columnCount = visibleColumns.length + (collapseEnabled ? 1 : 0) + (actions ? 1 : 0)
+
+  const toggleExpanded = (id: T['id']) => {
+    setExpandedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
+  }
 
   const filteredRows = useMemo(
     () => rows.filter((row) => (searchKeys ?? Object.keys(row) as Array<keyof T>).some((key) => String(row[key]).toLowerCase().includes(query.toLowerCase()))),
@@ -76,10 +94,11 @@ const AdminDataTable = <T extends { id: number | string }>({ rows, columns, sear
         />
       </Box>
       <TableContainer>
-        <Table sx={{ minWidth: 720 }}>
+        <Table sx={{ minWidth: collapseEnabled ? 0 : 720 }}>
           <TableHead>
             <TableRow>
-              {columns.map((column) => (
+              {collapseEnabled && <TableCell padding="checkbox" aria-label="Show details" />}
+              {visibleColumns.map((column) => (
                 <TableCell key={String(column.key)}>
                   <TableSortLabel
                     active={sortKey === column.key}
@@ -94,18 +113,38 @@ const AdminDataTable = <T extends { id: number | string }>({ rows, columns, sear
             </TableRow>
           </TableHead>
           <TableBody>
-            {visibleRows.length > 0 ? visibleRows.map((row) => (
-              <TableRow hover key={row.id} onClick={() => rowClick?.(row)} sx={{ cursor: rowClick ? 'pointer' : 'default' }}>
-                {columns.map((column) => (
+            {visibleRows.length > 0 ? visibleRows.flatMap((row) => {
+              const expanded = expandedIds.includes(row.id)
+              const mainRow = <TableRow key={String(row.id)} hover onClick={() => rowClick?.(row)} sx={{ cursor: rowClick ? 'pointer' : 'default' }}>
+                {collapseEnabled && <TableCell padding="checkbox" onClick={(event) => event.stopPropagation()}>
+                  <IconButton size="small" aria-label={expanded ? 'Hide details' : 'Show details'} aria-expanded={expanded} onClick={() => toggleExpanded(row.id)}>
+                    {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                  </IconButton>
+                </TableCell>}
+                {visibleColumns.map((column) => (
                   <TableCell key={String(column.key)}>
                     {column.render ? column.render(row[column.key], row) : String(row[column.key])}
                   </TableCell>
                 ))}
                 {actions && <TableCell align="right" onClick={(event) => event.stopPropagation()}>{actions(row)}</TableCell>}
               </TableRow>
-            )) : (
+              if (!expanded) return [mainRow]
+              const detailsRow = <TableRow key={`${String(row.id)}-details`}>
+                <TableCell colSpan={columnCount} sx={{ bgcolor: 'action.hover' }}>
+                  <Stack spacing={1}>
+                    {collapsedColumns.map((column) => (
+                      <Box key={String(column.key)}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>{column.label}</Typography>
+                        <Box>{column.render ? column.render(row[column.key], row) : String(row[column.key])}</Box>
+                      </Box>
+                    ))}
+                  </Stack>
+                </TableCell>
+              </TableRow>
+              return [mainRow, detailsRow]
+            }) : (
               <TableRow>
-                <TableCell colSpan={columns.length + (actions ? 1 : 0)}>
+                <TableCell colSpan={columnCount}>
                   <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>No records found.</Typography>
                 </TableCell>
               </TableRow>

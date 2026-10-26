@@ -1,10 +1,7 @@
 import { useEffect, useState, type FC } from 'react'
 import Alert from '@mui/material/Alert'
-import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Card from '@mui/material/Card'
-import CardContent from '@mui/material/CardContent'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
@@ -18,11 +15,11 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import Badge from '@mui/material/Badge'
 import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined'
-import ComputerOutlinedIcon from '@mui/icons-material/ComputerOutlined'
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
 import { toast } from '@/components/toast'
+import SecuritySessionCard from '@/components/security/security-session-card'
 import { navigateTo } from '@/lib/navigation'
-import { changePassword, clearAuthenticatedUser, disableTwoFactor, enableTwoFactor, getAdminSecurityAlerts, getAuthenticatedUser, getSecurityAlerts, getSecurityLoginHistory, getSecuritySessions, getTwoFactorStatus, revokeSecuritySession, saveAuthenticatedUser, setupTwoFactor, signOutEverywhere, type LoginEvent, type SecurityAlert, type SecuritySession } from '@/services/api'
+import { changePassword, clearAuthenticatedUser, disableTwoFactor, enableTwoFactor, getAdminSecurityAlerts, getAuthenticatedUser, getSecurityAlerts, getSecurityLoginHistory, getSecuritySessions, getTwoFactorStatus, revokeSecuritySession, saveAuthenticatedUser, updateSecuritySessionNickname, setupTwoFactor, signOutEverywhere, type LoginEvent, type SecurityAlert, type SecuritySession } from '@/services/api'
 
 const formatLocation = (city: string | null, country: string | null) => [city, country].filter(Boolean).join(', ') || 'Location unavailable'
 const formatDate = (value: string) => new Date(value).toLocaleString()
@@ -175,7 +172,7 @@ const AccountSecurity: FC = () => {
       </Paper>
       <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}><Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>Active sessions</Typography><Chip label={`${sessions.length} devices`} size="small" variant="outlined" /></Stack>
-        {sessions.length ? <Stack spacing={1.5}>{sessions.map((session) => <Card key={session.sessionId} variant="outlined"><CardContent sx={{ '&:last-child': { pb: 2 } }}><Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="space-between"><Stack direction="row" spacing={1.5} alignItems="center"><Avatar sx={{ bgcolor: 'action.hover', color: 'primary.main' }}><ComputerOutlinedIcon /></Avatar><Box><Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ fontWeight: 700 }}>{session.browser} on {session.os}</Typography>{session.isCurrent && <Chip label="This device" color="primary" size="small" />}</Stack><Typography variant="body2" color="text.secondary">{session.deviceType} · Location is approximate: {formatLocation(session.city, session.country)}</Typography><Typography variant="caption" color="text.secondary">IP {session.clientIp} · Last active {formatDate(session.lastActiveAt)}</Typography></Box></Stack><Button color="error" onClick={() => void revoke(session)} disabled={busy}>Sign out</Button></Stack></CardContent></Card>)}</Stack> : <Typography color="text.secondary">No active sessions found.</Typography>}
+        {sessions.length ? <Stack spacing={1.5}>{sessions.map((session) => <SecuritySessionCard key={session.sessionId} session={session} busy={busy} lastActiveText={formatDate(session.lastActiveAt)} onRevoke={() => void revoke(session)} onRename={async (nickname) => { await updateSecuritySessionNickname(session.sessionId, nickname); await reload() }} />)}</Stack> : <Typography color="text.secondary">No active sessions found.</Typography>}
       </Paper>
       <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
         <Typography component="h2" variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Recent security alerts</Typography>

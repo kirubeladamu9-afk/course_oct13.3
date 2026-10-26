@@ -11,6 +11,7 @@ import express from 'express'
 import helmet from 'helmet'
 import postgres from 'postgres'
 import { getChangedCourseLessonIds, remapReusedCourseLessonIds } from './course-lesson-identities.js'
+import { buildClientMetadata, displayClientIp, parseNickname, sanitizeClientHints } from './client-metadata.js'
 import { getLatestSubmittedQuizAttempts } from './quiz-performance.js'
 import { areSolverFollowUpsComplete, areSolverProblemsComplete, getStepByStepSolverSessionView, isValidStepByStepSolverConfig, normalizeSolverAnswer } from './step-by-step-solver-engine.js'
 import { expireQuizAnswers, getQuizDeadline, getQuizTimeLimitSeconds, hasScheduledClassQuizzes, isQuizExpired } from './quiz-timing.js'
@@ -75,13 +76,10 @@ const setSecurityCookies = (response, token, deviceId, role) => {
   ])
 }
 const clearSecurityCookies = (response) => response.setHeader('Set-Cookie', `${sessionCookieName}=; HttpOnly; Secure; Path=/; SameSite=None; Partitioned; Max-Age=0`)
-const getClientMetadata = (request) => {
-  const userAgent = String(request.get('user-agent') ?? '').slice(0, 512)
-  const browser = /Edg\//.test(userAgent) ? 'Edge' : /Firefox\//.test(userAgent) ? 'Firefox' : /Chrome\//.test(userAgent) ? 'Chrome' : /Safari\//.test(userAgent) ? 'Safari' : 'Unknown'
-  const os = /Windows/.test(userAgent) ? 'Windows' : /Android/.test(userAgent) ? 'Android' : /iPhone|iPad|iPod/.test(userAgent) ? 'iOS' : /Mac OS X/.test(userAgent) ? 'macOS' : /Linux/.test(userAgent) ? 'Linux' : 'Unknown'
-  const deviceType = /iPad|Tablet/.test(userAgent) ? 'tablet' : /Mobile|iPhone|Android/.test(userAgent) ? 'mobile' : 'desktop'
-  return { userAgent, ip: request.ip ?? request.socket.remoteAddress ?? 'unknown', browser, os, deviceType }
-}
+const getClientMetadata = (request, clientHints = null) => ({
+  ...buildClientMetadata(request.get('user-agent'), clientHints),
+  ip: request.ip ?? request.socket.remoteAddress ?? 'unknown',
+})
 const getGeoLocation = async (ip) => {
   if (!process.env.GEOIP_DB_PATH || ip === 'unknown' || ip === '::1' || ip === '127.0.0.1') return { country: null, city: null }
   geoIpReaderPromise ??= openGeoIpDatabase(process.env.GEOIP_DB_PATH).catch(() => null)
@@ -325,6 +323,11 @@ const initializeDatabase = async () => {
     os: "TEXT NOT NULL DEFAULT 'Unknown'",
     device_type: "TEXT NOT NULL DEFAULT 'unknown'",
     user_agent: "TEXT NOT NULL DEFAULT ''",
+    browser_version: 'TEXT',
+    os_version: 'TEXT',
+    device_vendor: 'TEXT',
+    device_model: 'TEXT',
+    nickname: 'TEXT',
   })
   const legacySessions = await sql`SELECT token, expires_at FROM auth_sessions WHERE token_hashed = false`
   for (const session of legacySessions) {
@@ -1048,8 +1051,8 @@ const recordLoginEvent = async ({ userId, email, succeeded, reason, metadata, de
   INSERT INTO login_events ${sql({ user_id: userId, email, succeeded, reason, client_ip: metadata.ip, country: location.country, city: location.city, browser: metadata.browser, os: metadata.os, device_type: metadata.deviceType, device_id: deviceId })}
 `
 
-const createAuthSession = async (userId, role, request) => {
-  const metadata = getClientMetadata(request)
+const createAuthSession = async (userId, role, request, clientHints = null) => {
+  const metadata = getClientMetadata(request, clientHints)
   const location = await getGeoLocation(metadata.ip)
   const deviceId = getDeviceId(request)
   const rawToken = randomBytes(32).toString('base64url')
@@ -1061,6 +1064,14 @@ const createAuthSession = async (userId, role, request) => {
     await transaction`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`
     const previousToken = getSessionToken(request)
     if (previousToken) await transaction`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'login_rotated' WHERE token = ${hashToken(previousToken)} AND ended_at IS NULL`
+    const [sameDevice] = await transaction`
+      SELECT user_agent, browser_version, os_version, device_vendor, device_model, nickname
+      FROM auth_sessions
+      WHERE user_id = ${userId} AND device_id = ${deviceId}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `
+    if (sameDevice) await transaction`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'device_relogin' WHERE user_id = ${userId} AND device_id = ${deviceId} AND ended_at IS NULL`
     const active = await transaction`
       SELECT token, device_id FROM auth_sessions
       WHERE user_id = ${userId} AND ended_at IS NULL AND idle_expires_at > NOW() AND absolute_expires_at > NOW()
@@ -1069,6 +1080,18 @@ const createAuthSession = async (userId, role, request) => {
     `
     const replacedSession = active.length >= policy.maxSessions ? active[0] : null
     if (replacedSession) await transaction`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'session_limit' WHERE token = ${replacedSession.token}`
+    const reuseStoredDetails = !clientHints && sameDevice?.user_agent === metadata.userAgent
+    const details = reuseStoredDetails ? {
+      browser_version: sameDevice.browser_version,
+      os_version: sameDevice.os_version,
+      device_vendor: sameDevice.device_vendor,
+      device_model: sameDevice.device_model,
+    } : {
+      browser_version: metadata.browserVersion,
+      os_version: metadata.osVersion,
+      device_vendor: metadata.deviceVendor,
+      device_model: metadata.deviceModel,
+    }
     await transaction`
       INSERT INTO auth_sessions ${transaction({
         token: tokenHash,
@@ -1087,6 +1110,8 @@ const createAuthSession = async (userId, role, request) => {
         os: metadata.os,
         device_type: metadata.deviceType,
         user_agent: metadata.userAgent,
+        nickname: sameDevice?.nickname ?? null,
+        ...details,
       })}
     `
     return { replacedSession }
@@ -5229,12 +5254,12 @@ app.patch('/api/admin/classes/enrollments/:id/attendance', requireAdmin, async (
 
 app.get('/api/auth/security/sessions', requireAuthenticated, async (request, response) => {
   const sessions = await sql`
-    SELECT token AS id, token AS "sessionId", created_at AS "createdAt", last_active_at AS "lastActiveAt", client_ip AS "clientIp", country, city, browser, os, device_type AS "deviceType", ended_at AS "endedAt", ended_reason AS "endedReason"
+    SELECT token AS id, token AS "sessionId", created_at AS "createdAt", last_active_at AS "lastActiveAt", client_ip AS "clientIp", country, city, browser, browser_version AS "browserVersion", os, os_version AS "osVersion", device_type AS "deviceType", device_vendor AS "deviceVendor", device_model AS "deviceModel", nickname, ended_at AS "endedAt", ended_reason AS "endedReason"
     FROM auth_sessions
     WHERE user_id = ${request.userId} AND ended_at IS NULL AND idle_expires_at > NOW() AND absolute_expires_at > NOW()
     ORDER BY last_active_at DESC
   `
-  return response.json(sessions.map((session) => ({ ...session, clientIp: maskIpAddress(session.clientIp), isCurrent: session.sessionId === request.sessionId })))
+  return response.json(sessions.map((session) => ({ ...session, clientIp: displayClientIp(session.clientIp, maskIpAddress), isCurrent: session.sessionId === request.sessionId })))
 })
 
 app.delete('/api/auth/security/sessions/:sessionId', requireAuthenticated, async (request, response) => {
@@ -5247,6 +5272,20 @@ app.delete('/api/auth/security/sessions/:sessionId', requireAuthenticated, async
   `
   if (!revoked) return response.status(404).json({ message: 'Active session not found.' })
   if (sessionId === request.sessionId) clearSecurityCookies(response)
+  return response.status(204).end()
+})
+
+app.patch('/api/auth/security/sessions/:sessionId/nickname', requireAuthenticated, async (request, response) => {
+  const sessionId = request.params.sessionId
+  if (!/^[a-f0-9]{64}$/.test(sessionId)) return response.status(400).json({ message: 'Invalid session id.' })
+  const nickname = parseNickname(request.body?.nickname)
+  if (!nickname.ok) return response.status(400).json({ message: 'Use up to 40 letters, numbers, spaces, or basic punctuation.' })
+  const [updated] = await sql`
+    UPDATE auth_sessions SET nickname = ${nickname.value}
+    WHERE token = ${sessionId} AND user_id = ${request.userId} AND ended_at IS NULL
+    RETURNING token
+  `
+  if (!updated) return response.status(404).json({ message: 'Active session not found.' })
   return response.status(204).end()
 })
 
@@ -5341,12 +5380,12 @@ app.get('/api/admin/security/alerts', requireAdmin, async (_request, response) =
 app.get('/api/admin/security', requireAdmin, async (_request, response) => {
   const [loginEvents, sessions, alerts, users, auditLog] = await Promise.all([
     sql`SELECT events.id, events.user_id AS "userId", COALESCE(users.name, events.email) AS "userName", events.email, events.succeeded, events.reason, events.client_ip AS "clientIp", events.country, events.city, events.browser, events.os, events.device_type AS "deviceType", events.created_at AS "createdAt" FROM login_events events LEFT JOIN users ON users.id = events.user_id ORDER BY events.created_at DESC LIMIT 500`,
-    sql`SELECT sessions.token AS id, sessions.token AS "sessionId", users.id AS "userId", users.name AS "userName", users.email, users.role, sessions.client_ip AS "clientIp", sessions.country, sessions.city, sessions.browser, sessions.os, sessions.device_type AS "deviceType", sessions.created_at AS "createdAt", sessions.last_active_at AS "lastActiveAt" FROM auth_sessions sessions INNER JOIN users ON users.id = sessions.user_id WHERE sessions.ended_at IS NULL AND sessions.idle_expires_at > NOW() AND sessions.absolute_expires_at > NOW() AND sessions.last_active_at > NOW() - INTERVAL '30 minutes' ORDER BY sessions.last_active_at DESC LIMIT 500`,
+    sql`SELECT sessions.token AS id, sessions.token AS "sessionId", users.id AS "userId", COALESCE(NULLIF(users.name, ''), users.email) AS "userName", users.email, users.role, sessions.client_ip AS "clientIp", sessions.country, sessions.city, sessions.browser, sessions.browser_version AS "browserVersion", sessions.os, sessions.os_version AS "osVersion", sessions.device_type AS "deviceType", sessions.device_vendor AS "deviceVendor", sessions.device_model AS "deviceModel", sessions.nickname, sessions.created_at AS "createdAt", sessions.last_active_at AS "lastActiveAt" FROM auth_sessions sessions INNER JOIN users ON users.id = sessions.user_id WHERE sessions.ended_at IS NULL AND sessions.idle_expires_at > NOW() AND sessions.absolute_expires_at > NOW() AND sessions.last_active_at > NOW() - INTERVAL '30 minutes' ORDER BY sessions.last_active_at DESC LIMIT 500`,
     sql`SELECT alerts.id, alerts.user_id AS "userId", users.name AS "userName", users.email, alerts.alert_type AS type, alerts.message, alerts.metadata, alerts.created_at AS "createdAt" FROM security_alerts alerts INNER JOIN users ON users.id = alerts.user_id ORDER BY alerts.created_at DESC LIMIT 200`,
     sql`SELECT id::INTEGER AS id, name, email, role, status, account_locked AS "accountLocked", must_reset_password AS "mustResetPassword" FROM users ORDER BY name`,
     sql`SELECT audit.id, actor.name AS "actorName", target.name AS "targetName", audit.action, audit.before_state AS "beforeState", audit.after_state AS "afterState", audit.client_ip AS "clientIp", audit.created_at AS "createdAt" FROM admin_audit_log audit LEFT JOIN users actor ON actor.id = audit.actor_user_id LEFT JOIN users target ON target.id = audit.target_user_id ORDER BY audit.created_at DESC LIMIT 500`,
   ])
-  return response.json({ loginEvents, sessions, alerts, users, auditLog })
+  return response.json({ loginEvents, sessions: sessions.map((session) => ({ ...session, clientIp: displayClientIp(session.clientIp, (ip) => ip) })), alerts, users, auditLog })
 })
 
 app.post('/api/admin/security/sessions/:sessionId/revoke', requireAdmin, async (request, response) => {
@@ -5438,7 +5477,7 @@ app.post('/api/auth/sign-up', async (request, response) => {
     `
     request.securityDeviceId = getDeviceId(request)
     await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: true, reason: 'sign_up', request })
-    const session = await createAuthSession(user.id, user.role, request)
+    const session = await createAuthSession(user.id, user.role, request, sanitizeClientHints(request.body?.clientHints))
     setSecurityCookies(response, session.rawToken, session.deviceId, user.role)
     return response.status(201).json({ user })
   } catch (error) {
@@ -5497,7 +5536,7 @@ app.post('/api/auth/sign-in', async (request, response) => {
   await sql`UPDATE users SET locked_until = NULL WHERE id = ${user.id}`
   const { password_hash: _passwordHash, locked_until: _lockedUntil, accountLocked: _accountLocked, ...account } = user
   await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: true, reason: 'success', request })
-  const session = await createAuthSession(user.id, user.role, request)
+  const session = await createAuthSession(user.id, user.role, request, sanitizeClientHints(request.body?.clientHints))
   setSecurityCookies(response, session.rawToken, session.deviceId, user.role)
   return response.json({ user: account })
 })
