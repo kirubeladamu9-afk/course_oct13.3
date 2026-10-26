@@ -2328,20 +2328,18 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   useEffect(() => {
     if ((activeView !== 'overview' && activeView !== 'classes') || isLoadingEnrollments || enrollmentError) return
     let isCurrent = true
-    const controller = new AbortController()
-    getGamification(controller.signal)
+    getGamification()
       .then((data) => {
         if (!isCurrent) return
         setGamificationData(data)
         setGamificationError(null)
       })
       .catch((error) => {
-        if (!isCurrent || controller.signal.aborted) return
+        if (!isCurrent) return
         setGamificationError(error instanceof Error ? error.message : 'Unable to load your gamification data.')
       })
     return () => {
       isCurrent = false
-      controller.abort()
     }
   }, [activeView, completedLessons, enrollmentError, enrollments, isLoadingEnrollments, quizResults])
 
