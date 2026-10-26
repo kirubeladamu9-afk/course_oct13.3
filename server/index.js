@@ -21,7 +21,14 @@ const sql = postgres(databaseUrl, { max: 10, ssl: 'require', prepare: false })
 const scrypt = promisify(scryptCallback)
 const app = express()
 const configuredProxyTrust = process.env.TRUST_PROXY
-app.set('trust proxy', configuredProxyTrust === undefined ? false : /^\d+$/.test(configuredProxyTrust) ? Number(configuredProxyTrust) : configuredProxyTrust.split(',').map((value) => value.trim()).filter(Boolean))
+const proxyTrustSetting = configuredProxyTrust === undefined || configuredProxyTrust === 'false'
+  ? false
+  : configuredProxyTrust === 'true'
+    ? true
+    : /^\d+$/.test(configuredProxyTrust)
+      ? Number(configuredProxyTrust)
+      : configuredProxyTrust.split(',').map((value) => value.trim()).filter(Boolean)
+app.set('trust proxy', proxyTrustSetting)
 app.use(helmet({
   hsts: false,
   contentSecurityPolicy: {
@@ -29,13 +36,13 @@ app.use(helmet({
     reportOnly: true,
     directives: {
       'default-src': ["'self'"],
-      'script-src': ["'self'"],
+      'script-src': ["'self'", 'https://challenges.cloudflare.com'],
       'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
       'img-src': ["'self'", 'data:', 'blob:', 'https:'],
       'media-src': ["'self'", 'blob:', 'https:'],
-      'frame-src': ['https://www.youtube-nocookie.com', 'https://player.vimeo.com', 'https://maps.google.com', 'https://www.google.com'],
-      'connect-src': ["'self'"],
+      'frame-src': ['https://www.youtube-nocookie.com', 'https://player.vimeo.com', 'https://maps.google.com', 'https://www.google.com', 'https://challenges.cloudflare.com'],
+      'connect-src': ["'self'", 'https://challenges.cloudflare.com'],
       'report-uri': ['/api/csp-report'],
     },
   },
@@ -63,10 +70,7 @@ const setSecurityCookies = (response, token, deviceId, role) => {
     `${deviceCookieName}=${deviceId}; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=31536000`,
   ])
 }
-const clearSecurityCookies = (response) => response.setHeader('Set-Cookie', [
-  `${sessionCookieName}=; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=0`,
-  `${deviceCookieName}=; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=0`,
-])
+const clearSecurityCookies = (response) => response.setHeader('Set-Cookie', `${sessionCookieName}=; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=0`)
 const getClientMetadata = (request) => {
   const userAgent = String(request.get('user-agent') ?? '').slice(0, 512)
   const browser = /Edg\//.test(userAgent) ? 'Edge' : /Firefox\//.test(userAgent) ? 'Firefox' : /Chrome\//.test(userAgent) ? 'Chrome' : /Safari\//.test(userAgent) ? 'Safari' : 'Unknown'
@@ -83,18 +87,25 @@ const getGeoLocation = async (ip) => {
 }
 const maskIpAddress = (ip) => ip.includes(':') ? `${ip.split(':').slice(0, 3).join(':')}:…` : ip.split('.').map((part, index) => index < 2 ? part : '•').join('.')
 const sessionPolicyFor = (role) => sessionPolicies[role] ?? defaultSessionPolicy
-const getDeviceId = (request) => request.securityDeviceId ?? getCookieValue(request, deviceCookieName) ?? randomBytes(24).toString('base64url')
+const getDeviceId = (request) => {
+  request.securityDeviceId ??= getCookieValue(request, deviceCookieName) ?? randomBytes(24).toString('base64url')
+  return request.securityDeviceId
+}
 const sessionCookieHeader = (token) => `${sessionCookieName}=${token}; HttpOnly; Secure; Path=/; SameSite=Lax`
 const clearSessionCookie = () => `${sessionCookieName}=; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=0`
 const getTurnstileSecret = () => process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY
 
 const verifyTurnstile = async (token, ip) => {
   const secret = getTurnstileSecret()
-  if (!secret) return false
-  const body = new URLSearchParams({ secret, response: token, remoteip: ip })
-  const result = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body })
-  if (!result.ok) return false
-  return (await result.json()).success === true
+  if (!secret || typeof token !== 'string' || !token) return false
+  try {
+    const body = new URLSearchParams({ secret, response: token, remoteip: ip })
+    const result = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body })
+    if (!result.ok) return false
+    return (await result.json()).success === true
+  } catch {
+    return false
+  }
 }
 
 const getSecurityEncryptionKey = () => {
@@ -1025,6 +1036,8 @@ const createAuthSession = async (userId, role, request) => {
   const expiresAt = new Date(createdAt.getTime() + policy.absoluteMs)
   const result = await sql.begin(async (transaction) => {
     await transaction`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`
+    const previousToken = getSessionToken(request)
+    if (previousToken) await transaction`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'login_rotated' WHERE token = ${hashToken(previousToken)} AND ended_at IS NULL`
     const active = await transaction`
       SELECT token, device_id FROM auth_sessions
       WHERE user_id = ${userId} AND ended_at IS NULL AND idle_expires_at > NOW() AND absolute_expires_at > NOW()
@@ -1055,7 +1068,7 @@ const createAuthSession = async (userId, role, request) => {
     `
     return { replacedSession }
   })
-  if (result.replacedSession) await sql`INSERT INTO security_alerts ${sql({ user_id: userId, alert_type: 'session_limit', message: 'Your oldest session was signed out because your account reached its active-session limit.', metadata: { endedSessionToken: result.replacedSession.token } })}`
+  if (result.replacedSession) await sql`INSERT INTO security_alerts ${sql({ user_id: userId, alert_type: 'session_limit', message: 'Your oldest session was signed out because your account reached its active-session limit.' })}`
   return { rawToken, deviceId, metadata, location }
 }
 
@@ -1172,6 +1185,17 @@ const verifySecondFactor = async (userId, code) => {
 }
 
 const requireAuthenticated = async (request, response, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
+    const origin = request.get('origin')
+    if (origin) {
+      try {
+        if (new URL(origin).host !== request.get('host')) return response.status(403).json({ message: 'Request origin is not allowed.' })
+      } catch {
+        return response.status(403).json({ message: 'Request origin is not allowed.' })
+      }
+    }
+    if (request.get('sec-fetch-site') === 'cross-site') return response.status(403).json({ message: 'Request origin is not allowed.' })
+  }
   if (!await loadAuthenticatedUser(request, response)) return response.status(401).json({ message: 'Authentication is required.' })
   if (request.mustResetPassword && request.path !== '/api/auth/change-password' && !request.path.startsWith('/api/auth/security/')) return response.status(403).json({ message: 'A password change is required before using this account.' })
   return next()
@@ -4937,7 +4961,7 @@ const refreshClassStatus = async (id) => {
   return readAdminClass(id)
 }
 
-app.get('/api/admin/classes/:id/statistics', requireAdminOrTutor, async (request, response) => {
+app.get('/api/admin/classes/:id/statistics', requireAdmin, async (request, response) => {
   const classId = parseCourseId(request.params.id)
   if (classId === null) return response.status(400).json({ message: 'Invalid class id.' })
   const [tutor] = request.userRole === 'tutor'
@@ -5056,7 +5080,7 @@ app.get('/api/admin/classes/:id/leaderboard', requireAdminOrTutor, async (reques
   return response.json(leaderboard)
 })
 
-app.get('/api/admin/classes', requireAdminOrTutor, async (_request, response) => {
+app.get('/api/admin/classes', requireAdmin, async (_request, response) => {
   await sql`UPDATE classes SET status = 'closed', updated_at = NOW() WHERE (schedule->>'endDate') IS NOT NULL AND (schedule->>'endDate') < CURRENT_DATE::TEXT AND status <> 'closed'`
   const [classes, enrollments, pendingStudents, tutors, courses] = await Promise.all([
     sql`SELECT ${classColumns} FROM classes WHERE published = true ORDER BY created_at DESC, id DESC`,
@@ -5067,7 +5091,7 @@ app.get('/api/admin/classes', requireAdminOrTutor, async (_request, response) =>
   response.json({ classes: classes.map((classRecord) => ({ ...classRecord, modules: deserializeJson(classRecord.modules) ?? [] })), enrollments, pendingStudents, tutors })
 })
 
-app.post('/api/admin/classes', requireAdminOrTutor, async (request, response) => {
+app.post('/api/admin/classes', requireAdmin, async (request, response) => {
   const classPayload = parseClassPayload(request.body)
   if (!classPayload || classPayload.grade_level === null) return response.status(400).json({ message: 'Enter valid class details.' })
   if (classPayload.program_id === 'ministry-exam-prep' && classPayload.exam_date === null) return response.status(400).json({ message: 'Enter an exam date for this Ministry Exam Prep class.' })
@@ -5084,7 +5108,7 @@ app.post('/api/admin/classes', requireAdminOrTutor, async (request, response) =>
   }
 })
 
-app.put('/api/admin/classes/:id', requireAdminOrTutor, async (request, response) => {
+app.put('/api/admin/classes/:id', requireAdmin, async (request, response) => {
   const id = parseCourseId(request.params.id)
   if (id === null) return response.status(400).json({ message: 'Enter valid class details.' })
   const saveResult = await sql.begin(async (transaction) => {
@@ -5104,7 +5128,7 @@ app.put('/api/admin/classes/:id', requireAdminOrTutor, async (request, response)
   return response.json(await refreshClassStatus(id))
 })
 
-app.delete('/api/admin/classes/:id', requireAdminOrTutor, async (request, response) => {
+app.delete('/api/admin/classes/:id', requireAdmin, async (request, response) => {
   const id = parseCourseId(request.params.id)
   if (id === null) return response.status(400).json({ message: 'Invalid class id.' })
   const [deleted] = await sql`DELETE FROM classes WHERE id = ${id} RETURNING id`
@@ -5182,7 +5206,7 @@ app.patch('/api/admin/classes/enrollments/:id/attendance', requireAdmin, async (
 
 app.get('/api/auth/security/sessions', requireAuthenticated, async (request, response) => {
   const sessions = await sql`
-    SELECT token AS "sessionId", created_at AS "createdAt", last_active_at AS "lastActiveAt", client_ip AS "clientIp", country, city, browser, os, device_type AS "deviceType", ended_at AS "endedAt", ended_reason AS "endedReason"
+    SELECT token AS id, token AS "sessionId", created_at AS "createdAt", last_active_at AS "lastActiveAt", client_ip AS "clientIp", country, city, browser, os, device_type AS "deviceType", ended_at AS "endedAt", ended_reason AS "endedReason"
     FROM auth_sessions
     WHERE user_id = ${request.userId} AND ended_at IS NULL AND idle_expires_at > NOW() AND absolute_expires_at > NOW()
     ORDER BY last_active_at DESC
@@ -5233,6 +5257,8 @@ app.get('/api/auth/security/two-factor', requireAuthenticated, async (request, r
 })
 
 app.post('/api/auth/security/two-factor/setup', requireAuthenticated, async (request, response) => {
+  const [existing] = await sql`SELECT enabled_at AS "enabledAt" FROM two_factor_secrets WHERE user_id = ${request.userId}`
+  if (existing?.enabledAt) return response.status(409).json({ message: 'Disable two-factor authentication before starting a new setup.' })
   try {
     const secret = encodeBase32(randomBytes(20))
     const encryptedSecret = encryptTotpSecret(secret)
@@ -5276,10 +5302,23 @@ app.post('/api/auth/security/two-factor/disable', requireAuthenticated, async (r
   return response.status(204).end()
 })
 
+app.get('/api/admin/security/alerts', requireAdmin, async (_request, response) => {
+  const alerts = await sql`
+    SELECT alerts.id, alerts.user_id AS "userId", users.name AS "userName", users.email,
+           alerts.alert_type AS type, alerts.message, alerts.metadata, alerts.created_at AS "createdAt"
+    FROM security_alerts alerts
+    INNER JOIN users ON users.id = alerts.user_id
+    WHERE alerts.reviewed_at IS NULL
+    ORDER BY alerts.created_at DESC
+    LIMIT 10
+  `
+  return response.json(alerts)
+})
+
 app.get('/api/admin/security', requireAdmin, async (_request, response) => {
   const [loginEvents, sessions, alerts, users, auditLog] = await Promise.all([
     sql`SELECT events.id, events.user_id AS "userId", COALESCE(users.name, events.email) AS "userName", events.email, events.succeeded, events.reason, events.client_ip AS "clientIp", events.country, events.city, events.browser, events.os, events.device_type AS "deviceType", events.created_at AS "createdAt" FROM login_events events LEFT JOIN users ON users.id = events.user_id ORDER BY events.created_at DESC LIMIT 500`,
-    sql`SELECT sessions.token AS "sessionId", users.id AS "userId", users.name AS "userName", users.email, users.role, sessions.client_ip AS "clientIp", sessions.country, sessions.city, sessions.browser, sessions.os, sessions.device_type AS "deviceType", sessions.created_at AS "createdAt", sessions.last_active_at AS "lastActiveAt" FROM auth_sessions sessions INNER JOIN users ON users.id = sessions.user_id WHERE sessions.ended_at IS NULL AND sessions.idle_expires_at > NOW() AND sessions.absolute_expires_at > NOW() ORDER BY sessions.last_active_at DESC LIMIT 500`,
+    sql`SELECT sessions.token AS id, sessions.token AS "sessionId", users.id AS "userId", users.name AS "userName", users.email, users.role, sessions.client_ip AS "clientIp", sessions.country, sessions.city, sessions.browser, sessions.os, sessions.device_type AS "deviceType", sessions.created_at AS "createdAt", sessions.last_active_at AS "lastActiveAt" FROM auth_sessions sessions INNER JOIN users ON users.id = sessions.user_id WHERE sessions.ended_at IS NULL AND sessions.idle_expires_at > NOW() AND sessions.absolute_expires_at > NOW() ORDER BY sessions.last_active_at DESC LIMIT 500`,
     sql`SELECT alerts.id, alerts.user_id AS "userId", users.name AS "userName", users.email, alerts.alert_type AS type, alerts.message, alerts.metadata, alerts.created_at AS "createdAt" FROM security_alerts alerts INNER JOIN users ON users.id = alerts.user_id ORDER BY alerts.created_at DESC LIMIT 200`,
     sql`SELECT id::INTEGER AS id, name, email, role, status, account_locked AS "accountLocked", must_reset_password AS "mustResetPassword" FROM users ORDER BY name`,
     sql`SELECT audit.id, actor.name AS "actorName", target.name AS "targetName", audit.action, audit.before_state AS "beforeState", audit.after_state AS "afterState", audit.client_ip AS "clientIp", audit.created_at AS "createdAt" FROM admin_audit_log audit LEFT JOIN users actor ON actor.id = audit.actor_user_id LEFT JOIN users target ON target.id = audit.target_user_id ORDER BY audit.created_at DESC LIMIT 500`,
@@ -5405,7 +5444,7 @@ app.post('/api/auth/sign-in', async (request, response) => {
     return response.status(429).json({ message: 'Invalid email or password.', captchaRequired: true })
   }
   const [user] = await sql`
-    SELECT id, name, email, phone, password_hash, role, status, locked_until, account_locked AS "accountLocked", created_at AS "createdAt"
+    SELECT id, name, email, phone, password_hash, role, status, locked_until, account_locked AS "accountLocked", must_reset_password AS "mustResetPassword", created_at AS "createdAt"
     FROM users
     WHERE email = ${normalizedEmail}
   `
@@ -5413,7 +5452,7 @@ app.post('/api/auth/sign-in', async (request, response) => {
     SELECT COUNT(*)::INTEGER AS count FROM login_events
     WHERE email = ${normalizedEmail} AND succeeded = false AND created_at > NOW() - INTERVAL '15 minutes'
   `
-  if (accountFailures.count >= 3 && (getTurnstileSecret() || captchaToken) && (!captchaToken || !await verifyTurnstile(captchaToken, metadata.ip))) {
+  if (accountFailures.count >= 3 && getTurnstileSecret() && (!captchaToken || !await verifyTurnstile(captchaToken, metadata.ip))) {
     await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: false, reason: 'captcha_failed', request })
     return response.status(401).json({ message: 'Invalid email or password.', captchaRequired: true })
   }
@@ -5482,12 +5521,24 @@ app.use(express.static(distDirectory))
 app.get(/^(?!\/api(?:\/|$)).*/, (_request, response) => response.sendFile(path.join(distDirectory, 'index.html')))
 
 app.use((error, _request, response, _next) => {
-  console.error(error)
+  console.error('API request failed', error?.code ?? error?.name ?? 'unknown')
   response.status(500).json({ message: 'Unable to complete your request.' })
 })
 
+const cleanSecurityRecords = async () => {
+  await Promise.all([
+    sql`DELETE FROM login_events WHERE created_at < NOW() - INTERVAL '90 days'`,
+    sql`DELETE FROM auth_sessions WHERE (ended_at IS NOT NULL AND ended_at < NOW() - INTERVAL '30 days') OR (ended_at IS NULL AND LEAST(idle_expires_at, absolute_expires_at) < NOW() - INTERVAL '30 days')`,
+    sql`DELETE FROM admin_audit_log WHERE created_at < NOW() - INTERVAL '1 year'`,
+    sql`DELETE FROM password_reset_tokens WHERE expires_at < NOW() - INTERVAL '30 days' OR used_at < NOW() - INTERVAL '30 days'`,
+  ])
+}
+
 initializeDatabase()
   .then(() => {
+    void cleanSecurityRecords().catch(() => console.error('Security retention cleanup failed.'))
+    const retentionTimer = setInterval(() => void cleanSecurityRecords().catch(() => console.error('Security retention cleanup failed.')), 6 * 60 * 60 * 1000)
+    retentionTimer.unref()
     app.listen(port, '0.0.0.0', () => {
       console.log(`API listening on port ${port}`)
     })

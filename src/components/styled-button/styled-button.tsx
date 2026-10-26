@@ -5,7 +5,7 @@ import { styled } from '@mui/material/styles'
 import { ButtonProps } from '@mui/material/Button'
 import { fontFamily } from '@/config/theme/typography'
 
-interface BaseButtonProps extends Pick<ButtonProps, 'onClick' | 'type' | 'startIcon' | 'endIcon'> {
+interface BaseButtonProps extends Pick<ButtonProps, 'onClick' | 'type' | 'startIcon' | 'endIcon' | 'disabled'> {
   variant?: 'contained' | 'outlined' | 'text'
   color?: 'default' | 'primary' | 'secondary' | 'dark' | 'light'
   size?: 'small' | 'medium' | 'large'
@@ -40,6 +40,7 @@ const StyledButtonRoot = styled('button', {
   verticalAlign: 'middle',
   outline: 'none !important',
   transition: theme.transitions.create(['transform']),
+  '&:disabled': { cursor: 'not-allowed', opacity: 0.6, transform: 'none' },
 
   // hover
   '&:hover': {

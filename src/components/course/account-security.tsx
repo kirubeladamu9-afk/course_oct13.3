@@ -21,7 +21,7 @@ import ComputerOutlinedIcon from '@mui/icons-material/ComputerOutlined'
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
 import { toast } from '@/components/toast'
 import { navigateTo } from '@/lib/navigation'
-import { changePassword, clearAuthenticatedUser, disableTwoFactor, enableTwoFactor, getAuthenticatedUser, getSecurityAlerts, getSecurityLoginHistory, getSecuritySessions, getTwoFactorStatus, revokeSecuritySession, saveAuthenticatedUser, setupTwoFactor, signOutEverywhere, type LoginEvent, type SecurityAlert, type SecuritySession } from '@/services/api'
+import { changePassword, clearAuthenticatedUser, disableTwoFactor, enableTwoFactor, getAdminSecurityAlerts, getAuthenticatedUser, getSecurityAlerts, getSecurityLoginHistory, getSecuritySessions, getTwoFactorStatus, revokeSecuritySession, saveAuthenticatedUser, setupTwoFactor, signOutEverywhere, type LoginEvent, type SecurityAlert, type SecuritySession } from '@/services/api'
 
 const formatLocation = (city: string | null, country: string | null) => [city, country].filter(Boolean).join(', ') || 'Location unavailable'
 const formatDate = (value: string) => new Date(value).toLocaleString()
@@ -32,7 +32,7 @@ export const SecurityNotifications: FC<{ admin?: boolean }> = ({ admin = false }
   const open = Boolean(anchor)
   const showAlerts = async (element: HTMLElement) => {
     setAnchor(element)
-    try { setAlerts(await getSecurityAlerts()) } catch { setAlerts([]) }
+    try { setAlerts(admin ? await getAdminSecurityAlerts() : await getSecurityAlerts()) } catch { setAlerts([]) }
   }
   return <>
     <IconButton aria-label="Security notifications" onClick={(event) => { void showAlerts(event.currentTarget) }}>
@@ -180,7 +180,7 @@ const AccountSecurity: FC = () => {
       </Paper>
       <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
         <Typography component="h2" variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Recent sign-in history</Typography>
-        {history.length ? <Stack divider={<Divider flexItem />}>{history.map((event) => <Box key={event.id} sx={{ py: 1.25 }}><Stack direction="row" spacing={1} alignItems="center"><Chip size="small" label={event.succeeded ? 'Successful' : 'Failed'} color={event.succeeded ? 'success' : 'error'} variant="outlined" /><Typography variant="body2" sx={{ fontWeight: 600 }}>{event.browser} on {event.os} · {event.deviceType}</Typography></Stack><Typography variant="body2" color="text.secondary">Location is approximate: {formatLocation(event.city, event.country)} · IP {event.clientIp}</Typography><Typography variant="caption" color="text.secondary">{formatDate(event.createdAt)} · {event.reason.replaceAll('_', ' ')}</Typography></Box>)}</Stack> : <Typography color="text.secondary">No sign-in activity recorded.</Typography>}
+        {history.length ? <Stack divider={<Divider flexItem />}>{history.map((event) => <Box key={event.id} sx={{ py: 1.25 }}><Stack direction="row" spacing={1} alignItems="center"><Chip size="small" label={event.succeeded ? 'Successful' : 'Failed'} color={event.succeeded ? 'success' : 'error'} variant="outlined" /><Typography variant="body2" sx={{ fontWeight: 600 }}>{event.browser} on {event.os} · {event.deviceType}</Typography></Stack><Typography variant="body2" color="text.secondary">Location is approximate: {formatLocation(event.city, event.country)} · IP {event.clientIp}</Typography><Typography variant="caption" color="text.secondary">{formatDate(event.createdAt)} · {event.reason.replace(/_/g, ' ')}</Typography></Box>)}</Stack> : <Typography color="text.secondary">No sign-in activity recorded.</Typography>}
       </Paper>
     </Stack>}
   </>

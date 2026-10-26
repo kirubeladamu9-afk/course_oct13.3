@@ -18,7 +18,7 @@ export interface DataColumn<T> {
   render?: (value: T[keyof T], row: T) => ReactNode
 }
 
-interface Props<T extends { id: number }> {
+interface Props<T extends { id: number | string }> {
   rows: T[]
   columns: DataColumn<T>[]
   searchPlaceholder?: string
@@ -27,7 +27,7 @@ interface Props<T extends { id: number }> {
   actions?: (row: T) => ReactNode
 }
 
-const AdminDataTable = <T extends { id: number }>({ rows, columns, searchPlaceholder = 'Search records', searchKeys, rowClick, actions }: Props<T>) => {
+const AdminDataTable = <T extends { id: number | string }>({ rows, columns, searchPlaceholder = 'Search records', searchKeys, rowClick, actions }: Props<T>) => {
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(5)

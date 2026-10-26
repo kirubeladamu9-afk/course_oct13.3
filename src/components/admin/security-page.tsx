@@ -11,7 +11,7 @@ import AdminDataTable, { type DataColumn } from './admin-data-table'
 import { forceLogoutUser, forcePasswordReset, getAdminSecurity, revokeAdminSession, setAdminAccountLock, type AdminSecurityData, type LoginEvent, type SecurityAlert, type SecuritySession } from '@/services/api'
 
 type SecurityUser = AdminSecurityData['users'][number]
-type AdminSession = AdminSecurityData['sessions'][number]
+type AdminSession = AdminSecurityData['sessions'][number] & { id: string }
 type AuditEntry = AdminSecurityData['auditLog'][number]
 
 const dateText = (value: string) => new Date(value).toLocaleString()
@@ -42,7 +42,7 @@ const SecurityPage: FC = () => {
     { key: 'userName', label: 'Account' },
     { key: 'email', label: 'Email' },
     { key: 'succeeded', label: 'Result', render: (value) => <Chip size="small" label={value ? 'Success' : 'Failed'} color={value ? 'success' : 'error'} /> },
-    { key: 'reason', label: 'Reason', render: (value) => String(value).replaceAll('_', ' ') },
+    { key: 'reason', label: 'Reason', render: (value) => String(value).replace(/_/g, ' ') },
     { key: 'browser', label: 'Device', render: (_, row) => `${row.browser} · ${row.os} · ${row.deviceType}` },
     { key: 'country', label: 'Approx. location', render: (_, row) => locationText(row.city ?? null, row.country ?? null) },
     { key: 'clientIp', label: 'IP' },
@@ -66,13 +66,13 @@ const SecurityPage: FC = () => {
   const alertColumns: DataColumn<SecurityAlert>[] = [
     { key: 'userName', label: 'Account' },
     { key: 'email', label: 'Email' },
-    { key: 'type', label: 'Type', render: (value) => String(value).replaceAll('_', ' ') },
+    { key: 'type', label: 'Type', render: (value) => String(value).replace(/_/g, ' ') },
     { key: 'message', label: 'Alert' },
     { key: 'createdAt', label: 'Time', render: (value) => dateText(String(value)) },
   ]
   const auditColumns: DataColumn<AuditEntry>[] = [
     { key: 'actorName', label: 'Admin' },
-    { key: 'action', label: 'Action', render: (value) => String(value).replaceAll('_', ' ') },
+    { key: 'action', label: 'Action', render: (value) => String(value).replace(/_/g, ' ') },
     { key: 'targetName', label: 'Account' },
     { key: 'clientIp', label: 'IP' },
     { key: 'createdAt', label: 'Time', render: (value) => dateText(String(value)) },

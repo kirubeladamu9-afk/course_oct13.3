@@ -1,4 +1,4 @@
-import { useState, type FC, type FormEvent } from 'react'
+import { useEffect, useState, type FC, type FormEvent } from 'react'
 import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import Container from '@mui/material/Container'
@@ -13,7 +13,7 @@ import VisibilityOff from '@mui/icons-material/VisibilityOff'
 import { StyledButton } from '@/components/styled-button'
 import { navigateTo } from '@/lib/navigation'
 import { toast } from '@/components/toast'
-import { saveAuthenticatedUser, submitCredentials } from '@/services/api'
+import { AuthFlowError, saveAuthenticatedUser, submitCredentials } from '@/services/api'
 
 interface SignInPageProps {
   mode: 'sign-in' | 'sign-up'
@@ -22,14 +22,46 @@ interface SignInPageProps {
 const SignInPage: FC<SignInPageProps> = ({ mode }) => {
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [captchaRequired, setCaptchaRequired] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState('')
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false)
+  const [twoFactorCode, setTwoFactorCode] = useState('')
   const isSignUp = mode === 'sign-up'
+  const turnstileSiteKey = import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY
+
+  useEffect(() => {
+    if (!captchaRequired || !turnstileSiteKey) return
+    const renderWidget = () => {
+      const turnstile = (window as Window & { turnstile?: { render: (element: HTMLElement, options: { sitekey: string; callback: (token: string) => void; 'expired-callback': () => void }) => void } }).turnstile
+      const container = document.getElementById('sign-in-turnstile')
+      if (turnstile && container && !container.hasChildNodes()) turnstile.render(container, { sitekey: turnstileSiteKey, callback: setCaptchaToken, 'expired-callback': () => setCaptchaToken('') })
+    }
+    if ((window as Window & { turnstile?: unknown }).turnstile) renderWidget()
+    else {
+      const script = document.createElement('script')
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+      script.async = true
+      script.defer = true
+      script.onload = renderWidget
+      document.head.appendChild(script)
+    }
+  }, [captchaRequired, turnstileSiteKey])
+
+  const resetCaptcha = () => {
+    setCaptchaToken('')
+    const turnstile = (window as Window & { turnstile?: { reset: () => void } }).turnstile
+    turnstile?.reset()
+  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
 
     try {
-      const { user } = await submitCredentials(mode, String(formData.get('email')), String(formData.get('password')))
+      const { user } = await submitCredentials(mode, String(formData.get('email')), String(formData.get('password')), undefined, { captchaToken, twoFactorCode })
+      setCaptchaRequired(false)
+      setTwoFactorRequired(false)
+      setTwoFactorCode('')
       if (!isSignUp) {
         saveAuthenticatedUser(user)
         setIsRedirecting(true)
@@ -42,6 +74,11 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
         type: 'success',
       })
     } catch (error) {
+      if (error instanceof AuthFlowError) {
+        setCaptchaRequired(error.captchaRequired)
+        setTwoFactorRequired(error.twoFactorRequired)
+        if (error.captchaRequired) resetCaptcha()
+      }
       toast.add({
         title: 'Unable to complete your request',
         description: error instanceof Error ? error.message : 'Please try again.',
@@ -105,11 +142,13 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
                       ),
                     }}
                   />
+                  {!isSignUp && twoFactorRequired && <TextField required label="Authenticator or backup code" value={twoFactorCode} onChange={(event) => setTwoFactorCode(event.target.value)} autoComplete="one-time-code" inputProps={{ inputMode: 'numeric' }} />}
+                  {!isSignUp && captchaRequired && (turnstileSiteKey ? <Box id="sign-in-turnstile" sx={{ minHeight: 65, display: 'flex', alignItems: 'center' }} /> : <Typography role="status" variant="caption" color="text.secondary">Human verification is not configured. Please contact support.</Typography>)}
                   {!isSignUp && <Typography variant="body2" sx={{ mt: -0.75, color: 'text.secondary' }}>
                     Forgot your password? <Link href="mailto:support@coursesharp.com" underline="hover">Contact support@coursesharp.com</Link> for help.
                   </Typography>}
                   <Box sx={{ mt: { xs: 0.25, md: 0.5 }, '& button': { width: '100%', justifyContent: 'center', borderRadius: 999, py: 1.1 } }}>
-                    <StyledButton type="submit" color="primary">{isSignUp ? 'Sign Up' : 'Sign In'}</StyledButton>
+                    <StyledButton type="submit" color="primary" disabled={Boolean(captchaRequired && turnstileSiteKey && !captchaToken) || Boolean(twoFactorRequired && !twoFactorCode)}>{isSignUp ? 'Sign Up' : 'Sign In'}</StyledButton>
                   </Box>
                 </Box>
               </Box>

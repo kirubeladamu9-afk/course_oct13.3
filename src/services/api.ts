@@ -15,6 +15,7 @@ export interface AuthUser {
 }
 
 export interface SecuritySession {
+  id: string
   sessionId: string
   createdAt: string
   lastActiveAt: string
@@ -65,6 +66,17 @@ export interface AdminSecurityData {
 
 interface AuthResponse {
   user: AuthUser
+}
+
+export class AuthFlowError extends Error {
+  captchaRequired: boolean
+  twoFactorRequired: boolean
+
+  constructor(message: string, options: { captchaRequired?: boolean; twoFactorRequired?: boolean } = {}) {
+    super(message)
+    this.captchaRequired = options.captchaRequired ?? false
+    this.twoFactorRequired = options.twoFactorRequired ?? false
+  }
 }
 
 interface AccountDetails {
@@ -1143,15 +1155,16 @@ export const changePassword = async (currentPassword: string, newPassword: strin
 
 export const getCourse = async (id: Course['id']): Promise<AdminCourse> => requestCourse(`/api/courses/${id}`)
 
-export const submitCredentials = async (mode: 'sign-in' | 'sign-up', email: string, password: string, accountDetails?: AccountDetails): Promise<AuthResponse> => {
+export const submitCredentials = async (mode: 'sign-in' | 'sign-up', email: string, password: string, accountDetails?: AccountDetails, challenges: { captchaToken?: string; twoFactorCode?: string } = {}): Promise<AuthResponse> => {
   const response = await fetch(`/api/auth/${mode}`, {
     method: 'POST',
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, ...accountDetails }),
+    body: JSON.stringify({ email, password, ...accountDetails, ...challenges }),
   })
-
-  if (!response.ok) throw new Error(await getErrorMessage(response))
-  return response.json() as Promise<AuthResponse>
+  const body = await response.json().catch(() => null)
+  if (!response.ok) throw new AuthFlowError(body?.message ?? 'Unable to complete your request.', body ?? {})
+  return body as AuthResponse
 }
 
 export const saveAuthenticatedUser = (user: AuthUser) => {
@@ -1309,6 +1322,12 @@ export const enableTwoFactor = async (code: string): Promise<{ backupCodes: stri
 export const disableTwoFactor = async (currentPassword: string, code: string): Promise<void> => {
   const response = await requestApi('/api/auth/security/two-factor/disable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPassword, code }) })
   if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const getAdminSecurityAlerts = async (): Promise<SecurityAlert[]> => {
+  const response = await requestApi('/api/admin/security/alerts')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
 }
 
 export const getAdminSecurity = async (): Promise<AdminSecurityData> => {
