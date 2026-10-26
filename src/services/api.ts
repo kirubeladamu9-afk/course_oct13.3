@@ -527,7 +527,7 @@ const requestApi = async (url: string, init?: RequestInit) => {
   const response = await fetchApi(url, init)
   if (response.status === 401) {
     const error = await response.clone().json().catch(() => null)
-    if (error?.message === 'Authentication is required.' || error?.message === 'Admin authentication is required.') {
+    if (error?.message === 'Authentication is required.') {
       clearAuthenticatedUser()
       if (window.location.pathname !== '/sign-in') navigateTo('/sign-in', true)
     }

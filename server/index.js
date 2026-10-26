@@ -1203,7 +1203,7 @@ const requireAuthenticated = async (request, response, next) => {
 
 const requireAdmin = async (request, response, next) => {
   await requireAuthenticated(request, response, () => {
-    if (request.userRole !== 'admin') return response.status(401).json({ message: 'Admin authentication is required.' })
+    if (request.userRole !== 'admin') return response.status(403).json({ message: 'Admin access is required.' })
     return next()
   })
 }
