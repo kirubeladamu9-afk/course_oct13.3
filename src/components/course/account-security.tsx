@@ -10,6 +10,8 @@ import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
@@ -63,6 +65,7 @@ const AccountSecurity: FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [tab, setTab] = useState<'password' | 'two-factor' | 'sessions'>('password')
 
   const user = getAuthenticatedUser()
   const updatePassword = async () => {
@@ -159,21 +162,26 @@ const AccountSecurity: FC = () => {
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
     {passwordMessage && <Alert severity={passwordMessage.startsWith('Password updated') ? 'success' : 'error'} sx={{ mb: 2 }}>{passwordMessage}</Alert>}
     {loading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 7 }}><CircularProgress aria-label="Loading security information" /></Box> : <Stack spacing={2.5}>
-      <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
+      <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" allowScrollButtonsMobile>
+        <Tab value="password" label="Change password" />
+        <Tab value="two-factor" label="Two-factor authentication" />
+        <Tab value="sessions" label="Active sessions" />
+      </Tabs>
+      {tab === 'password' && <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
         <Typography component="h2" variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Change password</Typography>
         <Stack spacing={1.5} sx={{ maxWidth: 520 }}><TextField label="Current password" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /><TextField label="New password" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} inputProps={{ minLength: 8, maxLength: 128 }} /><TextField label="Confirm new password" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} inputProps={{ minLength: 8, maxLength: 128 }} /><Button variant="contained" onClick={() => void updatePassword()} disabled={busy || !currentPassword || !newPassword || !confirmPassword}>Update password</Button></Stack>
-      </Paper>
-      <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
+      </Paper>}
+      {tab === 'two-factor' && <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
         <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 2 }}><ShieldOutlinedIcon color="primary" /><Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>Two-factor authentication</Typography><Chip size="small" label={twoFactorEnabled ? 'Enabled' : 'Not enabled'} color={twoFactorEnabled ? 'success' : 'default'} /></Stack>
         {backupCodes.length > 0 && <Alert severity="warning" sx={{ mb: 2 }}><Typography sx={{ fontWeight: 700 }}>Save these backup codes somewhere safe. Each code can be used once.</Typography><Typography component="pre" sx={{ mb: 0, whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>{backupCodes.join('  ')}</Typography></Alert>}
         {!twoFactorEnabled && !setup && <Button variant="outlined" onClick={() => void startTwoFactor()} disabled={busy}>Set up authenticator app</Button>}
         {setup && <Stack spacing={1.5} sx={{ maxWidth: 520 }}><Typography variant="body2">Add this key to your authenticator app, then enter the six-digit code to enable protection.</Typography><Paper variant="outlined" sx={{ p: 1.5, fontFamily: 'monospace', overflowWrap: 'anywhere' }}>{setup.secret}</Paper><Button component="a" href={setup.provisioningUri} size="small" sx={{ alignSelf: 'flex-start' }}>Open authenticator app</Button><TextField label="Authenticator code" value={code} onChange={(event) => setCode(event.target.value)} inputProps={{ inputMode: 'numeric', maxLength: 6 }} /><Button variant="contained" onClick={() => void confirmTwoFactor()} disabled={busy || code.length !== 6}>Confirm and enable</Button></Stack>}
         {twoFactorEnabled && <Stack spacing={1.5} sx={{ maxWidth: 520 }}><TextField label="Current password" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /><TextField label="Authenticator or backup code" value={code} onChange={(event) => setCode(event.target.value)} /><Button variant="outlined" color="error" onClick={() => void turnOffTwoFactor()} disabled={busy || !currentPassword || !code}>Turn off two-factor</Button></Stack>}
-      </Paper>
-      <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
+      </Paper>}
+      {tab === 'sessions' && <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}><Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>Active sessions</Typography><Chip label={`${sessions.length} devices`} size="small" variant="outlined" /></Stack>
         {sessions.length ? <Stack spacing={1.5}>{sessions.map((session) => <SecuritySessionCard key={session.sessionId} session={session} busy={busy} lastActiveText={formatDate(session.lastActiveAt)} onRevoke={() => void revoke(session)} onRename={async (nickname) => { await updateSecuritySessionNickname(session.sessionId, nickname); await reload() }} />)}</Stack> : <Typography color="text.secondary">No active sessions found.</Typography>}
-      </Paper>
+      </Paper>}
       <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
         <Typography component="h2" variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Recent security alerts</Typography>
         {alerts.length ? <Stack divider={<Divider flexItem />}>{alerts.map((alert) => <Box key={alert.id} sx={{ py: 1.25 }}><Typography variant="body2">{alert.message}</Typography><Typography variant="caption" color="text.secondary">Location details are approximate · {formatDate(alert.createdAt)}</Typography></Box>)}</Stack> : <Typography color="text.secondary">No recent security alerts.</Typography>}
