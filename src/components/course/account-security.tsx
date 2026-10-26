@@ -20,9 +20,8 @@ import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNone
 import { toast } from '@/components/toast'
 import SecuritySessionCard from '@/components/security/security-session-card'
 import { navigateTo } from '@/lib/navigation'
-import { changePassword, clearAuthenticatedUser, getAdminSecurityAlerts, getAuthenticatedUser, getSecurityAlerts, getSecurityLoginHistory, getSecuritySessions, revokeSecuritySession, saveAuthenticatedUser, updateSecuritySessionNickname, signOutEverywhere, type LoginEvent, type SecurityAlert, type SecuritySession } from '@/services/api'
+import { changePassword, clearAuthenticatedUser, getAdminSecurityAlerts, getAuthenticatedUser, getSecurityAlerts, getSecuritySessions, revokeSecuritySession, saveAuthenticatedUser, updateSecuritySessionNickname, signOutEverywhere, type SecurityAlert, type SecuritySession } from '@/services/api'
 
-const formatLocation = (city: string | null, country: string | null) => [city, country].filter(Boolean).join(', ') || 'Location unavailable'
 const formatDate = (value: string) => new Date(value).toLocaleString()
 
 export const SecurityNotifications: FC<{ admin?: boolean }> = ({ admin = false }) => {
@@ -51,8 +50,6 @@ export const SecurityNotifications: FC<{ admin?: boolean }> = ({ admin = false }
 
 const AccountSecurity: FC = () => {
   const [sessions, setSessions] = useState<SecuritySession[]>([])
-  const [history, setHistory] = useState<LoginEvent[]>([])
-  const [alerts, setAlerts] = useState<SecurityAlert[]>([])
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -60,7 +57,7 @@ const AccountSecurity: FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [tab, setTab] = useState<'password' | 'sessions' | 'alerts' | 'history'>('password')
+  const [tab, setTab] = useState<'password' | 'sessions'>('password')
 
   const user = getAuthenticatedUser()
   const currentSessions = sessions.filter((session) => session.isCurrent)
@@ -85,10 +82,7 @@ const AccountSecurity: FC = () => {
   const reload = async () => {
     setLoading(true)
     try {
-      const [nextSessions, nextHistory, nextAlerts] = await Promise.all([getSecuritySessions(), getSecurityLoginHistory(), getSecurityAlerts()])
-      setSessions(nextSessions)
-      setHistory(nextHistory)
-      setAlerts(nextAlerts)
+      setSessions(await getSecuritySessions())
       setError(null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to load account security information.')
@@ -128,8 +122,6 @@ const AccountSecurity: FC = () => {
       <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="fullWidth" sx={{ mb: -1, borderBottom: 1, borderColor: 'divider', minHeight: 44, '& .MuiTab-root': { minHeight: 44, px: 2, textTransform: 'none', fontWeight: 700 } }}>
         <Tab value="password" label="Change password" />
         <Tab value="sessions" label="Active sessions" />
-        <Tab value="alerts" label="Recent security alerts" />
-        <Tab value="history" label="Recent sign-in history" />
       </Tabs>
       {tab === 'password' && <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
         <Typography component="h2" variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Change password</Typography>
@@ -138,14 +130,6 @@ const AccountSecurity: FC = () => {
       {tab === 'sessions' && <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}><Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>Active sessions</Typography><Chip label={`${currentSessions.length} ${currentSessions.length === 1 ? 'device' : 'devices'}`} size="small" variant="outlined" /></Stack>
         {currentSessions.length ? <Stack spacing={1.5}>{currentSessions.map((session) => <SecuritySessionCard key={session.sessionId} session={session} busy={busy} lastActiveText={formatDate(session.lastActiveAt)} onRevoke={() => void revoke(session)} onRename={async (nickname) => { await updateSecuritySessionNickname(session.sessionId, nickname); await reload() }} />)}</Stack> : <Typography color="text.secondary">No active sessions found.</Typography>}
-      </Paper>}
-      {tab === 'alerts' && <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
-        <Typography component="h2" variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Recent security alerts</Typography>
-        {alerts.length ? <Stack divider={<Divider flexItem />}>{alerts.map((alert) => <Box key={alert.id} sx={{ py: 1.25 }}><Typography variant="body2">{alert.message}</Typography><Typography variant="caption" color="text.secondary">Location details are approximate · {formatDate(alert.createdAt)}</Typography></Box>)}</Stack> : <Typography color="text.secondary">No recent security alerts.</Typography>}
-      </Paper>}
-      {tab === 'history' && <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
-        <Typography component="h2" variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Recent sign-in history</Typography>
-        {history.length ? <Stack divider={<Divider flexItem />}>{history.map((event) => <Box key={event.id} sx={{ py: 1.25 }}><Stack direction="row" spacing={1} alignItems="center"><Chip size="small" label={event.succeeded ? 'Successful' : 'Failed'} color={event.succeeded ? 'success' : 'error'} variant="outlined" /><Typography variant="body2" sx={{ fontWeight: 600 }}>{event.browser} on {event.os} · {event.deviceType}</Typography></Stack><Typography variant="body2" color="text.secondary">Location is approximate: {formatLocation(event.city, event.country)} · IP {event.clientIp}</Typography><Typography variant="caption" color="text.secondary">{formatDate(event.createdAt)} · {event.reason.replace(/_/g, ' ')}</Typography></Box>)}</Stack> : <Typography color="text.secondary">No sign-in activity recorded.</Typography>}
       </Paper>}
     </Stack>}
   </>
