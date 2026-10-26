@@ -118,6 +118,7 @@ const CourseDetailPage: FC<{ courseId: string }> = ({ courseId }) => {
           <Chip label={course.category} color="primary" size="small" sx={{ mb: 2 }} />
           <Typography component="h1" variant="h2" sx={{ fontSize: { xs: 34, md: 54 }, mb: 2 }}>{course.title}</Typography>
           <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 400, lineHeight: 1.5, mb: 2 }}>{course.description}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Instructor: {course.tutor}</Typography>
           <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap sx={{ mb: 3 }}>
             <Typography variant="body2" color="text.secondary">{course.students.toLocaleString()} students</Typography>
             <Typography variant="body2" color="text.secondary">{course.level}</Typography>
