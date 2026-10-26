@@ -125,7 +125,7 @@ const AccountSecurity: FC = () => {
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
     {passwordMessage && <Alert severity={passwordMessage.startsWith('Password updated') ? 'success' : 'error'} sx={{ mb: 2 }}>{passwordMessage}</Alert>}
     {loading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 7 }}><CircularProgress aria-label="Loading security information" /></Box> : <Stack spacing={2.5}>
-      <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" allowScrollButtonsMobile sx={{ mb: -1, borderBottom: 1, borderColor: 'divider', minHeight: 44, '& .MuiTab-root': { minHeight: 44, px: 2, textTransform: 'none', fontWeight: 700 } }}>
+      <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="fullWidth" sx={{ mb: -1, borderBottom: 1, borderColor: 'divider', minHeight: 44, '& .MuiTab-root': { minHeight: 44, px: 2, textTransform: 'none', fontWeight: 700 } }}>
         <Tab value="password" label="Change password" />
         <Tab value="sessions" label="Active sessions" />
         <Tab value="alerts" label="Recent security alerts" />
