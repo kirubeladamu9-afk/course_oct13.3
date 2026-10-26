@@ -63,19 +63,14 @@ let geoIpReaderPromise
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 const getCookieValue = (request, name) => request.headers.cookie?.split(';').map((cookie) => cookie.trim()).find((cookie) => cookie.startsWith(`${name}=`))?.slice(name.length + 1)
-const isSecureRequest = (request) => request.secure || process.env.NODE_ENV === 'production'
-const setSecurityCookies = (response, token, deviceId, role, request) => {
+const setSecurityCookies = (response, token, deviceId, role) => {
   const idleSeconds = Math.floor(sessionPolicyFor(role).idleMs / 1000)
-  const secure = isSecureRequest(request) ? '; Secure' : ''
   response.setHeader('Set-Cookie', [
-    `${sessionCookieName}=${token}; HttpOnly${secure}; Path=/; SameSite=Lax; Max-Age=${idleSeconds}`,
-    `${deviceCookieName}=${deviceId}; HttpOnly${secure}; Path=/; SameSite=Lax; Max-Age=31536000`,
+    `${sessionCookieName}=${token}; HttpOnly; Secure; Path=/; SameSite=None; Partitioned; Max-Age=${idleSeconds}`,
+    `${deviceCookieName}=${deviceId}; HttpOnly; Secure; Path=/; SameSite=None; Partitioned; Max-Age=31536000`,
   ])
 }
-const clearSecurityCookies = (response, request) => {
-  const secure = isSecureRequest(request) ? '; Secure' : ''
-  response.setHeader('Set-Cookie', `${sessionCookieName}=; HttpOnly${secure}; Path=/; SameSite=Lax; Max-Age=0`)
-}
+const clearSecurityCookies = (response) => response.setHeader('Set-Cookie', `${sessionCookieName}=; HttpOnly; Secure; Path=/; SameSite=None; Partitioned; Max-Age=0`)
 const getClientMetadata = (request) => {
   const userAgent = String(request.get('user-agent') ?? '').slice(0, 512)
   const browser = /Edg\//.test(userAgent) ? 'Edge' : /Firefox\//.test(userAgent) ? 'Firefox' : /Chrome\//.test(userAgent) ? 'Chrome' : /Safari\//.test(userAgent) ? 'Safari' : 'Unknown'
@@ -1092,7 +1087,7 @@ const loadAuthenticatedUser = async (request, response) => {
       AND (users.locked_until IS NULL OR users.locked_until <= NOW())
   `
   if (!session) {
-    if (response && getSessionToken(request)) clearSecurityCookies(response, request)
+    if (response && getSessionToken(request)) clearSecurityCookies(response)
     return false
   }
   const policy = sessionPolicyFor(session.role)
@@ -1108,8 +1103,7 @@ const loadAuthenticatedUser = async (request, response) => {
   request.mustResetPassword = session.mustResetPassword
   request.sessionTokenHash = tokenHash
   request.sessionId = tokenHash
-  const secure = isSecureRequest(request) ? '; Secure' : ''
-  response?.append('Set-Cookie', `${sessionCookieName}=${rawToken}; HttpOnly${secure}; Path=/; SameSite=Lax; Max-Age=${Math.floor(policy.idleMs / 1000)}`)
+  response?.append('Set-Cookie', `${sessionCookieName}=${rawToken}; HttpOnly; Secure; Path=/; SameSite=None; Partitioned; Max-Age=${Math.floor(policy.idleMs / 1000)}`)
   return true
 }
 
@@ -1171,7 +1165,7 @@ const rotateAuthenticatedSession = async (request, response, reason) => {
   await sql`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = ${reason} WHERE user_id = ${request.userId} AND ended_at IS NULL`
   request.securityDeviceId = getDeviceId(request)
   const session = await createAuthSession(request.userId, request.userRole, request)
-  setSecurityCookies(response, session.rawToken, session.deviceId, request.userRole, request)
+  setSecurityCookies(response, session.rawToken, session.deviceId, request.userRole)
 }
 
 const verifySecondFactor = async (userId, code) => {
@@ -5227,13 +5221,13 @@ app.delete('/api/auth/security/sessions/:sessionId', requireAuthenticated, async
     RETURNING token
   `
   if (!revoked) return response.status(404).json({ message: 'Active session not found.' })
-  if (sessionId === request.sessionId) clearSecurityCookies(response, request)
+  if (sessionId === request.sessionId) clearSecurityCookies(response)
   return response.status(204).end()
 })
 
 app.post('/api/auth/security/sign-out-everywhere', requireAuthenticated, async (request, response) => {
   await sql`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'signed_out_everywhere' WHERE user_id = ${request.userId} AND ended_at IS NULL`
-  clearSecurityCookies(response, request)
+  clearSecurityCookies(response)
   return response.status(204).end()
 })
 
@@ -5420,7 +5414,7 @@ app.post('/api/auth/sign-up', async (request, response) => {
     request.securityDeviceId = getDeviceId(request)
     await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: true, reason: 'sign_up', request })
     const session = await createAuthSession(user.id, user.role, request)
-    setSecurityCookies(response, session.rawToken, session.deviceId, user.role, request)
+    setSecurityCookies(response, session.rawToken, session.deviceId, user.role)
     return response.status(201).json({ user })
   } catch (error) {
     if (error.code === '23505') {
@@ -5479,7 +5473,7 @@ app.post('/api/auth/sign-in', async (request, response) => {
   const { password_hash: _passwordHash, locked_until: _lockedUntil, accountLocked: _accountLocked, ...account } = user
   await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: true, reason: 'success', request })
   const session = await createAuthSession(user.id, user.role, request)
-  setSecurityCookies(response, session.rawToken, session.deviceId, user.role, request)
+  setSecurityCookies(response, session.rawToken, session.deviceId, user.role)
   return response.json({ user: account })
 })
 
@@ -5510,14 +5504,14 @@ app.post('/api/auth/change-password', requireAuthenticated, async (request, resp
   `
   request.securityDeviceId = getDeviceId(request)
   const session = await createAuthSession(request.userId, request.userRole, request)
-  setSecurityCookies(response, session.rawToken, session.deviceId, request.userRole, request)
+  setSecurityCookies(response, session.rawToken, session.deviceId, request.userRole)
   return response.status(204).end()
 })
 
 app.post('/api/auth/sign-out', async (request, response) => {
   const sessionToken = getSessionToken(request)
   if (sessionToken) await sql`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'signed_out' WHERE token = ${hashToken(sessionToken)} AND ended_at IS NULL`
-  clearSecurityCookies(response, request)
+  clearSecurityCookies(response)
   return response.status(204).end()
 })
 
