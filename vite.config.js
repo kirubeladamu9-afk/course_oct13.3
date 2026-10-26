@@ -13,7 +13,7 @@ export default defineConfig({
         port: 3000,
         open: true,
         proxy: {
-            '/api': 'http://localhost:3001',
+            '/api': { target: 'http://localhost:3001', xfwd: true },
         },
     },
     build: {
