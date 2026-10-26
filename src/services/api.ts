@@ -1215,6 +1215,12 @@ export const getGamification = async (signal?: AbortSignal): Promise<Gamificatio
   return response.json()
 }
 
+export const getPublicCourseReviews = async (id: number): Promise<CourseReview[]> => {
+  const response = await fetchApi(`/api/courses/${id}/reviews`)
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
 export const getStudentReviews = async (type: 'course' | 'class', id: number): Promise<StudentReviewData> => {
   const response = await requestApi(`/api/reviews?type=${type}&id=${id}`)
   if (!response.ok) throw new Error(await getErrorMessage(response))

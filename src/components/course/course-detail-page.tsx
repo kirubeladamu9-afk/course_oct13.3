@@ -19,6 +19,7 @@ import FormatListNumberedOutlinedIcon from '@mui/icons-material/FormatListNumber
 import { type FC, useEffect, useState } from 'react'
 import { type AdminCourse, type AdminLesson } from '@/components/admin/admin-data'
 import EnrollmentModal from '@/components/course/enrollment-modal'
+import CourseReviews from '@/components/course/course-reviews'
 import Footer from '@/components/footer/footer'
 import { getAuthenticatedUser, getAdminCourse, getCourse as getCourseFromApi } from '@/services/api'
 import { navigateTo } from '@/lib/navigation'
@@ -158,6 +159,7 @@ const CourseDetailPage: FC<{ courseId: string }> = ({ courseId }) => {
               </Box>
               <Stack spacing={1.25}>{course.modules.map((module) => <Accordion key={module.id} expanded={expandedModules.includes(module.id)} onChange={() => toggleModule(module.id)} disableGutters elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: '8px !important', '&::before': { display: 'none' } }}><AccordionSummary expandIcon={<ExpandMoreIcon />} aria-controls={`module-${module.id}-content`} id={`module-${module.id}-header`}><Box sx={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', gap: 2, pr: 1 }}><Typography sx={{ fontWeight: 600 }}>{module.title}</Typography><Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>{module.lessons.length} lectures · {formatDuration(module.lessons.reduce((total, lesson) => total + (lesson.duration ?? lesson.estimatedDuration ?? 0), 0))}</Typography></Box></AccordionSummary><AccordionDetails sx={{ pt: 0 }}><Stack divider={<Divider flexItem />}>{module.lessons.map((lesson) => <Box key={lesson.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.25, py: 1 }}><Box color="text.secondary" sx={{ display: 'flex' }}><LessonTypeIcon type={lesson.type} /></Box><Typography variant="body2" sx={{ flexGrow: 1 }}>{lesson.title}</Typography><Typography variant="body2" color="text.secondary">{getLessonLabel(lesson)}</Typography></Box>)}</Stack></AccordionDetails></Accordion>)}</Stack>
             </Box>
+            <CourseReviews courseId={course.id} rating={course.rating} ratingCount={course.ratingCount} />
           </Stack>
         </Grid>
       </Grid>

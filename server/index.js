@@ -1742,6 +1742,25 @@ app.get('/api/courses', async (_request, response) => {
   response.json(courses)
 })
 
+app.get('/api/courses/:id/reviews', async (request, response) => {
+  const courseId = parseCourseId(request.params.id)
+  if (courseId === null) return response.status(400).json({ message: 'Invalid course id.' })
+  const [course] = await sql`SELECT id FROM courses WHERE id = ${courseId} AND status = 'Published'`
+  if (!course) return response.status(404).json({ message: 'Course not found.' })
+  const reviews = await sql`
+    SELECT reviews.id::INTEGER AS id,
+           reviews.rating::INTEGER AS rating,
+           reviews.comment,
+           COALESCE(NULLIF(users.name, ''), 'Learner') AS "studentName",
+           reviews.created_at AS "createdAt"
+    FROM course_reviews reviews
+    INNER JOIN users ON users.id = reviews.user_id
+    WHERE reviews.course_id = ${courseId} AND reviews.is_hidden = false
+    ORDER BY reviews.created_at DESC, reviews.id DESC
+  `
+  return response.json(reviews)
+})
+
 app.get('/api/bookstore-items', async (_request, response) => {
   const items = await sql`
     SELECT ${bookstoreItemColumns}
