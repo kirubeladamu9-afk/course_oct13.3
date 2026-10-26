@@ -1,13 +1,9 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
-import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { mkdir, readdir, rename, writeFile } from 'node:fs/promises'
-import os from 'node:os'
-import { open as openGeoIpDatabase } from 'maxmind'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
+import geoip from 'geoip-lite'
 import helmet from 'helmet'
 import postgres from 'postgres'
 import { getChangedCourseLessonIds, remapReusedCourseLessonIds } from './course-lesson-identities.js'
@@ -64,7 +60,6 @@ const sessionPolicies = {
   admin: { idleMs: 30 * 60000, absoluteMs: 8 * 3600000, maxSessions: 2 },
 }
 const defaultSessionPolicy = sessionPolicies.student
-let geoIpReaderPromise
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 const getCookieValue = (request, name) => request.headers.cookie?.split(';').map((cookie) => cookie.trim()).find((cookie) => cookie.startsWith(`${name}=`))?.slice(name.length + 1)
@@ -81,32 +76,9 @@ const getClientMetadata = (request, clientHints = null) => ({
   ip: request.ip ?? request.socket.remoteAddress ?? 'unknown',
 })
 const getGeoLocation = async (ip) => {
-  if (!process.env.GEOIP_DB_PATH || ip === 'unknown' || ip === '::1' || ip === '127.0.0.1') return { country: null, city: null }
-  geoIpReaderPromise ??= openGeoIpDatabase(process.env.GEOIP_DB_PATH).catch(() => null)
-  const reader = await geoIpReaderPromise
-  const location = reader?.get(ip)
-  return { country: location?.country?.names?.en ?? null, city: location?.city?.names?.en ?? null }
-}
-const execFileAsync = promisify(execFile)
-const ensureGeoIpDatabase = async () => {
-  const { MAXMIND_ACCOUNT_ID: accountId, MAXMIND_LICENSE_KEY: licenseKey } = process.env
-  if (process.env.GEOIP_DB_PATH || !accountId || !licenseKey) return
-  const directory = path.join(os.tmpdir(), 'geoip')
-  const databasePath = path.join(directory, 'GeoLite2-City.mmdb')
-  if (!existsSync(databasePath)) {
-    await mkdir(directory, { recursive: true })
-    const response = await fetch('https://download.maxmind.com/geoip/databases/GeoLite2-City/download?suffix=tar.gz', {
-      headers: { Authorization: `Basic ${Buffer.from(`${accountId}:${licenseKey}`).toString('base64')}` },
-    })
-    if (!response.ok) throw new Error(`GeoLite2 download failed with status ${response.status}.`)
-    const archivePath = path.join(directory, 'GeoLite2-City.tar.gz')
-    await writeFile(archivePath, Buffer.from(await response.arrayBuffer()))
-    await execFileAsync('tar', ['-xzf', archivePath, '-C', directory])
-    const extracted = (await readdir(directory, { withFileTypes: true })).find((entry) => entry.isDirectory() && entry.name.startsWith('GeoLite2-City_'))
-    if (!extracted) throw new Error('GeoLite2 archive did not contain a database folder.')
-    await rename(path.join(directory, extracted.name, 'GeoLite2-City.mmdb'), databasePath)
-  }
-  process.env.GEOIP_DB_PATH = databasePath
+  const address = ip.startsWith('::ffff:') ? ip.slice(7) : ip
+  const location = geoip.lookup(address)
+  return { country: location?.country || null, city: location?.city || null }
 }
 const maskIpAddress = (ip) => ip.includes(':') ? `${ip.split(':').slice(0, 3).join(':')}:…` : ip.split('.').map((part, index) => index < 2 ? part : '•').join('.')
 const sessionPolicyFor = (role) => sessionPolicies[role] ?? defaultSessionPolicy
@@ -5598,7 +5570,6 @@ const cleanSecurityRecords = async () => {
 
 initializeDatabase()
   .then(async () => {
-    await ensureGeoIpDatabase().catch((error) => console.error('GeoIP database unavailable.', error))
     void cleanSecurityRecords().catch(() => console.error('Security retention cleanup failed.'))
     const retentionTimer = setInterval(() => void cleanSecurityRecords().catch(() => console.error('Security retention cleanup failed.')), 6 * 60 * 60 * 1000)
     retentionTimer.unref()
