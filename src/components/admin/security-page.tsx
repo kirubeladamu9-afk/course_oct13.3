@@ -1,24 +1,44 @@
-import { useEffect, useState, type FC } from 'react'
+import { useEffect, useMemo, useState, type FC } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
+import FormControl from '@mui/material/FormControl'
+import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
+import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import AdminDataTable, { type DataColumn } from './admin-data-table'
-import { forceLogoutUser, forcePasswordReset, getAdminSecurity, revokeAdminSession, setAdminAccountLock, type AdminSecurityData, type LoginEvent, type SecurityAlert, type SecuritySession } from '@/services/api'
+import { forceLogoutUser, forcePasswordReset, getAdminSecurity, revokeAdminSession, setAdminAccountLock, type AdminSecurityData } from '@/services/api'
 
-type SecurityUser = AdminSecurityData['users'][number]
-type AdminSession = AdminSecurityData['sessions'][number] & { id: string }
-type AuditEntry = AdminSecurityData['auditLog'][number]
+type SecurityView = 'logins' | 'sessions' | 'accounts' | 'alerts' | 'audit'
+type SecurityTableRow = {
+  id: string
+  kind: SecurityView
+  activity: string
+  account: string
+  email: string
+  details: string
+  status: string
+  role: string
+  location: string
+  clientIp: string
+  occurredAt: string
+  sessionId?: string
+  userId?: number
+  accountLocked?: boolean
+}
 
-const dateText = (value: string) => new Date(value).toLocaleString()
+const dateText = (value: string) => value ? new Date(value).toLocaleString() : '—'
 const locationText = (city: string | null, country: string | null) => [city, country].filter(Boolean).join(', ') || 'Unavailable'
+const stateText = (value: unknown) => value === null || value === undefined ? '—' : typeof value === 'string' ? value : JSON.stringify(value)
+const viewLabels: Record<SecurityView, string> = { logins: 'Login history', sessions: 'Active sessions', accounts: 'Accounts', alerts: 'Security alerts', audit: 'Audit history' }
 
 const SecurityPage: FC = () => {
   const [data, setData] = useState<AdminSecurityData | null>(null)
+  const [view, setView] = useState<SecurityView>('logins')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -38,55 +58,109 @@ const SecurityPage: FC = () => {
     finally { setBusy(false) }
   }
 
-  const loginColumns: DataColumn<LoginEvent>[] = [
-    { key: 'userName', label: 'Account' },
+  const rows = useMemo<SecurityTableRow[]>(() => {
+    if (!data) return []
+    if (view === 'logins') return data.loginEvents.map((event) => ({
+      id: `login-${event.id}`,
+      kind: 'logins',
+      activity: 'Sign-in',
+      account: event.userName ?? 'Unknown account',
+      email: event.email ?? '—',
+      details: `${event.browser} · ${event.os} · ${event.deviceType} · ${event.reason.replace(/_/g, ' ')}`,
+      status: event.succeeded ? 'Success' : 'Failed',
+      role: '—',
+      location: locationText(event.city ?? null, event.country ?? null),
+      clientIp: event.clientIp,
+      occurredAt: event.createdAt,
+    }))
+    if (view === 'sessions') return data.sessions.map((session) => ({
+      id: session.id,
+      kind: 'sessions',
+      activity: 'Active session',
+      account: session.userName,
+      email: session.email,
+      details: `${session.browser} · ${session.os} · ${session.deviceType}`,
+      status: 'Active',
+      role: session.role,
+      location: locationText(session.city, session.country),
+      clientIp: session.clientIp,
+      occurredAt: session.lastActiveAt,
+      sessionId: session.sessionId,
+      userId: session.userId,
+    }))
+    if (view === 'accounts') return data.users.map((user) => ({
+      id: `account-${user.id}`,
+      kind: 'accounts',
+      activity: 'Account',
+      account: user.name,
+      email: user.email,
+      details: user.status,
+      status: user.accountLocked ? 'Locked' : user.mustResetPassword ? 'Reset required' : 'Unlocked',
+      role: user.role,
+      location: '—',
+      clientIp: '—',
+      occurredAt: '—',
+      userId: user.id,
+      accountLocked: user.accountLocked,
+    }))
+    if (view === 'alerts') return data.alerts.map((alert) => ({
+      id: `alert-${alert.id}`,
+      kind: 'alerts',
+      activity: alert.type.replace(/_/g, ' '),
+      account: alert.userName ?? 'Unknown account',
+      email: alert.email ?? '—',
+      details: alert.message,
+      status: 'Review',
+      role: '—',
+      location: locationText(String(alert.metadata?.city ?? '') || null, String(alert.metadata?.country ?? '') || null),
+      clientIp: '—',
+      occurredAt: alert.createdAt,
+      userId: alert.userId,
+    }))
+    return data.auditLog.map((entry) => ({
+      id: `audit-${entry.id}`,
+      kind: 'audit',
+      activity: entry.action.replace(/_/g, ' '),
+      account: entry.targetName ?? 'Deleted account',
+      email: '—',
+      details: `Before: ${stateText(entry.beforeState)} · After: ${stateText(entry.afterState)}`,
+      status: 'Recorded',
+      role: '—',
+      location: '—',
+      clientIp: entry.clientIp,
+      occurredAt: entry.createdAt,
+    }))
+  }, [data, view])
+
+  const columns: DataColumn<SecurityTableRow>[] = [
+    { key: 'activity', label: 'Activity' },
+    { key: 'account', label: 'Account' },
     { key: 'email', label: 'Email' },
-    { key: 'succeeded', label: 'Result', render: (value) => <Chip size="small" label={value ? 'Success' : 'Failed'} color={value ? 'success' : 'error'} /> },
-    { key: 'reason', label: 'Reason', render: (value) => String(value).replace(/_/g, ' ') },
-    { key: 'browser', label: 'Device', render: (_, row) => `${row.browser} · ${row.os} · ${row.deviceType}` },
-    { key: 'country', label: 'Approx. location', render: (_, row) => locationText(row.city ?? null, row.country ?? null) },
-    { key: 'clientIp', label: 'IP' },
-    { key: 'createdAt', label: 'Time', render: (value) => dateText(String(value)) },
-  ]
-  const sessionColumns: DataColumn<AdminSession>[] = [
-    { key: 'userName', label: 'Account' },
-    { key: 'email', label: 'Email' },
+    { key: 'details', label: 'Details' },
+    { key: 'status', label: 'Status', render: (value, row) => <Chip size="small" label={String(value)} color={row.status === 'Failed' || row.status === 'Locked' ? 'error' : row.status === 'Success' || row.status === 'Active' || row.status === 'Unlocked' ? 'success' : 'default'} /> },
     { key: 'role', label: 'Role' },
-    { key: 'browser', label: 'Device', render: (_, row) => `${row.browser} · ${row.os} · ${row.deviceType}` },
-    { key: 'country', label: 'Approx. location', render: (_, row) => locationText(row.city ?? null, row.country ?? null) },
+    { key: 'location', label: 'Approx. location' },
     { key: 'clientIp', label: 'IP' },
-    { key: 'lastActiveAt', label: 'Last active', render: (value) => dateText(String(value)) },
-  ]
-  const accountColumns: DataColumn<SecurityUser>[] = [
-    { key: 'name', label: 'Name' },
-    { key: 'email', label: 'Email' },
-    { key: 'role', label: 'Role' },
-    { key: 'status', label: 'Status', render: (_, row) => <Stack direction="row" spacing={0.5}><Chip size="small" label={row.status} /><Chip size="small" label={row.accountLocked ? 'Locked' : 'Unlocked'} color={row.accountLocked ? 'error' : 'success'} /></Stack> },
-  ]
-  const alertColumns: DataColumn<SecurityAlert>[] = [
-    { key: 'userName', label: 'Account' },
-    { key: 'email', label: 'Email' },
-    { key: 'type', label: 'Type', render: (value) => String(value).replace(/_/g, ' ') },
-    { key: 'message', label: 'Alert' },
-    { key: 'createdAt', label: 'Time', render: (value) => dateText(String(value)) },
-  ]
-  const auditColumns: DataColumn<AuditEntry>[] = [
-    { key: 'actorName', label: 'Admin' },
-    { key: 'action', label: 'Action', render: (value) => String(value).replace(/_/g, ' ') },
-    { key: 'targetName', label: 'Account' },
-    { key: 'clientIp', label: 'IP' },
-    { key: 'createdAt', label: 'Time', render: (value) => dateText(String(value)) },
+    { key: 'occurredAt', label: 'Time', render: (value) => dateText(String(value)) },
   ]
 
+  const actions = (row: SecurityTableRow) => row.kind === 'sessions' && row.sessionId
+    ? <Button size="small" color="error" disabled={busy} onClick={() => void perform(() => revokeAdminSession(row.sessionId as string), 'Session revoked.')}>Revoke</Button>
+    : row.kind === 'accounts' && row.userId !== undefined
+      ? <Stack direction="row" spacing={0.5} justifyContent="flex-end"><Button size="small" color={row.accountLocked ? 'success' : 'error'} disabled={busy} onClick={() => void perform(() => setAdminAccountLock(row.userId as number, !row.accountLocked), 'Account lock updated.')}>{row.accountLocked ? 'Unlock' : 'Lock'}</Button><Button size="small" disabled={busy} onClick={() => void perform(() => forceLogoutUser(row.userId as number), 'Sessions revoked.')}>Force logout</Button><Button size="small" disabled={busy} onClick={() => void perform(() => forcePasswordReset(row.userId as number), 'Password reset required.')}>Require reset</Button></Stack>
+      : null
+
   return <>
-    <Box sx={{ mb: 3 }}><Typography component="h1" variant="h4" sx={{ fontWeight: 800 }}>Security</Typography><Typography color="text.secondary">Review sign-ins, manage active sessions, and investigate security alerts.</Typography></Box>
+    <Box sx={{ mb: 3 }}><Typography component="h1" variant="h4" sx={{ fontWeight: 800 }}>Security</Typography><Typography color="text.secondary">Review sign-ins, sessions, accounts, alerts, and administrator actions in one place.</Typography></Box>
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-    {loading || !data ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading security data" /></Box> : <Stack spacing={3}>
-      <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'hidden' }}><Box sx={{ p: 2 }}><Typography variant="h6" sx={{ fontWeight: 800 }}>Login history</Typography><Typography variant="body2" color="text.secondary">Successful and failed attempts, including approximate location.</Typography></Box><AdminDataTable rows={data.loginEvents} columns={loginColumns} searchPlaceholder="Filter login events" searchKeys={['userName', 'email', 'reason', 'clientIp', 'country', 'city', 'browser', 'os']} /></Paper>
-      <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'hidden' }}><Box sx={{ p: 2 }}><Typography variant="h6" sx={{ fontWeight: 800 }}>Active sessions</Typography><Typography variant="body2" color="text.secondary">Session tokens are never displayed.</Typography></Box><AdminDataTable rows={data.sessions} columns={sessionColumns} searchPlaceholder="Filter sessions" searchKeys={['userName', 'email', 'role', 'clientIp', 'country', 'city', 'browser', 'os']} actions={(session) => <Button size="small" color="error" disabled={busy} onClick={() => void perform(() => revokeAdminSession(session.sessionId), 'Session revoked.')}>Revoke session</Button>} /></Paper>
-      <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'hidden' }}><Box sx={{ p: 2 }}><Typography variant="h6" sx={{ fontWeight: 800 }}>Accounts</Typography><Typography variant="body2" color="text.secondary">Lock or unlock accounts, sign out all devices, or require a password reset.</Typography></Box><AdminDataTable rows={data.users} columns={accountColumns} searchPlaceholder="Filter accounts" searchKeys={['name', 'email', 'role', 'status']} actions={(user) => <Stack direction="row" spacing={0.5}><Button size="small" color={user.accountLocked ? 'success' : 'error'} disabled={busy} onClick={() => void perform(() => setAdminAccountLock(user.id, !user.accountLocked), 'Account lock updated.')}>{user.accountLocked ? 'Unlock' : 'Lock'}</Button><Button size="small" disabled={busy} onClick={() => void perform(() => forceLogoutUser(user.id), 'Sessions revoked.')}>Force logout</Button><Button size="small" disabled={busy} onClick={() => void perform(() => forcePasswordReset(user.id), 'Password reset required.')}>Require reset</Button></Stack>} /></Paper>
-      <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'hidden' }}><Box sx={{ p: 2 }}><Typography variant="h6" sx={{ fontWeight: 800 }}>Security alerts</Typography></Box><AdminDataTable rows={data.alerts} columns={alertColumns} searchPlaceholder="Filter security alerts" searchKeys={['userName', 'email', 'type', 'message']} /></Paper>
-      <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', overflow: 'hidden' }}><Box sx={{ p: 2 }}><Typography variant="h6" sx={{ fontWeight: 800 }}>Administrator audit log</Typography></Box><AdminDataTable rows={data.auditLog} columns={auditColumns} searchPlaceholder="Filter audit history" searchKeys={['actorName', 'targetName', 'action', 'clientIp']} /></Paper>
+    {loading || !data ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading security data" /></Box> : <Stack spacing={2}>
+      <Paper elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="space-between">
+          <Box><Typography variant="h6" sx={{ fontWeight: 800 }}>{viewLabels[view]}</Typography><Typography variant="body2" color="text.secondary">{rows.length} records · Filter, sort, or change category.</Typography></Box>
+          <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 220 } }}><Select value={view} inputProps={{ 'aria-label': 'Security category' }} onChange={(event) => setView(event.target.value as SecurityView)}>{Object.entries(viewLabels).map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}</Select></FormControl>
+        </Stack>
+      </Paper>
+      <AdminDataTable rows={rows} columns={columns} searchPlaceholder={`Filter ${viewLabels[view].toLowerCase()}`} searchKeys={['activity', 'account', 'email', 'details', 'status', 'role', 'location', 'clientIp']} actions={actions} />
     </Stack>}
   </>
 }
