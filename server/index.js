@@ -78,7 +78,8 @@ const getClientMetadata = (request, clientHints = null) => ({
 const getGeoLocation = async (ip) => {
   const address = ip.startsWith('::ffff:') ? ip.slice(7) : ip
   const location = geoip.lookup(address)
-  return { country: location?.country || null, city: location?.city || null }
+  const timezoneCity = location?.timezone && !location.timezone.startsWith('Etc/') ? location.timezone.split('/').pop().replace(/_/g, ' ') : null
+  return { country: location?.country || null, city: location?.city || timezoneCity }
 }
 const maskIpAddress = (ip) => ip.includes(':') ? `${ip.split(':').slice(0, 3).join(':')}:…` : ip.split('.').map((part, index) => index < 2 ? part : '•').join('.')
 const sessionPolicyFor = (role) => sessionPolicies[role] ?? defaultSessionPolicy
