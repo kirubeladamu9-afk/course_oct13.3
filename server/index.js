@@ -658,6 +658,29 @@ const initializeDatabase = async () => {
     )
   `
   await sql`
+    CREATE TABLE IF NOT EXISTS article_checkpoint_answers (
+      enrollment_id BIGINT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
+      lesson_id BIGINT NOT NULL,
+      checkpoint_id BIGINT NOT NULL,
+      selected_option INTEGER CHECK (selected_option >= 0),
+      skipped BOOLEAN NOT NULL DEFAULT FALSE,
+      answered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (enrollment_id, lesson_id, checkpoint_id),
+      CHECK (skipped = TRUE OR selected_option IS NOT NULL)
+    )
+  `
+  await sql`
+    CREATE TABLE IF NOT EXISTS article_help_requests (
+      enrollment_id BIGINT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
+      lesson_id BIGINT NOT NULL,
+      section_index INTEGER NOT NULL CHECK (section_index >= 0),
+      question TEXT CHECK (char_length(question) <= 1000),
+      flagged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      question_at TIMESTAMPTZ,
+      PRIMARY KEY (enrollment_id, lesson_id, section_index)
+    )
+  `
+  await sql`
     CREATE TABLE IF NOT EXISTS step_by_step_solver_sessions (
       id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       enrollment_id BIGINT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
@@ -1405,11 +1428,12 @@ const sanitizeModulesForLearner = (modules) => Array.isArray(modules)
   ? modules.map((module) => ({
     ...module,
     lessons: Array.isArray(module?.lessons)
-      ? module.lessons.map(({ quizQuestions, stepByStepSolver, ...lesson }) => ({
+      ? module.lessons.map(({ quizQuestions, stepByStepSolver, articleCheckpoints, ...lesson }) => ({
         ...lesson,
         quizQuestions: Array.isArray(quizQuestions)
           ? quizQuestions.map(({ correctOption, ...question }) => question)
           : quizQuestions,
+        ...(Array.isArray(articleCheckpoints) ? { articleCheckpoints: articleCheckpoints.map(({ correctOption, explanation, ...checkpoint }) => checkpoint) } : {}),
         ...(lesson.type === 'stepByStepSolver' ? { stepByStepSolver: { problems: (stepByStepSolver?.problems ?? []).map(({ id, prompt }) => ({ id, prompt })) } } : {}),
       }))
       : [],
@@ -2508,6 +2532,29 @@ const getOwnedEnrollment = async (transaction, userId, enrollmentId) => {
 
 const findCourseLesson = (modules, lessonId) => getCourseLessons(deserializeJson(modules)).find((lesson) => lesson?.id === lessonId) ?? null
 
+const getArticleCheckpoints = (lesson) => Array.isArray(lesson?.articleCheckpoints) ? lesson.articleCheckpoints : []
+
+const decodeHtmlText = (value) => value
+  .replace(/&nbsp;/g, ' ')
+  .replace(/&lt;/g, '<')
+  .replace(/&gt;/g, '>')
+  .replace(/&quot;/g, '"')
+  .replace(/&#39;/g, "'")
+  .replace(/&amp;/g, '&')
+
+const getArticleSectionTitles = (articleBody) => {
+  const titles = [...String(articleBody ?? '').matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi)]
+    .map(([, inner]) => decodeHtmlText(inner.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim() || 'Untitled section')
+  return titles.length ? titles : ['Article']
+}
+
+const getCheckpointAnswerView = (checkpoint, answer) => ({
+  checkpointId: checkpoint.id,
+  selectedOption: answer.selectedOption ?? null,
+  skipped: answer.skipped,
+  ...(answer.skipped ? {} : { correct: answer.selectedOption === checkpoint.correctOption, correctOption: checkpoint.correctOption, explanation: checkpoint.explanation ?? '' }),
+})
+
 const quizAnswerStatuses = new Set(['unanswered', 'answered', 'expired'])
 const isValidQuizAnswerValue = (value) => value === null || typeof value === 'string' || Number.isInteger(value) || (Array.isArray(value) && value.every((item) => typeof item === 'string'))
 const parseQuizAnswerRecord = (value) => {
@@ -2790,6 +2837,115 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/complete', requireAut
   if (!completion) return response.status(404).json({ message: 'Course enrollment not found.' })
   if (completion.error) return response.status(400).json({ message: completion.error })
   return response.json(completion.lessonProgress)
+})
+
+app.get('/api/enrollments/:enrollmentId/lessons/:lessonId/article-interactions', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  if (enrollmentId === null || lessonId === null) return response.status(400).json({ message: 'Invalid article lesson.' })
+  const state = await sql.begin(async (transaction) => {
+    const enrollment = await getOwnedEnrollment(transaction, request.userId, enrollmentId)
+    if (!enrollment) return null
+    const lesson = findCourseLesson(enrollment.modules, lessonId)
+    if (!lesson || lesson.type !== 'article') return { error: 'Article lesson not found.' }
+    const checkpoints = getArticleCheckpoints(lesson)
+    const answers = await transaction`
+      SELECT checkpoint_id::INTEGER AS "checkpointId", selected_option AS "selectedOption", skipped
+      FROM article_checkpoint_answers
+      WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}
+    `
+    const helpRequests = await transaction`
+      SELECT section_index AS "sectionIndex", question, flagged_at AS "flaggedAt", question_at AS "questionAt"
+      FROM article_help_requests
+      WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}
+      ORDER BY section_index
+    `
+    return {
+      answers: answers.flatMap((answer) => {
+        const checkpoint = checkpoints.find((item) => item.id === answer.checkpointId)
+        return checkpoint ? [getCheckpointAnswerView(checkpoint, answer)] : []
+      }),
+      helpRequests,
+    }
+  })
+  if (!state) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (state.error) return response.status(404).json({ message: state.error })
+  return response.json(state)
+})
+
+app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/article-checkpoints/:checkpointId/answer', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  const checkpointId = parseEnrollmentId(request.params.checkpointId)
+  const skip = request.body?.skip === true
+  const selectedOption = request.body?.selectedOption
+  if (enrollmentId === null || lessonId === null || checkpointId === null || (!skip && !Number.isInteger(selectedOption))) return response.status(400).json({ message: 'Choose an answer or skip this check.' })
+
+  const result = await sql.begin(async (transaction) => {
+    const enrollment = await getOwnedEnrollment(transaction, request.userId, enrollmentId)
+    if (!enrollment) return null
+    const lesson = findCourseLesson(enrollment.modules, lessonId)
+    if (!lesson || lesson.type !== 'article') return { error: 'Article lesson not found.' }
+    const checkpoint = getArticleCheckpoints(lesson).find((item) => item.id === checkpointId)
+    if (!checkpoint) return { error: 'Checkpoint not found.' }
+    if (!skip && (selectedOption < 0 || selectedOption >= (checkpoint.options ?? []).length)) return { error: 'Choose one of the answer options.' }
+
+    await transaction`
+      INSERT INTO article_checkpoint_answers (enrollment_id, lesson_id, checkpoint_id, selected_option, skipped)
+      VALUES (${enrollmentId}, ${lessonId}, ${checkpointId}, ${skip ? null : selectedOption}, ${skip})
+      ON CONFLICT (enrollment_id, lesson_id, checkpoint_id) DO NOTHING
+    `
+    await transaction`
+      INSERT INTO student_lesson_progress (enrollment_id, lesson_id)
+      VALUES (${enrollmentId}, ${lessonId})
+      ON CONFLICT (enrollment_id, lesson_id) DO UPDATE SET last_accessed_at = NOW()
+    `
+    const [answer] = await transaction`
+      SELECT selected_option AS "selectedOption", skipped
+      FROM article_checkpoint_answers
+      WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND checkpoint_id = ${checkpointId}
+    `
+    return getCheckpointAnswerView(checkpoint, answer)
+  })
+
+  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (result.error) return response.status(404).json({ message: result.error })
+  return response.json(result)
+})
+
+app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/article-help', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  const sectionIndex = request.body?.sectionIndex
+  const question = typeof request.body?.question === 'string' ? request.body.question.trim() : ''
+  if (enrollmentId === null || lessonId === null || !Number.isInteger(sectionIndex) || sectionIndex < 0 || question.length > 1000) return response.status(400).json({ message: 'Invalid help request.' })
+
+  const result = await sql.begin(async (transaction) => {
+    const enrollment = await getOwnedEnrollment(transaction, request.userId, enrollmentId)
+    if (!enrollment) return null
+    const lesson = findCourseLesson(enrollment.modules, lessonId)
+    if (!lesson || lesson.type !== 'article') return { error: 'Article lesson not found.' }
+    if (sectionIndex >= getArticleSectionTitles(lesson.articleBody).length) return { error: 'Section not found.' }
+
+    const [helpRequest] = await transaction`
+      INSERT INTO article_help_requests (enrollment_id, lesson_id, section_index, question, question_at)
+      VALUES (${enrollmentId}, ${lessonId}, ${sectionIndex}, ${question || null}, ${question ? sql`NOW()` : sql`NULL`})
+      ON CONFLICT (enrollment_id, lesson_id, section_index) DO UPDATE
+      SET question = COALESCE(EXCLUDED.question, article_help_requests.question),
+          question_at = COALESCE(EXCLUDED.question_at, article_help_requests.question_at)
+      RETURNING section_index AS "sectionIndex", question, flagged_at AS "flaggedAt", question_at AS "questionAt"
+    `
+    await transaction`
+      INSERT INTO student_lesson_progress (enrollment_id, lesson_id)
+      VALUES (${enrollmentId}, ${lessonId})
+      ON CONFLICT (enrollment_id, lesson_id) DO UPDATE SET last_accessed_at = NOW()
+    `
+    return helpRequest
+  })
+
+  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (result.error) return response.status(404).json({ message: result.error })
+  return response.status(201).json(result)
 })
 
 app.put('/api/enrollments/:enrollmentId/study-plan', requireAuthenticated, async (request, response) => {
@@ -3848,6 +4004,72 @@ app.get('/api/tutor/classes/:id/students', requireTutor, async (request, respons
   const [classRecord] = await sql`SELECT id FROM classes WHERE id = ${classId} AND tutor_id = ${request.tutorId} AND published = true`
   if (!classRecord) return response.status(404).json({ message: 'Class not found.' })
   return response.json(await getTutorStudentProgress('class', classId))
+})
+
+const getTutorArticleInteractionReport = async (contentType, contentId) => {
+  const contentCondition = contentType === 'class'
+    ? sql`enrollments.class_id = ${contentId} AND enrollments.class_status = 'enrolled' AND classes.published = true`
+    : sql`enrollments.course_id = ${contentId} AND enrollments.class_id IS NULL`
+  const [content] = contentType === 'class'
+    ? await sql`SELECT modules FROM classes WHERE id = ${contentId}`
+    : await sql`SELECT modules FROM courses WHERE id = ${contentId}`
+  const students = await sql`
+    SELECT enrollments.id::INTEGER AS id,
+           COALESCE(NULLIF(users.name, ''), students.full_name) AS "studentName",
+           users.email AS "studentEmail"
+    FROM enrollments
+    INNER JOIN students ON students.id = enrollments.student_id
+    INNER JOIN users ON users.id = students.user_id
+    LEFT JOIN courses ON courses.id = enrollments.course_id
+    LEFT JOIN classes ON classes.id = enrollments.class_id
+    WHERE ${contentCondition}
+    ORDER BY enrollments.created_at DESC, enrollments.id DESC
+  `
+  const enrollmentIds = students.map((student) => student.id)
+  const answers = enrollmentIds.length ? await sql`
+    SELECT enrollment_id::INTEGER AS "enrollmentId", lesson_id::INTEGER AS "lessonId", checkpoint_id::INTEGER AS "checkpointId", selected_option AS "selectedOption", skipped
+    FROM article_checkpoint_answers
+    WHERE enrollment_id = ANY(${enrollmentIds})
+  ` : []
+  const helpRequests = enrollmentIds.length ? await sql`
+    SELECT enrollment_id::INTEGER AS "enrollmentId", lesson_id::INTEGER AS "lessonId", section_index AS "sectionIndex", question, flagged_at AS "flaggedAt", question_at AS "questionAt"
+    FROM article_help_requests
+    WHERE enrollment_id = ANY(${enrollmentIds})
+    ORDER BY flagged_at DESC
+  ` : []
+
+  return getCourseLessons(deserializeJson(content?.modules) ?? []).filter((lesson) => lesson?.type === 'article').map((lesson) => {
+    const sectionTitles = getArticleSectionTitles(lesson.articleBody)
+    return {
+      lessonId: lesson.id,
+      lessonTitle: lesson.title,
+      sectionTitles,
+      checkpoints: getArticleCheckpoints(lesson).map(({ id, afterSectionIndex, question, options, correctOption }) => ({ id, afterSectionIndex, question, options, correctOption })),
+      students: students.map((student) => ({
+        enrollmentId: student.id,
+        studentName: student.studentName,
+        studentEmail: student.studentEmail,
+        answers: answers.filter((answer) => answer.enrollmentId === student.id && answer.lessonId === lesson.id).map(({ checkpointId, selectedOption, skipped }) => ({ checkpointId, selectedOption, skipped })),
+        helpRequests: helpRequests.filter((request) => request.enrollmentId === student.id && request.lessonId === lesson.id).map(({ sectionIndex, question, flaggedAt, questionAt }) => ({ sectionIndex, sectionTitle: sectionTitles[sectionIndex] ?? 'Section', question, flaggedAt, questionAt })),
+      })),
+    }
+  })
+}
+
+app.get('/api/tutor/classes/:id/article-interactions', requireTutor, async (request, response) => {
+  const classId = parseCourseId(request.params.id)
+  if (classId === null) return response.status(400).json({ message: 'Invalid class id.' })
+  const [classRecord] = await sql`SELECT id FROM classes WHERE id = ${classId} AND tutor_id = ${request.tutorId} AND published = true`
+  if (!classRecord) return response.status(404).json({ message: 'Class not found.' })
+  return response.json({ articles: await getTutorArticleInteractionReport('class', classId) })
+})
+
+app.get('/api/tutor/courses/:id/article-interactions', requireTutor, async (request, response) => {
+  const courseId = parseCourseId(request.params.id)
+  if (courseId === null) return response.status(400).json({ message: 'Invalid course id.' })
+  const [course] = await sql`SELECT id FROM courses WHERE id = ${courseId} AND tutor_id = ${request.tutorId}`
+  if (!course) return response.status(404).json({ message: 'Course not found.' })
+  return response.json({ articles: await getTutorArticleInteractionReport('course', courseId) })
 })
 
 app.patch('/api/tutor/classes/enrollments/:id/attendance', requireTutor, async (request, response) => {

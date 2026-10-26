@@ -1,6 +1,6 @@
 import { type AdminCourse, type AdminModule, type AdminTutor, type AdminUser } from '@/components/admin/admin-data'
 import { type Course } from '@/interfaces/course'
-import { type ArticleContentBlock, type ArticleVocabularyEntry, type SimulationConfig, type StepByStepSolverLearnerConfig, type StepByStepSolverSession, type StepByStepSolverState } from '@/components/admin/admin-data'
+import { type ArticleContentBlock, type ArticleVocabularyEntry, type LearnerArticleCheckpoint, type SimulationConfig, type StepByStepSolverLearnerConfig, type StepByStepSolverSession, type StepByStepSolverState } from '@/components/admin/admin-data'
 import { type PracticeExam, type PracticeExamWithQuestions, type PracticePurchase, type PracticeQuestion } from '@/components/practice/practice-data'
 import { navigateTo } from '@/lib/navigation'
 import { readClientHints } from '@/lib/client-hints'
@@ -134,6 +134,7 @@ interface EnrollmentLesson {
   articleBody?: string
   articleBlocks?: ArticleContentBlock[]
   articleVocabulary?: ArticleVocabularyEntry[]
+  articleCheckpoints?: LearnerArticleCheckpoint[]
   articleHeaderImageUrl?: string
   baseImageUrl?: string
   interactiveHotspots?: Array<{ id: number; left: string; top: string; label: string; explanation: string }>
@@ -1427,6 +1428,69 @@ export const answerStepByStepSolverFollowUp = (enrollmentId: number, lessonId: n
 export const beginQuizAttempt = (enrollmentId: number, lessonId: number) => requestLearningProgress<QuizAttempt>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/quiz-attempts`, {
   method: 'POST',
 })
+
+export interface ArticleCheckpointAnswer {
+  checkpointId: number
+  selectedOption: number | null
+  skipped: boolean
+  correct?: boolean
+  correctOption?: number
+  explanation?: string
+}
+
+export interface ArticleHelpRequest {
+  sectionIndex: number
+  question: string | null
+  flaggedAt: string
+  questionAt: string | null
+}
+
+export interface ArticleInteractionState {
+  answers: ArticleCheckpointAnswer[]
+  helpRequests: ArticleHelpRequest[]
+}
+
+export const getArticleInteractions = (enrollmentId: number, lessonId: number) => requestLearningProgress<ArticleInteractionState>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/article-interactions`, {})
+
+export const answerArticleCheckpoint = (enrollmentId: number, lessonId: number, checkpointId: number, values: { selectedOption?: number; skip?: boolean }) => requestLearningProgress<ArticleCheckpointAnswer>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/article-checkpoints/${checkpointId}/answer`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(values),
+})
+
+export const requestArticleSectionHelp = (enrollmentId: number, lessonId: number, sectionIndex: number, question: string) => requestLearningProgress<ArticleHelpRequest>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/article-help`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ sectionIndex, question }),
+})
+
+export interface TutorArticleInteractionReport {
+  articles: Array<{
+    lessonId: number
+    lessonTitle: string
+    sectionTitles: string[]
+    checkpoints: Array<{ id: number; afterSectionIndex: number; question: string; options: string[]; correctOption: number }>
+    students: Array<{
+      enrollmentId: number
+      studentName: string
+      studentEmail: string
+      answers: Array<{ checkpointId: number; selectedOption: number | null; skipped: boolean }>
+      helpRequests: Array<{ sectionIndex: number; sectionTitle: string; question: string | null; flaggedAt: string; questionAt: string | null }>
+    }>
+  }>
+}
+
+export const getTutorClassArticleInteractions = async (classId: number): Promise<TutorArticleInteractionReport> => {
+  const response = await requestApi(`/api/tutor/classes/${classId}/article-interactions`)
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const getTutorCourseArticleInteractions = async (courseId: number): Promise<TutorArticleInteractionReport> => {
+  const response = await requestApi(`/api/tutor/courses/${courseId}/article-interactions`)
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
 
 export const saveQuizAnswer = (enrollmentId: number, lessonId: number, attemptId: number, questionId: number, answer: QuizAnswerRecord) => requestLearningProgress<QuizAttempt>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/quiz-attempts/${attemptId}/answers`, {
   method: 'POST',
