@@ -496,7 +496,7 @@ const DashboardHeader: FC<{ title: string; darkMode: boolean; language: string; 
     <Stack direction="row" alignItems="center" spacing={.75}>
       <Box sx={{ display: { xs: 'none', lg: 'flex' }, alignItems: 'center', width: 220, px: 1.5, py: .55, borderRadius: 5, backgroundColor: 'action.hover', color: 'text.secondary' }}><SearchIcon fontSize="small" /><Typography variant="caption" sx={{ ml: .8 }}>Search here...</Typography></Box>
       <Tooltip title={`Language: ${language}`}><IconButton onClick={onLanguageChange} aria-label={`Change language, currently ${language}`}><TranslateOutlinedIcon fontSize="small" /></IconButton></Tooltip>
-      <Tooltip title="Security notifications"><SecurityNotifications /></Tooltip>
+      <SecurityNotifications />
       <Tooltip title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}><IconButton onClick={onToggleDarkMode} aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>{darkMode ? <LightModeOutlinedIcon fontSize="small" /> : <DarkModeOutlinedIcon fontSize="small" />}</IconButton></Tooltip>
       <Tooltip title="Open profile menu"><IconButton onClick={(event) => setProfileAnchor(event.currentTarget)} aria-label="Open profile menu" aria-controls={profileAnchor ? 'student-profile-menu' : undefined} aria-haspopup="true" sx={{ p: .25 }}><Avatar sx={{ width: 34, height: 34, bgcolor: 'primary.main', fontSize: 14 }}>{displayName.charAt(0)}</Avatar></IconButton></Tooltip>
       <Menu id="student-profile-menu" anchorEl={profileAnchor} open={Boolean(profileAnchor)} onClose={() => setProfileAnchor(null)} PaperProps={{ sx: { minWidth: 190, borderRadius: 2, p: 0.75 } }}>

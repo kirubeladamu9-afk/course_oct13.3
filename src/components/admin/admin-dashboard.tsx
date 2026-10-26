@@ -1875,7 +1875,7 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
           <Stack direction="row" alignItems="center" spacing={.75}>
             <Box sx={{ display: { xs: 'none', lg: 'flex' }, alignItems: 'center', width: 220, px: 1.5, py: .55, borderRadius: 5, backgroundColor: 'action.hover', color: 'text.secondary' }}><SearchIcon fontSize="small" /><Typography variant="caption" sx={{ ml: .8 }}>Search here...</Typography></Box>
             <Tooltip title="Language: EN"><IconButton aria-label="Change language, currently EN"><TranslateOutlinedIcon fontSize="small" /></IconButton></Tooltip>
-            <Tooltip title="Security notifications"><SecurityNotifications admin /></Tooltip>
+            <SecurityNotifications admin />
             <Tooltip title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
               <IconButton onClick={onToggleDarkMode} aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
                 {darkMode ? <LightModeOutlinedIcon /> : <DarkModeOutlinedIcon />}

@@ -14,6 +14,7 @@ import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
+import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import Badge from '@mui/material/Badge'
 import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined'
@@ -35,9 +36,11 @@ export const SecurityNotifications: FC<{ admin?: boolean }> = ({ admin = false }
     try { setAlerts(admin ? await getAdminSecurityAlerts() : await getSecurityAlerts()) } catch { setAlerts([]) }
   }
   return <>
-    <IconButton aria-label="Security notifications" onClick={(event) => { void showAlerts(event.currentTarget) }}>
-      <Badge color="error" variant="dot" invisible={alerts.length === 0}><NotificationsNoneOutlinedIcon fontSize="small" /></Badge>
-    </IconButton>
+    <Tooltip title="Security notifications">
+      <IconButton aria-label="Security notifications" onClick={(event) => { void showAlerts(event.currentTarget) }}>
+        <Badge color="error" variant="dot" invisible={alerts.length === 0}><NotificationsNoneOutlinedIcon fontSize="small" /></Badge>
+      </IconButton>
+    </Tooltip>
     <Menu anchorEl={anchor} open={open} onClose={() => setAnchor(null)} PaperProps={{ sx: { width: 340, maxWidth: 'calc(100vw - 32px)', maxHeight: 420 } }}>
       <Box sx={{ px: 2, py: 1 }}><Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Security alerts</Typography></Box>
       <Divider />
