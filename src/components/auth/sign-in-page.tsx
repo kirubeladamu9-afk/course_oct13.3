@@ -21,6 +21,7 @@ interface SignInPageProps {
 
 const SignInPage: FC<SignInPageProps> = ({ mode }) => {
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [captchaRequired, setCaptchaRequired] = useState(false)
   const [captchaToken, setCaptchaToken] = useState('')
@@ -55,7 +56,9 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (isSubmitting) return
     const formData = new FormData(event.currentTarget)
+    setIsSubmitting(true)
 
     try {
       const { user } = await submitCredentials(mode, String(formData.get('email')), String(formData.get('password')), undefined, { captchaToken, twoFactorCode })
@@ -85,6 +88,8 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
         type: 'error',
         priority: 'high',
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -148,7 +153,7 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
                     Forgot your password? <Link href="mailto:support@coursesharp.com" underline="hover">Contact support@coursesharp.com</Link> for help.
                   </Typography>}
                   <Box sx={{ mt: { xs: 0.25, md: 0.5 }, '& button': { width: '100%', justifyContent: 'center', borderRadius: 999, py: 1.1 } }}>
-                    <StyledButton type="submit" color="primary" disabled={Boolean(captchaRequired && turnstileSiteKey && !captchaToken) || Boolean(twoFactorRequired && !twoFactorCode)}>{isSignUp ? 'Sign Up' : 'Sign In'}</StyledButton>
+                    <StyledButton type="submit" color="primary" disabled={isSubmitting || Boolean(captchaRequired && turnstileSiteKey && !captchaToken) || Boolean(twoFactorRequired && !twoFactorCode)}>{isSignUp ? 'Sign Up' : 'Sign In'}</StyledButton>
                   </Box>
                 </Box>
               </Box>
