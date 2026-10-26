@@ -80,6 +80,27 @@ const getGeoLocation = async (ip) => {
   const location = geoip.lookup(address)
   return { country: location?.country || null, city: location?.city || null }
 }
+const execFileAsync = promisify(execFile)
+const ensureGeoIpDatabase = async () => {
+  const { MAXMIND_ACCOUNT_ID: accountId, MAXMIND_LICENSE_KEY: licenseKey } = process.env
+  if (process.env.GEOIP_DB_PATH || !accountId || !licenseKey) return
+  const directory = path.join(os.tmpdir(), 'geoip')
+  const databasePath = path.join(directory, 'GeoLite2-City.mmdb')
+  if (!existsSync(databasePath)) {
+    await mkdir(directory, { recursive: true })
+    const response = await fetch('https://download.maxmind.com/geoip/databases/GeoLite2-City/download?suffix=tar.gz', {
+      headers: { Authorization: `Basic ${Buffer.from(`${accountId}:${licenseKey}`).toString('base64')}` },
+    })
+    if (!response.ok) throw new Error(`GeoLite2 download failed with status ${response.status}.`)
+    const archivePath = path.join(directory, 'GeoLite2-City.tar.gz')
+    await writeFile(archivePath, Buffer.from(await response.arrayBuffer()))
+    await execFileAsync('tar', ['-xzf', archivePath, '-C', directory])
+    const extracted = (await readdir(directory, { withFileTypes: true })).find((entry) => entry.isDirectory() && entry.name.startsWith('GeoLite2-City_'))
+    if (!extracted) throw new Error('GeoLite2 archive did not contain a database folder.')
+    await rename(path.join(directory, extracted.name, 'GeoLite2-City.mmdb'), databasePath)
+  }
+  process.env.GEOIP_DB_PATH = databasePath
+}
 const maskIpAddress = (ip) => ip.includes(':') ? `${ip.split(':').slice(0, 3).join(':')}:…` : ip.split('.').map((part, index) => index < 2 ? part : '•').join('.')
 const sessionPolicyFor = (role) => sessionPolicies[role] ?? defaultSessionPolicy
 const getDeviceId = (request) => {
@@ -5357,7 +5378,7 @@ app.get('/api/admin/security', requireAdmin, async (_request, response) => {
     sql`SELECT id::INTEGER AS id, name, email, role, status, account_locked AS "accountLocked", must_reset_password AS "mustResetPassword" FROM users ORDER BY name`,
     sql`SELECT audit.id, actor.name AS "actorName", target.name AS "targetName", audit.action, audit.before_state AS "beforeState", audit.after_state AS "afterState", audit.client_ip AS "clientIp", audit.created_at AS "createdAt" FROM admin_audit_log audit LEFT JOIN users actor ON actor.id = audit.actor_user_id LEFT JOIN users target ON target.id = audit.target_user_id ORDER BY audit.created_at DESC LIMIT 500`,
   ])
-  return response.json({ loginEvents, sessions: sessions.map((session) => ({ ...session, clientIp: displayClientIp(session.clientIp, (ip) => ip) })), alerts, users, auditLog })
+  return response.json({ loginEvents, sessions, alerts, users, auditLog })
 })
 
 app.post('/api/admin/security/sessions/:sessionId/revoke', requireAdmin, async (request, response) => {
