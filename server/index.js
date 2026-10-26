@@ -1,5 +1,6 @@
-import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
+import { open as openGeoIpDatabase } from 'maxmind'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
@@ -19,7 +20,8 @@ if (!databaseUrl) {
 const sql = postgres(databaseUrl, { max: 10, ssl: 'require', prepare: false })
 const scrypt = promisify(scryptCallback)
 const app = express()
-app.set('trust proxy', 1)
+const configuredProxyTrust = process.env.TRUST_PROXY
+app.set('trust proxy', configuredProxyTrust === undefined ? false : /^\d+$/.test(configuredProxyTrust) ? Number(configuredProxyTrust) : configuredProxyTrust.split(',').map((value) => value.trim()).filter(Boolean))
 app.use(helmet({
   hsts: false,
   contentSecurityPolicy: {
@@ -42,8 +44,120 @@ const port = Number(process.env.PORT ?? 3001)
 const distDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist')
 const isTestChapa = process.env.CHAPA_MODE !== 'live'
 const sessionCookieName = 'coursespace-session'
-const sessionDuration = 86400000
+const deviceCookieName = 'coursespace-device'
+const sessionPolicies = {
+  student: { idleMs: 14 * 86400000, absoluteMs: 60 * 86400000, maxSessions: 3 },
+  parent: { idleMs: 14 * 86400000, absoluteMs: 60 * 86400000, maxSessions: 3 },
+  tutor: { idleMs: 8 * 3600000, absoluteMs: 7 * 86400000, maxSessions: 3 },
+  admin: { idleMs: 30 * 60000, absoluteMs: 8 * 3600000, maxSessions: 2 },
+}
+const defaultSessionPolicy = sessionPolicies.student
+let geoIpReaderPromise
 
+const hashToken = (token) => createHash('sha256').update(token).digest('hex')
+const getCookieValue = (request, name) => request.headers.cookie?.split(';').map((cookie) => cookie.trim()).find((cookie) => cookie.startsWith(`${name}=`))?.slice(name.length + 1)
+const setSecurityCookies = (response, token, deviceId, role) => {
+  const idleSeconds = Math.floor(sessionPolicyFor(role).idleMs / 1000)
+  response.setHeader('Set-Cookie', [
+    `${sessionCookieName}=${token}; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=${idleSeconds}`,
+    `${deviceCookieName}=${deviceId}; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=31536000`,
+  ])
+}
+const clearSecurityCookies = (response) => response.setHeader('Set-Cookie', [
+  `${sessionCookieName}=; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=0`,
+  `${deviceCookieName}=; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=0`,
+])
+const getClientMetadata = (request) => {
+  const userAgent = String(request.get('user-agent') ?? '').slice(0, 512)
+  const browser = /Edg\//.test(userAgent) ? 'Edge' : /Firefox\//.test(userAgent) ? 'Firefox' : /Chrome\//.test(userAgent) ? 'Chrome' : /Safari\//.test(userAgent) ? 'Safari' : 'Unknown'
+  const os = /Windows/.test(userAgent) ? 'Windows' : /Android/.test(userAgent) ? 'Android' : /iPhone|iPad|iPod/.test(userAgent) ? 'iOS' : /Mac OS X/.test(userAgent) ? 'macOS' : /Linux/.test(userAgent) ? 'Linux' : 'Unknown'
+  const deviceType = /iPad|Tablet/.test(userAgent) ? 'tablet' : /Mobile|iPhone|Android/.test(userAgent) ? 'mobile' : 'desktop'
+  return { userAgent, ip: request.ip ?? request.socket.remoteAddress ?? 'unknown', browser, os, deviceType }
+}
+const getGeoLocation = async (ip) => {
+  if (!process.env.GEOIP_DB_PATH || ip === 'unknown' || ip === '::1' || ip === '127.0.0.1') return { country: null, city: null }
+  geoIpReaderPromise ??= openGeoIpDatabase(process.env.GEOIP_DB_PATH).catch(() => null)
+  const reader = await geoIpReaderPromise
+  const location = reader?.get(ip)
+  return { country: location?.country?.names?.en ?? null, city: location?.city?.names?.en ?? null }
+}
+const maskIpAddress = (ip) => ip.includes(':') ? `${ip.split(':').slice(0, 3).join(':')}:…` : ip.split('.').map((part, index) => index < 2 ? part : '•').join('.')
+const sessionPolicyFor = (role) => sessionPolicies[role] ?? defaultSessionPolicy
+const getDeviceId = (request) => request.securityDeviceId ?? getCookieValue(request, deviceCookieName) ?? randomBytes(24).toString('base64url')
+const sessionCookieHeader = (token) => `${sessionCookieName}=${token}; HttpOnly; Secure; Path=/; SameSite=Lax`
+const clearSessionCookie = () => `${sessionCookieName}=; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=0`
+const getTurnstileSecret = () => process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY
+
+const verifyTurnstile = async (token, ip) => {
+  const secret = getTurnstileSecret()
+  if (!secret) return false
+  const body = new URLSearchParams({ secret, response: token, remoteip: ip })
+  const result = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body })
+  if (!result.ok) return false
+  return (await result.json()).success === true
+}
+
+const getSecurityEncryptionKey = () => {
+  const key = Buffer.from(process.env.SECURITY_ENCRYPTION_KEY ?? '', 'base64url')
+  if (key.length !== 32) throw new Error('SECURITY_ENCRYPTION_KEY must be a base64url-encoded 32-byte key.')
+  return key
+}
+const encryptTotpSecret = (secret) => {
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', getSecurityEncryptionKey(), iv)
+  const encrypted = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()])
+  return [iv, cipher.getAuthTag(), encrypted].map((part) => part.toString('base64url')).join('.')
+}
+const decryptTotpSecret = (value) => {
+  const [encodedIv, encodedTag, encodedData] = value.split('.')
+  const decipher = createDecipheriv('aes-256-gcm', getSecurityEncryptionKey(), Buffer.from(encodedIv, 'base64url'))
+  decipher.setAuthTag(Buffer.from(encodedTag, 'base64url'))
+  return Buffer.concat([decipher.update(Buffer.from(encodedData, 'base64url')), decipher.final()]).toString('utf8')
+}
+const encodeBase32 = (buffer) => {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+  let bits = 0
+  let value = 0
+  let output = ''
+  for (const byte of buffer) {
+    value = (value << 8) | byte
+    bits += 8
+    while (bits >= 5) {
+      output += alphabet[(value >>> (bits - 5)) & 31]
+      bits -= 5
+    }
+  }
+  if (bits) output += alphabet[(value << (5 - bits)) & 31]
+  return output
+}
+const createTotp = (secret, timestamp = Date.now()) => {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+  const normalized = secret.toUpperCase().replace(/=+$/g, '')
+  let bits = 0
+  let value = 0
+  const bytes = []
+  for (const character of normalized) {
+    value = (value << 5) | alphabet.indexOf(character)
+    bits += 5
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255)
+      bits -= 8
+    }
+  }
+  const counter = Buffer.alloc(8)
+  counter.writeBigUInt64BE(BigInt(Math.floor(timestamp / 30000)))
+  const digest = createHmac('sha1', Buffer.from(bytes)).update(counter).digest()
+  const offset = digest[digest.length - 1] & 15
+  const code = ((digest[offset] & 127) << 24) | ((digest[offset + 1] & 255) << 16) | ((digest[offset + 2] & 255) << 8) | (digest[offset + 3] & 255)
+  return String(code % 1000000).padStart(6, '0')
+}
+const verifyTotp = (secret, code) => {
+  const candidate = String(code ?? '').replace(/\s+/g, '')
+  if (!/^\d{6}$/.test(candidate)) return false
+  const supplied = Buffer.from(candidate)
+  return [-30000, 0, 30000].some((offset) => timingSafeEqual(supplied, Buffer.from(createTotp(secret, Date.now() + offset))))
+}
+const hashBackupCode = (code) => createHash('sha256').update(code).digest('hex')
 const seedTutors = [
   { name: 'Maya Chen', email: 'maya@example.com', status: 'Active' },
   { name: 'Leon Kennedy', email: 'leon@example.com', status: 'Active' },
@@ -149,6 +263,9 @@ const initializeDatabase = async () => {
     name: "TEXT NOT NULL DEFAULT ''",
     phone: "TEXT NOT NULL DEFAULT ''",
     status: "TEXT NOT NULL DEFAULT 'Active'",
+    locked_until: 'TIMESTAMPTZ',
+    account_locked: 'BOOLEAN NOT NULL DEFAULT false',
+    must_reset_password: 'BOOLEAN NOT NULL DEFAULT false',
   })
 
   await sql`
@@ -158,6 +275,99 @@ const initializeDatabase = async () => {
       expires_at TIMESTAMPTZ NOT NULL
     )
   `
+  await ensureColumns('auth_sessions', {
+    token_hashed: 'BOOLEAN NOT NULL DEFAULT false',
+    created_at: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()',
+    last_active_at: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()',
+    idle_expires_at: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()',
+    absolute_expires_at: 'TIMESTAMPTZ NOT NULL DEFAULT NOW()',
+    ended_at: 'TIMESTAMPTZ',
+    ended_reason: "TEXT NOT NULL DEFAULT ''",
+    device_id: "TEXT NOT NULL DEFAULT ''",
+    client_ip: "TEXT NOT NULL DEFAULT 'unknown'",
+    country: 'TEXT',
+    city: 'TEXT',
+    browser: "TEXT NOT NULL DEFAULT 'Unknown'",
+    os: "TEXT NOT NULL DEFAULT 'Unknown'",
+    device_type: "TEXT NOT NULL DEFAULT 'unknown'",
+    user_agent: "TEXT NOT NULL DEFAULT ''",
+  })
+  const legacySessions = await sql`SELECT token, expires_at FROM auth_sessions WHERE token_hashed = false`
+  for (const session of legacySessions) {
+    await sql`
+      UPDATE auth_sessions
+      SET token = ${hashToken(session.token)}, token_hashed = true, created_at = COALESCE(created_at, NOW()),
+          last_active_at = NOW(), idle_expires_at = ${session.expires_at}, absolute_expires_at = ${session.expires_at}
+      WHERE token = ${session.token}
+    `
+  }
+  await sql`CREATE INDEX IF NOT EXISTS auth_sessions_user_active_idx ON auth_sessions(user_id, last_active_at DESC) WHERE ended_at IS NULL`
+  await sql`CREATE INDEX IF NOT EXISTS auth_sessions_idle_expiry_idx ON auth_sessions(idle_expires_at)`
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS login_events (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+      email TEXT NOT NULL,
+      succeeded BOOLEAN NOT NULL,
+      reason TEXT NOT NULL,
+      client_ip TEXT NOT NULL,
+      country TEXT,
+      city TEXT,
+      browser TEXT NOT NULL,
+      os TEXT NOT NULL,
+      device_type TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS login_events_user_date_idx ON login_events(user_id, created_at DESC)`
+  await sql`CREATE INDEX IF NOT EXISTS login_events_ip_date_idx ON login_events(client_ip, created_at DESC)`
+  await sql`CREATE INDEX IF NOT EXISTS login_events_email_date_idx ON login_events(email, created_at DESC)`
+  await sql`
+    CREATE TABLE IF NOT EXISTS security_alerts (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      alert_type TEXT NOT NULL,
+      message TEXT NOT NULL,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS security_alerts_user_date_idx ON security_alerts(user_id, created_at DESC)`
+  await sql`
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      actor_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+      action TEXT NOT NULL,
+      target_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+      before_state JSONB,
+      after_state JSONB,
+      client_ip TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS admin_audit_log_date_idx ON admin_audit_log(created_at DESC)`
+  await sql`
+    CREATE TABLE IF NOT EXISTS two_factor_secrets (
+      user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      encrypted_secret TEXT NOT NULL,
+      backup_code_hashes JSONB NOT NULL DEFAULT '[]'::jsonb,
+      enabled_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+  await sql`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      token_hash TEXT PRIMARY KEY,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS password_reset_tokens_expiry_idx ON password_reset_tokens(expires_at)`
 
   await sql`
     CREATE TABLE IF NOT EXISTS students (
@@ -798,31 +1008,172 @@ const updateTutorAssignments = async (tutorId, tutorName, assignedCourseIds, pre
   }
 }
 
-const getSessionToken = (request) => {
-  const cookieToken = request.headers.cookie?.split(';').map((cookie) => cookie.trim()).find((cookie) => cookie.startsWith(`${sessionCookieName}=`))?.slice(sessionCookieName.length + 1)
-  const bearerToken = request.headers.authorization?.match(/^Bearer ([a-f0-9]{64})$/i)?.[1]
-  return bearerToken ?? cookieToken
+const getSessionToken = (request) => getCookieValue(request, sessionCookieName)
+
+const recordLoginEvent = async ({ userId, email, succeeded, reason, metadata, deviceId, location }) => sql`
+  INSERT INTO login_events ${sql({ user_id: userId, email, succeeded, reason, client_ip: metadata.ip, country: location.country, city: location.city, browser: metadata.browser, os: metadata.os, device_type: metadata.deviceType, device_id: deviceId })}
+`
+
+const createAuthSession = async (userId, role, request) => {
+  const metadata = getClientMetadata(request)
+  const location = await getGeoLocation(metadata.ip)
+  const deviceId = getDeviceId(request)
+  const rawToken = randomBytes(32).toString('base64url')
+  const tokenHash = hashToken(rawToken)
+  const policy = sessionPolicyFor(role)
+  const createdAt = new Date()
+  const expiresAt = new Date(createdAt.getTime() + policy.absoluteMs)
+  const result = await sql.begin(async (transaction) => {
+    await transaction`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`
+    const active = await transaction`
+      SELECT token, device_id FROM auth_sessions
+      WHERE user_id = ${userId} AND ended_at IS NULL AND idle_expires_at > NOW() AND absolute_expires_at > NOW()
+      ORDER BY last_active_at ASC
+      FOR UPDATE
+    `
+    const replacedSession = active.length >= policy.maxSessions ? active[0] : null
+    if (replacedSession) await transaction`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'session_limit' WHERE token = ${replacedSession.token}`
+    await transaction`
+      INSERT INTO auth_sessions ${transaction({
+        token: tokenHash,
+        token_hashed: true,
+        user_id: userId,
+        expires_at: expiresAt,
+        created_at: createdAt,
+        last_active_at: createdAt,
+        idle_expires_at: new Date(Math.min(createdAt.getTime() + policy.idleMs, expiresAt.getTime())),
+        absolute_expires_at: expiresAt,
+        device_id: deviceId,
+        client_ip: metadata.ip,
+        country: location.country,
+        city: location.city,
+        browser: metadata.browser,
+        os: metadata.os,
+        device_type: metadata.deviceType,
+        user_agent: metadata.userAgent,
+      })}
+    `
+    return { replacedSession }
+  })
+  if (result.replacedSession) await sql`INSERT INTO security_alerts ${sql({ user_id: userId, alert_type: 'session_limit', message: 'Your oldest session was signed out because your account reached its active-session limit.', metadata: { endedSessionToken: result.replacedSession.token } })}`
+  return { rawToken, deviceId, metadata, location }
 }
 
-const loadAuthenticatedUser = async (request) => {
-  const sessionToken = getSessionToken(request)
-  if (!sessionToken) return false
+const loadAuthenticatedUser = async (request, response) => {
+  const rawToken = getSessionToken(request)
+  if (!rawToken) return false
+  const tokenHash = hashToken(rawToken)
   const [session] = await sql`
-    SELECT auth_sessions.user_id AS "userId", users.role
+    SELECT auth_sessions.user_id AS "userId", users.role, users.must_reset_password AS "mustResetPassword", auth_sessions.token
     FROM auth_sessions
     INNER JOIN users ON users.id = auth_sessions.user_id
-    WHERE auth_sessions.token = ${sessionToken}
-      AND auth_sessions.expires_at > NOW()
+    WHERE auth_sessions.token = ${tokenHash}
+      AND auth_sessions.ended_at IS NULL
+      AND auth_sessions.idle_expires_at > NOW()
+      AND auth_sessions.absolute_expires_at > NOW()
       AND users.status = 'Active'
+      AND users.account_locked = false
+      AND (users.locked_until IS NULL OR users.locked_until <= NOW())
   `
-  if (!session) return false
+  if (!session) {
+    if (response && getSessionToken(request)) clearSecurityCookies(response)
+    return false
+  }
+  const policy = sessionPolicyFor(session.role)
+  await sql`
+    UPDATE auth_sessions
+    SET last_active_at = NOW(),
+        idle_expires_at = LEAST(NOW() + ${policy.idleMs} * INTERVAL '1 millisecond', absolute_expires_at),
+        expires_at = LEAST(NOW() + ${policy.idleMs} * INTERVAL '1 millisecond', absolute_expires_at)
+    WHERE token = ${tokenHash}
+  `
   request.userId = Number(session.userId)
   request.userRole = session.role
+  request.mustResetPassword = session.mustResetPassword
+  request.sessionTokenHash = tokenHash
+  request.sessionId = tokenHash
+  response?.append('Set-Cookie', `${sessionCookieName}=${rawToken}; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=${Math.floor(policy.idleMs / 1000)}`)
   return true
 }
 
+const createSecurityAlert = async (userId, alertType, message, metadata = {}) => sql`
+  INSERT INTO security_alerts ${sql({ user_id: userId, alert_type: alertType, message, metadata })}
+`
+
+const recordAuthenticationAttempt = async ({ user, email, succeeded, reason, request }) => {
+  const metadata = getClientMetadata(request)
+  const deviceId = getDeviceId(request)
+  const location = await getGeoLocation(metadata.ip)
+  await recordLoginEvent({ userId: user?.id ?? null, email: email.slice(0, 254), succeeded, reason, metadata, deviceId, location })
+  if (!succeeded) {
+    const [ipFailure] = await sql`
+      SELECT COUNT(*)::INTEGER AS count FROM login_events
+      WHERE client_ip = ${metadata.ip} AND succeeded = false AND created_at > NOW() - INTERVAL '15 minutes'
+    `
+    const [accountFailure] = await sql`
+      SELECT COUNT(*)::INTEGER AS count FROM login_events
+      WHERE email = ${email.slice(0, 254)} AND succeeded = false AND created_at > NOW() - INTERVAL '15 minutes'
+    `
+    if (user && accountFailure.count >= 5) {
+      const [locked] = await sql`UPDATE users SET locked_until = NOW() + INTERVAL '15 minutes' WHERE id = ${user.id} AND (locked_until IS NULL OR locked_until <= NOW()) RETURNING id`
+      if (locked) await createSecurityAlert(user.id, 'account_locked', 'Your account was temporarily locked after repeated unsuccessful sign-in attempts.')
+    }
+    return { metadata, deviceId, location, ipLimited: ipFailure.count >= 30, accountFailureCount: accountFailure.count }
+  }
+  const [knownDevice] = await sql`
+    SELECT EXISTS(SELECT 1 FROM login_events WHERE user_id = ${user.id} AND device_id = ${deviceId} AND succeeded = true AND id <> (SELECT MAX(id) FROM login_events WHERE user_id = ${user.id})) AS known
+  `
+  const [previousLogin] = await sql`
+    SELECT country FROM login_events
+    WHERE user_id = ${user.id} AND succeeded = true AND id <> (SELECT MAX(id) FROM login_events WHERE user_id = ${user.id})
+    ORDER BY created_at DESC LIMIT 1
+  `
+  if (!knownDevice.known) await createSecurityAlert(user.id, 'new_device', 'A sign-in from a new device was detected.', { browser: metadata.browser, os: metadata.os, deviceType: metadata.deviceType })
+  if (location.country && previousLogin?.country && location.country !== previousLogin.country) await createSecurityAlert(user.id, 'new_country', 'A sign-in from a new country was detected.', { country: location.country })
+  const [recentCountries] = await sql`
+    SELECT COUNT(DISTINCT country)::INTEGER AS count FROM login_events
+    WHERE user_id = ${user.id} AND succeeded = true AND country IS NOT NULL AND created_at > NOW() - INTERVAL '1 hour'
+  `
+  const [recentDevices] = await sql`
+    SELECT COUNT(DISTINCT device_id)::INTEGER AS count FROM login_events
+    WHERE user_id = ${user.id} AND succeeded = true AND created_at > NOW() - INTERVAL '24 hours'
+  `
+  if (recentCountries.count >= 2) await createSecurityAlert(user.id, 'multiple_countries', 'Successful sign-ins from multiple countries were detected within a short period.', { window: '1 hour' })
+  if (recentCountries.count >= 3 || recentDevices.count >= 5) await createSecurityAlert(user.id, 'possible_account_sharing', 'Unusual sign-in activity may indicate account sharing. This alert is for administrator review only.', { countries: recentCountries.count, devices: recentDevices.count })
+  return { metadata, deviceId, location, ipLimited: false, accountFailureCount: 0 }
+}
+
+const writeAdminAudit = async (request, action, targetUserId, beforeState, afterState) => {
+  const metadata = getClientMetadata(request)
+  await sql`
+    INSERT INTO admin_audit_log ${sql({ actor_user_id: request.userId, action, target_user_id: targetUserId, before_state: beforeState, after_state: afterState, client_ip: metadata.ip })}
+  `
+}
+
+const rotateAuthenticatedSession = async (request, response, reason) => {
+  await sql`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = ${reason} WHERE user_id = ${request.userId} AND ended_at IS NULL`
+  request.securityDeviceId = getDeviceId(request)
+  const session = await createAuthSession(request.userId, request.userRole, request)
+  setSecurityCookies(response, session.rawToken, session.deviceId, request.userRole)
+}
+
+const verifySecondFactor = async (userId, code) => {
+  const normalizedCode = String(code ?? '').trim()
+  return sql.begin(async (transaction) => {
+    const [record] = await transaction`SELECT encrypted_secret, backup_code_hashes FROM two_factor_secrets WHERE user_id = ${userId} AND enabled_at IS NOT NULL FOR UPDATE`
+    if (!record) return false
+    if (verifyTotp(decryptTotpSecret(record.encrypted_secret), normalizedCode)) return true
+    const backupHashes = Array.isArray(record.backup_code_hashes) ? record.backup_code_hashes : []
+    const suppliedHash = hashBackupCode(normalizedCode)
+    if (!backupHashes.includes(suppliedHash)) return false
+    await transaction`UPDATE two_factor_secrets SET backup_code_hashes = ${JSON.stringify(backupHashes.filter((hash) => hash !== suppliedHash))}::jsonb, updated_at = NOW() WHERE user_id = ${userId}`
+    return true
+  })
+}
+
 const requireAuthenticated = async (request, response, next) => {
-  if (!await loadAuthenticatedUser(request)) return response.status(401).json({ message: 'Authentication is required.' })
+  if (!await loadAuthenticatedUser(request, response)) return response.status(401).json({ message: 'Authentication is required.' })
+  if (request.mustResetPassword && request.path !== '/api/auth/change-password' && !request.path.startsWith('/api/auth/security/')) return response.status(403).json({ message: 'A password change is required before using this account.' })
   return next()
 }
 
@@ -1805,7 +2156,7 @@ app.get('/api/practice-exams', async (_request, response) => {
   return response.json(exams)
 })
 
-app.get('/api/practice-exams/:id', async (request, response) => {
+app.get('/api/practice-exams/:id', requireAuthenticated, async (request, response) => {
   const examId = parseCourseId(request.params.id)
   if (examId === null) return response.status(400).json({ message: 'Invalid practice exam id.' })
   const [exam] = await sql`
@@ -1813,7 +2164,14 @@ app.get('/api/practice-exams/:id', async (request, response) => {
     FROM practice_exams
     WHERE practice_exams.id = ${examId} AND practice_exams.published = true
   `
-  if (!exam) return response.status(403).json({ message: 'Purchase this practice exam to access its questions.' })
+  if (!exam) return response.status(404).json({ message: 'Practice exam not found.' })
+  const [purchase] = await sql`
+    SELECT practice_purchases.id
+    FROM practice_purchases
+    INNER JOIN payments ON payments.id = practice_purchases.payment_id AND payments.status = 'paid'
+    WHERE practice_purchases.user_id = ${request.userId} AND practice_purchases.exam_id = ${examId}
+  `
+  if (!purchase) return response.status(403).json({ message: 'Purchase this practice exam to access its questions.' })
   const questions = await sql`
     SELECT id::INTEGER AS id, exam_id::INTEGER AS exam_id, question_text, topic, options, correct_answer, explanation
     FROM practice_questions
@@ -1835,6 +2193,13 @@ app.post('/api/practice-exams/:examId/questions/:questionId/answers', requireAut
     WHERE practice_questions.id = ${questionId} AND practice_questions.exam_id = ${examId} AND practice_exams.published = true
   `
   if (!question) return response.status(404).json({ message: 'Practice question not found.' })
+  const [purchase] = await sql`
+    SELECT practice_purchases.id
+    FROM practice_purchases
+    INNER JOIN payments ON payments.id = practice_purchases.payment_id AND payments.status = 'paid'
+    WHERE practice_purchases.user_id = ${request.userId} AND practice_purchases.exam_id = ${examId}
+  `
+  if (!purchase) return response.status(403).json({ message: 'Purchase this practice exam to answer its questions.' })
   const correct = answer === question.correctAnswer
   await sql`INSERT INTO practice_answers ${sql({ user_id: request.userId, exam_id: examId, question_id: questionId, topic: question.topic, correct })}`
   return response.status(201).json({ correct })
@@ -4155,7 +4520,7 @@ app.get('/api/admin/overview', requireAdmin, async (request, response) => {
   })
 })
 
-app.get('/api/admin/courses', requireAdminOrTutor, async (_request, response) => {
+app.get('/api/admin/courses', requireAdmin, async (_request, response) => {
   const courses = await sql`
     SELECT ${courseColumns}
     FROM courses
@@ -4164,7 +4529,7 @@ app.get('/api/admin/courses', requireAdminOrTutor, async (_request, response) =>
   response.json(courses.map(deserializeCourse))
 })
 
-app.get('/api/admin/courses/:id', requireAdminOrTutor, async (request, response) => {
+app.get('/api/admin/courses/:id', requireAdmin, async (request, response) => {
   const id = parseCourseId(request.params.id)
   if (id === null) return response.status(400).json({ message: 'Invalid course id.' })
 
@@ -4320,24 +4685,29 @@ app.post('/api/admin/users/:accountType/:id/reset-password', requireAdmin, async
   const id = parseTutorId(request.params.id)
   const accountType = request.params.accountType
   if (id === null || !['user', 'tutor'].includes(accountType)) return response.status(400).json({ message: 'Invalid account.' })
-
-  const temporaryPassword = randomBytes(9).toString('base64url')
-  const passwordHash = await hashPassword(temporaryPassword)
+  let userId
   if (accountType === 'user') {
-    const [updated] = await sql`UPDATE users SET password_hash = ${passwordHash} WHERE id = ${id} RETURNING id`
-    if (!updated) return response.status(404).json({ message: 'Account not found.' })
+    const [user] = await sql`UPDATE users SET must_reset_password = true WHERE id = ${id} RETURNING id`
+    if (!user) return response.status(404).json({ message: 'Account not found.' })
+    userId = Number(user.id)
   } else {
     const [tutor] = await sql`SELECT name, email, status FROM tutors WHERE id = ${id}`
     if (!tutor) return response.status(404).json({ message: 'Account not found.' })
-    await sql`
-      INSERT INTO users ${sql({ name: tutor.name, email: tutor.email, password_hash: passwordHash, role: 'tutor', status: tutor.status === 'Active' ? 'Active' : 'Suspended' })}
-      ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, status = EXCLUDED.status
+    const [user] = await sql`
+      INSERT INTO users ${sql({ name: tutor.name, email: tutor.email, password_hash: await hashPassword(randomBytes(32).toString('base64url')), role: 'tutor', status: tutor.status === 'Active' ? 'Active' : 'Suspended', must_reset_password: true })}
+      ON CONFLICT (email) DO UPDATE SET must_reset_password = true
+      RETURNING id
     `
+    userId = Number(user.id)
   }
-  return response.json({ temporaryPassword })
+  const [activeSessions] = await sql`SELECT COUNT(*)::INTEGER AS count FROM auth_sessions WHERE user_id = ${userId} AND ended_at IS NULL`
+  await sql`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'admin_password_reset_required' WHERE user_id = ${userId} AND ended_at IS NULL`
+  await writeAdminAudit(request, 'password_reset_required', userId, { activeSessions: activeSessions.count }, { mustResetPassword: true, activeSessions: 0 })
+  await createSecurityAlert(userId, 'password_reset_required', 'An administrator requires a password change before you can access your account.')
+  return response.status(204).end()
 })
 
-app.post('/api/admin/courses', requireAdminOrTutor, async (request, response) => {
+app.post('/api/admin/courses', requireAdmin, async (request, response) => {
   const course = parseCoursePayload(request.body)
   if (!course) return response.status(400).json({ message: 'Enter all required course details.' })
 
@@ -4354,7 +4724,7 @@ app.post('/api/admin/courses', requireAdminOrTutor, async (request, response) =>
   }
 })
 
-app.put('/api/admin/courses/:id', requireAdminOrTutor, async (request, response) => {
+app.put('/api/admin/courses/:id', requireAdmin, async (request, response) => {
   const id = parseCourseId(request.params.id)
   if (id === null) return response.status(400).json({ message: 'Invalid course id.' })
 
@@ -4394,7 +4764,7 @@ app.put('/api/admin/courses/:id', requireAdminOrTutor, async (request, response)
   }
 })
 
-app.delete('/api/admin/courses/:id', requireAdminOrTutor, async (request, response) => {
+app.delete('/api/admin/courses/:id', requireAdmin, async (request, response) => {
   const id = parseCourseId(request.params.id)
   if (id === null) return response.status(400).json({ message: 'Invalid course id.' })
 
@@ -4810,6 +5180,168 @@ app.patch('/api/admin/classes/enrollments/:id/attendance', requireAdmin, async (
   return response.status(204).end()
 })
 
+app.get('/api/auth/security/sessions', requireAuthenticated, async (request, response) => {
+  const sessions = await sql`
+    SELECT token AS "sessionId", created_at AS "createdAt", last_active_at AS "lastActiveAt", client_ip AS "clientIp", country, city, browser, os, device_type AS "deviceType", ended_at AS "endedAt", ended_reason AS "endedReason"
+    FROM auth_sessions
+    WHERE user_id = ${request.userId} AND ended_at IS NULL AND idle_expires_at > NOW() AND absolute_expires_at > NOW()
+    ORDER BY last_active_at DESC
+  `
+  return response.json(sessions.map((session) => ({ ...session, clientIp: maskIpAddress(session.clientIp), isCurrent: session.sessionId === request.sessionId })))
+})
+
+app.delete('/api/auth/security/sessions/:sessionId', requireAuthenticated, async (request, response) => {
+  const sessionId = request.params.sessionId
+  if (!/^[a-f0-9]{64}$/.test(sessionId)) return response.status(400).json({ message: 'Invalid session id.' })
+  const [revoked] = await sql`
+    UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'user_revoked'
+    WHERE token = ${sessionId} AND user_id = ${request.userId} AND ended_at IS NULL
+    RETURNING token
+  `
+  if (!revoked) return response.status(404).json({ message: 'Active session not found.' })
+  if (sessionId === request.sessionId) clearSecurityCookies(response)
+  return response.status(204).end()
+})
+
+app.post('/api/auth/security/sign-out-everywhere', requireAuthenticated, async (request, response) => {
+  await sql`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'signed_out_everywhere' WHERE user_id = ${request.userId} AND ended_at IS NULL`
+  clearSecurityCookies(response)
+  return response.status(204).end()
+})
+
+app.get('/api/auth/security/login-history', requireAuthenticated, async (request, response) => {
+  const events = await sql`
+    SELECT id, succeeded, reason, client_ip AS "clientIp", country, city, browser, os, device_type AS "deviceType", created_at AS "createdAt"
+    FROM login_events WHERE user_id = ${request.userId}
+    ORDER BY created_at DESC LIMIT 100
+  `
+  return response.json(events.map((event) => ({ ...event, clientIp: maskIpAddress(event.clientIp) })))
+})
+
+app.get('/api/auth/security/alerts', requireAuthenticated, async (request, response) => {
+  const alerts = await sql`
+    SELECT id, alert_type AS type, message, metadata, reviewed_at AS "reviewedAt", created_at AS "createdAt"
+    FROM security_alerts WHERE user_id = ${request.userId}
+    ORDER BY created_at DESC LIMIT 50
+  `
+  return response.json(alerts)
+})
+
+app.get('/api/auth/security/two-factor', requireAuthenticated, async (request, response) => {
+  const [record] = await sql`SELECT enabled_at AS "enabledAt" FROM two_factor_secrets WHERE user_id = ${request.userId}`
+  return response.json({ enabled: Boolean(record?.enabledAt) })
+})
+
+app.post('/api/auth/security/two-factor/setup', requireAuthenticated, async (request, response) => {
+  try {
+    const secret = encodeBase32(randomBytes(20))
+    const encryptedSecret = encryptTotpSecret(secret)
+    await sql`
+      INSERT INTO two_factor_secrets ${sql({ user_id: request.userId, encrypted_secret: encryptedSecret, backup_code_hashes: JSON.stringify([]), enabled_at: null, updated_at: new Date() })}
+      ON CONFLICT (user_id) DO UPDATE SET encrypted_secret = EXCLUDED.encrypted_secret, backup_code_hashes = '[]'::jsonb, enabled_at = NULL, updated_at = NOW()
+    `
+    const [user] = await sql`SELECT email FROM users WHERE id = ${request.userId}`
+    const issuer = 'Coursesharp'
+    const provisioningUri = `otpauth://totp/${encodeURIComponent(`${issuer}:${user.email}`)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`
+    return response.json({ secret, provisioningUri })
+  } catch {
+    return response.status(503).json({ message: 'Two-factor setup is unavailable until the security encryption key is configured.' })
+  }
+})
+
+app.post('/api/auth/security/two-factor/enable', requireAuthenticated, async (request, response) => {
+  const code = request.body?.code
+  if (typeof code !== 'string' || !/^\d{6}$/.test(code)) return response.status(400).json({ message: 'Enter the six-digit code from your authenticator.' })
+  const [record] = await sql`SELECT encrypted_secret FROM two_factor_secrets WHERE user_id = ${request.userId} AND enabled_at IS NULL`
+  if (!record) return response.status(409).json({ message: 'Start two-factor setup before confirming it.' })
+  let valid = false
+  try { valid = verifyTotp(decryptTotpSecret(record.encrypted_secret), code) } catch { return response.status(503).json({ message: 'Two-factor setup is unavailable until the security encryption key is configured.' }) }
+  if (!valid) return response.status(401).json({ message: 'The authenticator code is incorrect.' })
+  const backupCodes = Array.from({ length: 10 }, () => randomBytes(5).toString('hex').toUpperCase())
+  await sql`
+    UPDATE two_factor_secrets SET backup_code_hashes = ${JSON.stringify(backupCodes.map(hashBackupCode))}::jsonb, enabled_at = NOW(), updated_at = NOW()
+    WHERE user_id = ${request.userId}
+  `
+  await rotateAuthenticatedSession(request, response, 'two_factor_enabled')
+  return response.json({ backupCodes })
+})
+
+app.post('/api/auth/security/two-factor/disable', requireAuthenticated, async (request, response) => {
+  const { currentPassword, code } = request.body ?? {}
+  if (typeof currentPassword !== 'string' || typeof code !== 'string') return response.status(400).json({ message: 'Enter your password and authenticator code.' })
+  const [user] = await sql`SELECT password_hash FROM users WHERE id = ${request.userId}`
+  if (!user || !(await verifyPassword(currentPassword, user.password_hash)) || !await verifySecondFactor(request.userId, code)) return response.status(401).json({ message: 'The password or authenticator code is incorrect.' })
+  await sql`DELETE FROM two_factor_secrets WHERE user_id = ${request.userId}`
+  await rotateAuthenticatedSession(request, response, 'two_factor_disabled')
+  return response.status(204).end()
+})
+
+app.get('/api/admin/security', requireAdmin, async (_request, response) => {
+  const [loginEvents, sessions, alerts, users, auditLog] = await Promise.all([
+    sql`SELECT events.id, events.user_id AS "userId", COALESCE(users.name, events.email) AS "userName", events.email, events.succeeded, events.reason, events.client_ip AS "clientIp", events.country, events.city, events.browser, events.os, events.device_type AS "deviceType", events.created_at AS "createdAt" FROM login_events events LEFT JOIN users ON users.id = events.user_id ORDER BY events.created_at DESC LIMIT 500`,
+    sql`SELECT sessions.token AS "sessionId", users.id AS "userId", users.name AS "userName", users.email, users.role, sessions.client_ip AS "clientIp", sessions.country, sessions.city, sessions.browser, sessions.os, sessions.device_type AS "deviceType", sessions.created_at AS "createdAt", sessions.last_active_at AS "lastActiveAt" FROM auth_sessions sessions INNER JOIN users ON users.id = sessions.user_id WHERE sessions.ended_at IS NULL AND sessions.idle_expires_at > NOW() AND sessions.absolute_expires_at > NOW() ORDER BY sessions.last_active_at DESC LIMIT 500`,
+    sql`SELECT alerts.id, alerts.user_id AS "userId", users.name AS "userName", users.email, alerts.alert_type AS type, alerts.message, alerts.metadata, alerts.created_at AS "createdAt" FROM security_alerts alerts INNER JOIN users ON users.id = alerts.user_id ORDER BY alerts.created_at DESC LIMIT 200`,
+    sql`SELECT id::INTEGER AS id, name, email, role, status, account_locked AS "accountLocked", must_reset_password AS "mustResetPassword" FROM users ORDER BY name`,
+    sql`SELECT audit.id, actor.name AS "actorName", target.name AS "targetName", audit.action, audit.before_state AS "beforeState", audit.after_state AS "afterState", audit.client_ip AS "clientIp", audit.created_at AS "createdAt" FROM admin_audit_log audit LEFT JOIN users actor ON actor.id = audit.actor_user_id LEFT JOIN users target ON target.id = audit.target_user_id ORDER BY audit.created_at DESC LIMIT 500`,
+  ])
+  return response.json({ loginEvents, sessions, alerts, users, auditLog })
+})
+
+app.post('/api/admin/security/sessions/:sessionId/revoke', requireAdmin, async (request, response) => {
+  const sessionId = request.params.sessionId
+  if (!/^[a-f0-9]{64}$/.test(sessionId)) return response.status(400).json({ message: 'Invalid session id.' })
+  const [session] = await sql`SELECT token, user_id AS "userId", ended_at AS "endedAt" FROM auth_sessions WHERE token = ${sessionId}`
+  if (!session || session.endedAt) return response.status(404).json({ message: 'Active session not found.' })
+  await sql`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'admin_revoked' WHERE token = ${sessionId}`
+  await writeAdminAudit(request, 'session_revoked', session.userId, { active: true }, { active: false })
+  await createSecurityAlert(session.userId, 'admin_session_revoked', 'An administrator signed out one of your sessions.')
+  return response.status(204).end()
+})
+
+app.post('/api/admin/security/users/:userId/force-logout', requireAdmin, async (request, response) => {
+  const userId = parseTutorId(request.params.userId)
+  if (userId === null) return response.status(400).json({ message: 'Invalid user id.' })
+  const [user] = await sql`SELECT id FROM users WHERE id = ${userId}`
+  if (!user) return response.status(404).json({ message: 'User not found.' })
+  const [count] = await sql`SELECT COUNT(*)::INTEGER AS count FROM auth_sessions WHERE user_id = ${userId} AND ended_at IS NULL`
+  await sql`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'admin_force_logout' WHERE user_id = ${userId} AND ended_at IS NULL`
+  await writeAdminAudit(request, 'user_force_logout', userId, { activeSessions: count.count }, { activeSessions: 0 })
+  await createSecurityAlert(userId, 'admin_force_logout', 'An administrator signed out all sessions for your account.')
+  return response.status(204).end()
+})
+
+app.patch('/api/admin/security/users/:userId/lock', requireAdmin, async (request, response) => {
+  const userId = parseTutorId(request.params.userId)
+  const locked = request.body?.locked
+  if (userId === null || typeof locked !== 'boolean') return response.status(400).json({ message: 'Enter a valid account lock action.' })
+  const [user] = await sql`SELECT id, status, account_locked AS "accountLocked", locked_until AS "lockedUntil" FROM users WHERE id = ${userId}`
+  if (!user) return response.status(404).json({ message: 'User not found.' })
+  const before = { status: user.status, lockedUntil: user.lockedUntil, accountLocked: user.accountLocked }
+  if (locked) {
+    await sql`UPDATE users SET account_locked = true WHERE id = ${userId}`
+    await sql`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'admin_account_locked' WHERE user_id = ${userId} AND ended_at IS NULL`
+  } else {
+    await sql`UPDATE users SET account_locked = false, locked_until = NULL WHERE id = ${userId}`
+  }
+  const after = { status: user.status, accountLocked: locked, lockedUntil: locked ? user.lockedUntil : null }
+  await writeAdminAudit(request, locked ? 'account_locked' : 'account_unlocked', userId, before, after)
+  await createSecurityAlert(userId, locked ? 'admin_account_locked' : 'admin_account_unlocked', locked ? 'An administrator locked your account.' : 'An administrator unlocked your account.')
+  return response.json(after)
+})
+
+app.post('/api/admin/security/users/:userId/force-password-reset', requireAdmin, async (request, response) => {
+  const userId = parseTutorId(request.params.userId)
+  if (userId === null) return response.status(400).json({ message: 'Invalid user id.' })
+  const [user] = await sql`SELECT id, must_reset_password AS "mustResetPassword" FROM users WHERE id = ${userId}`
+  if (!user) return response.status(404).json({ message: 'User not found.' })
+  const [activeSessions] = await sql`SELECT COUNT(*)::INTEGER AS count FROM auth_sessions WHERE user_id = ${userId} AND ended_at IS NULL`
+  await sql`UPDATE users SET must_reset_password = true WHERE id = ${userId}`
+  await sql`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'admin_password_reset_required' WHERE user_id = ${userId} AND ended_at IS NULL`
+  await writeAdminAudit(request, 'password_reset_required', userId, { mustResetPassword: user.mustResetPassword, activeSessions: activeSessions.count }, { mustResetPassword: true, activeSessions: 0 })
+  await createSecurityAlert(userId, 'password_reset_required', 'An administrator requires a password change before you can access your account.')
+  return response.status(204).end()
+})
+
 app.patch('/api/auth/profile', requireAuthenticated, async (request, response) => {
   const profile = isValidUserProfile(request.body)
   if (!profile) return response.status(400).json({ message: 'Enter a valid name, email, and phone number.' })
@@ -4842,12 +5374,11 @@ app.post('/api/auth/sign-up', async (request, response) => {
       INSERT INTO users ${sql({ name: name.trim(), phone: '', email: normalizedEmail, password_hash: passwordHash })}
       RETURNING id, name, email, phone, role, created_at AS "createdAt"
     `
-    const sessionToken = randomBytes(32).toString('hex')
-    await sql`
-      INSERT INTO auth_sessions ${sql({ token: sessionToken, user_id: user.id, expires_at: new Date(Date.now() + sessionDuration) })}
-    `
-    response.setHeader('Set-Cookie', `${sessionCookieName}=${sessionToken}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${sessionDuration / 1000}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`)
-    return response.status(201).json({ user, sessionToken })
+    request.securityDeviceId = getDeviceId(request)
+    await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: true, reason: 'sign_up', request })
+    const session = await createAuthSession(user.id, user.role, request)
+    setSecurityCookies(response, session.rawToken, session.deviceId, user.role)
+    return response.status(201).json({ user })
   } catch (error) {
     if (error.code === '23505') {
       return response.status(409).json({ message: 'An account with this email already exists.' })
@@ -4857,29 +5388,56 @@ app.post('/api/auth/sign-up', async (request, response) => {
 })
 
 app.post('/api/auth/sign-in', async (request, response) => {
-  const { email, password } = request.body ?? {}
-  if (typeof email !== 'string' || typeof password !== 'string') {
-    return response.status(400).json({ message: 'Enter your email and password.' })
+  const { email, password, captchaToken } = request.body ?? {}
+  if (typeof email !== 'string' || typeof password !== 'string' || email.length > 254 || password.length > 128) {
+    return response.status(400).json({ message: 'Invalid email or password.' })
   }
 
   const normalizedEmail = email.trim().toLowerCase()
+  request.securityDeviceId = getDeviceId(request)
+  const metadata = getClientMetadata(request)
+  const [ipFailures] = await sql`
+    SELECT COUNT(*)::INTEGER AS count FROM login_events
+    WHERE client_ip = ${metadata.ip} AND succeeded = false AND created_at > NOW() - INTERVAL '15 minutes'
+  `
+  if (ipFailures.count >= 30) {
+    await recordAuthenticationAttempt({ user: null, email: normalizedEmail, succeeded: false, reason: 'ip_rate_limited', request })
+    return response.status(429).json({ message: 'Invalid email or password.', captchaRequired: true })
+  }
   const [user] = await sql`
-    SELECT id, name, email, phone, password_hash, role, status, created_at AS "createdAt"
+    SELECT id, name, email, phone, password_hash, role, status, locked_until, account_locked AS "accountLocked", created_at AS "createdAt"
     FROM users
     WHERE email = ${normalizedEmail}
   `
-
-  if (!user || user.status !== 'Active' || !(await verifyPassword(password, user.password_hash))) {
-    return response.status(401).json({ message: 'Invalid email or password.' })
+  const [accountFailures] = await sql`
+    SELECT COUNT(*)::INTEGER AS count FROM login_events
+    WHERE email = ${normalizedEmail} AND succeeded = false AND created_at > NOW() - INTERVAL '15 minutes'
+  `
+  if (accountFailures.count >= 3 && (getTurnstileSecret() || captchaToken) && (!captchaToken || !await verifyTurnstile(captchaToken, metadata.ip))) {
+    await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: false, reason: 'captcha_failed', request })
+    return response.status(401).json({ message: 'Invalid email or password.', captchaRequired: true })
+  }
+  const isLocked = user?.accountLocked || user?.locked_until && new Date(user.locked_until).getTime() > Date.now()
+  const passwordMatches = user && await verifyPassword(password, user.password_hash)
+  if (!user || user.status !== 'Active' || isLocked || !passwordMatches) {
+    const reason = isLocked ? 'account_locked' : !user ? 'unknown_account' : user.status !== 'Active' ? 'inactive_account' : 'incorrect_password'
+    const failedAttempt = await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: false, reason, request })
+    const captchaRequired = failedAttempt.accountFailureCount >= 3
+    return response.status(failedAttempt.ipLimited ? 429 : 401).json({ message: 'Invalid email or password.', ...(captchaRequired ? { captchaRequired: true } : {}) })
   }
 
-  const { password_hash: _passwordHash, ...account } = user
-  const sessionToken = randomBytes(32).toString('hex')
-  await sql`
-    INSERT INTO auth_sessions ${sql({ token: sessionToken, user_id: user.id, expires_at: new Date(Date.now() + sessionDuration) })}
-  `
-  response.setHeader('Set-Cookie', `${sessionCookieName}=${sessionToken}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${sessionDuration / 1000}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`)
-  return response.json({ user: account, sessionToken })
+  const [twoFactor] = await sql`SELECT user_id FROM two_factor_secrets WHERE user_id = ${user.id} AND enabled_at IS NOT NULL`
+  if (twoFactor && (typeof request.body?.twoFactorCode !== 'string' || !await verifySecondFactor(user.id, request.body.twoFactorCode))) {
+    await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: false, reason: 'second_factor_failed', request })
+    return response.status(401).json({ message: 'Invalid email or password.', twoFactorRequired: true })
+  }
+
+  await sql`UPDATE users SET locked_until = NULL WHERE id = ${user.id}`
+  const { password_hash: _passwordHash, locked_until: _lockedUntil, accountLocked: _accountLocked, ...account } = user
+  await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: true, reason: 'success', request })
+  const session = await createAuthSession(user.id, user.role, request)
+  setSecurityCookies(response, session.rawToken, session.deviceId, user.role)
+  return response.json({ user: account })
 })
 
 app.post('/api/auth/change-password', requireAuthenticated, async (request, response) => {
@@ -4897,18 +5455,26 @@ app.post('/api/auth/change-password', requireAuthenticated, async (request, resp
     return response.status(401).json({ message: 'Your current password is incorrect.' })
   }
 
+  const passwordHash = await hashPassword(newPassword)
   await sql`
     UPDATE users
-    SET password_hash = ${await hashPassword(newPassword)}
+    SET password_hash = ${passwordHash}, must_reset_password = false
     WHERE id = ${request.userId}
   `
+  await sql`
+    UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'password_changed'
+    WHERE user_id = ${request.userId} AND ended_at IS NULL
+  `
+  request.securityDeviceId = getDeviceId(request)
+  const session = await createAuthSession(request.userId, request.userRole, request)
+  setSecurityCookies(response, session.rawToken, session.deviceId, request.userRole)
   return response.status(204).end()
 })
 
 app.post('/api/auth/sign-out', async (request, response) => {
   const sessionToken = getSessionToken(request)
-  if (sessionToken) await sql`DELETE FROM auth_sessions WHERE token = ${sessionToken}`
-  response.setHeader('Set-Cookie', `${sessionCookieName}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`)
+  if (sessionToken) await sql`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'signed_out' WHERE token = ${hashToken(sessionToken)} AND ended_at IS NULL`
+  clearSecurityCookies(response)
   return response.status(204).end()
 })
 

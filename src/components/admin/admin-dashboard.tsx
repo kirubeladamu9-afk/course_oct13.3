@@ -59,7 +59,9 @@ import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined'
 import LogoutIcon from '@mui/icons-material/Logout'
 import MenuIcon from '@mui/icons-material/Menu'
 import SearchIcon from '@mui/icons-material/Search'
-import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined'
+import SecurityOutlinedIcon from '@mui/icons-material/SecurityOutlined'
+import SecurityPage from './security-page'
+import { SecurityNotifications } from '@/components/course/account-security'
 import TranslateOutlinedIcon from '@mui/icons-material/TranslateOutlined'
 import PeopleOutlineIcon from '@mui/icons-material/PeopleOutline'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
@@ -107,7 +109,7 @@ import { STEM_TOOL_LIBRARY, STEM_TOOL_PICKER_COMING_SOON, type StemToolDefinitio
 
 const drawerWidth = 272
 
-type Section = 'overview' | 'courses' | 'registrations' | 'classes' | 'tutors' | 'blog' | 'practice-exams' | 'syllabus' | 'payments' | 'reports' | 'violations' | 'reviews' | 'users'
+type Section = 'overview' | 'courses' | 'registrations' | 'classes' | 'tutors' | 'blog' | 'practice-exams' | 'syllabus' | 'payments' | 'reports' | 'violations' | 'reviews' | 'users' | 'security'
 
 type AdminNavigationItem = {
   key: Section
@@ -129,6 +131,7 @@ const navigation: AdminNavigationItem[] = [
   { key: 'violations', label: 'Violations', icon: <BlockIcon /> },
   { key: 'reviews', label: 'Learner Reviews', icon: <RateReviewOutlinedIcon /> },
   { key: 'users', label: 'Users', icon: <GroupOutlinedIcon /> },
+  { key: 'security', label: 'Security', icon: <SecurityOutlinedIcon /> },
 ]
 
 const statusColor = (status: string): 'success' | 'warning' | 'error' | 'info' | 'default' => {
@@ -1430,27 +1433,6 @@ const TutorEditorPage: FC<TutorEditorPageProps> = ({ mode, tutorId }) => {
   )
 }
 
-const downloadLoginCredentials = (account: AdminUser, temporaryPassword: string) => {
-  const content = [
-    'CourseSpace login credentials',
-    '',
-    `Name: ${account.name}`,
-    `Email: ${account.email}`,
-    `Temporary password: ${temporaryPassword}`,
-    '',
-    'Sign in with these credentials and change the temporary password after logging in.',
-  ].join('\n')
-  const file = new Blob([content], { type: 'text/plain;charset=utf-8' })
-  const fileUrl = URL.createObjectURL(file)
-  const link = document.createElement('a')
-  link.href = fileUrl
-  link.download = `coursespace-${account.accountType}-${account.accountId}-credentials.txt`
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(fileUrl), 0)
-}
-
 const UsersPage: FC = () => {
   const [userRows, setUserRows] = useState<AdminUser[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -1488,9 +1470,8 @@ const UsersPage: FC = () => {
     if (!account.accountType || account.accountId === undefined) return
     if (!window.confirm(`Reset the password for ${account.name}?`)) return
     try {
-      const result = await resetAdminUserPassword(account.accountType, account.accountId)
-      downloadLoginCredentials(account, result.temporaryPassword)
-      toast.add({ title: 'Password reset', description: `Temporary password: ${result.temporaryPassword}. Login credentials downloaded.`, type: 'success', priority: 'high' })
+      await resetAdminUserPassword(account.accountType, account.accountId)
+      toast.add({ title: 'Password reset required', description: `${account.name} must reset their password before signing in again.`, type: 'success', priority: 'high' })
     } catch (error) {
       toast.add({ title: 'Unable to reset password', description: error instanceof Error ? error.message : 'Please try again.', type: 'error' })
     }
@@ -1839,6 +1820,7 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
       case 'violations': return <ViolationsPage />
       case 'reviews': return <ReviewsPage />
       case 'users': return <UsersPage />
+      case 'security': return <SecurityPage />
       default: return <OverviewPage displayName={adminUser?.name || 'Admin'} />
     }
   }, [adminUser, pathname, section])
@@ -1893,7 +1875,7 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
           <Stack direction="row" alignItems="center" spacing={.75}>
             <Box sx={{ display: { xs: 'none', lg: 'flex' }, alignItems: 'center', width: 220, px: 1.5, py: .55, borderRadius: 5, backgroundColor: 'action.hover', color: 'text.secondary' }}><SearchIcon fontSize="small" /><Typography variant="caption" sx={{ ml: .8 }}>Search here...</Typography></Box>
             <Tooltip title="Language: EN"><IconButton aria-label="Change language, currently EN"><TranslateOutlinedIcon fontSize="small" /></IconButton></Tooltip>
-            <Tooltip title="Notifications"><IconButton aria-label="Notifications"><NotificationsNoneOutlinedIcon fontSize="small" /></IconButton></Tooltip>
+            <Tooltip title="Security notifications"><SecurityNotifications admin /></Tooltip>
             <Tooltip title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
               <IconButton onClick={onToggleDarkMode} aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
                 {darkMode ? <LightModeOutlinedIcon /> : <DarkModeOutlinedIcon />}

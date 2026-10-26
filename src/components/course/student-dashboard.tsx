@@ -47,7 +47,6 @@ import LightModeOutlinedIcon from '@mui/icons-material/LightModeOutlined'
 import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined'
 import MailOutlineIcon from '@mui/icons-material/MailOutline'
 import MenuIcon from '@mui/icons-material/Menu'
-import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined'
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
 import PhoneOutlinedIcon from '@mui/icons-material/PhoneOutlined'
@@ -90,6 +89,8 @@ import InteractiveDiagramViewer from './interactive-diagram-viewer'
 import SimulationLesson from './simulation-lesson'
 import StepByStepSolverLesson from './step-by-step-solver-lesson'
 import FormatListNumberedOutlinedIcon from '@mui/icons-material/FormatListNumberedOutlined'
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
+import AccountSecurity, { SecurityNotifications } from './account-security'
 import { type AdminCourse, type ArticleContentBlock, type ArticleVocabularyEntry, type SimulationConfig, type StepByStepSolverLearnerConfig } from '@/components/admin/admin-data'
 import { sanitizeArticleHtml } from '@/lib/article-content'
 import { getWordAtPoint, normalizeWord, useReadAloud } from '@/components/course/article-reading-tools'
@@ -105,7 +106,7 @@ import { navigateTo } from '@/lib/navigation'
 import { SITE_NAME } from '@/lib/site'
 import { calculateOverallGrade } from '@/lib/overall-grade'
 
- type DashboardView = 'overview' | 'calendar' | 'courses' | 'classes' | 'explore-courses' | 'explore-classes' | 'study-planner' | 'quizzes' | 'purchases' | 'profile' | 'payments' | 'course-view' | 'course-detail' | 'class-detail'
+ type DashboardView = 'overview' | 'calendar' | 'courses' | 'classes' | 'explore-courses' | 'explore-classes' | 'study-planner' | 'quizzes' | 'purchases' | 'profile' | 'security' | 'payments' | 'course-view' | 'course-detail' | 'class-detail'
  const dashboardViewPaths: Record<Exclude<DashboardView, 'course-view' | 'course-detail' | 'class-detail'>, string> = {
   overview: '/dashboard',
   calendar: '/calendar',
@@ -117,6 +118,7 @@ import { calculateOverallGrade } from '@/lib/overall-grade'
   quizzes: '/quizzes',
   purchases: '/purchases',
   profile: '/profile',
+  security: '/security',
   payments: '/payments',
  }
  const dashboardViewFromPath = (pathname: string): DashboardView => {
@@ -493,7 +495,7 @@ const DashboardHeader: FC<{ title: string; darkMode: boolean; language: string; 
     <Stack direction="row" alignItems="center" spacing={.75}>
       <Box sx={{ display: { xs: 'none', lg: 'flex' }, alignItems: 'center', width: 220, px: 1.5, py: .55, borderRadius: 5, backgroundColor: 'action.hover', color: 'text.secondary' }}><SearchIcon fontSize="small" /><Typography variant="caption" sx={{ ml: .8 }}>Search here...</Typography></Box>
       <Tooltip title={`Language: ${language}`}><IconButton onClick={onLanguageChange} aria-label={`Change language, currently ${language}`}><TranslateOutlinedIcon fontSize="small" /></IconButton></Tooltip>
-      <Tooltip title="Notifications"><IconButton aria-label="Notifications"><NotificationsNoneOutlinedIcon fontSize="small" /></IconButton></Tooltip>
+      <Tooltip title="Security notifications"><SecurityNotifications /></Tooltip>
       <Tooltip title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}><IconButton onClick={onToggleDarkMode} aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>{darkMode ? <LightModeOutlinedIcon fontSize="small" /> : <DarkModeOutlinedIcon fontSize="small" />}</IconButton></Tooltip>
       <Tooltip title="Open profile menu"><IconButton onClick={(event) => setProfileAnchor(event.currentTarget)} aria-label="Open profile menu" aria-controls={profileAnchor ? 'student-profile-menu' : undefined} aria-haspopup="true" sx={{ p: .25 }}><Avatar sx={{ width: 34, height: 34, bgcolor: 'primary.main', fontSize: 14 }}>{displayName.charAt(0)}</Avatar></IconButton></Tooltip>
       <Menu id="student-profile-menu" anchorEl={profileAnchor} open={Boolean(profileAnchor)} onClose={() => setProfileAnchor(null)} PaperProps={{ sx: { minWidth: 190, borderRadius: 2, p: 0.75 } }}>
@@ -552,6 +554,7 @@ const DashboardSidebar: FC<SidebarProps> = ({ activeView, onSelectView, collapse
       {navItem('purchases', 'My Purchases', <PaymentsOutlinedIcon fontSize="small" />, activeView === 'purchases')}
       {collapsed ? <Divider sx={{ my: 1.5 }} /> : <Typography variant="overline" color="text.secondary" sx={{ display: 'block', px: 1.5, mt: 2.25, mb: 1, letterSpacing: 1.2, fontWeight: 700 }}>Account</Typography>}
       {navItem('profile', 'Profile', <PersonOutlineIcon fontSize="small" />, activeView === 'profile')}
+      {navItem('security', 'Security', <ShieldOutlinedIcon fontSize="small" />, activeView === 'security')}
       {navItem('payments', 'Payment History', <PaymentsOutlinedIcon fontSize="small" />, activeView === 'payments')}
     </Box>
     <Box sx={{ p: collapsed ? 1 : 1.75, pt: 1, borderTop: 1, borderColor: 'divider' }}>
@@ -2543,6 +2546,7 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
           {activeView === 'quizzes' && <QuizzesView enrollments={enrollments} completedLessons={completedLessons} quizResults={quizResults} now={now} onOpenCourse={openCourse} />}
           {activeView === 'purchases' && <PurchasesView />}
           {activeView === 'profile' && <ProfileView onUpdateProfile={updateProfile} />}
+          {activeView === 'security' && <AccountSecurity />}
           {activeView === 'payments' && <PaymentHistoryView payments={payments} isLoading={isLoadingPayments} error={paymentError} />}
           {activeView === 'course-view' && selectedCourse && selectedCourseEnrollment && <CourseViewer course={selectedCourse} enrollmentId={selectedCourseEnrollment.id} reviewTargetId={selectedCourseEnrollment.item_id} reviewInstructorName={selectedCourseEnrollment.classRecord?.tutorName ?? selectedCourse.tutor} progress={selectedCourseProgress} completedLessonIds={completedLessons[selectedCourse.id] ?? []} started={Boolean(startedCourses[selectedCourse.id] || completedLessons[selectedCourse.id]?.length)} timeSpentSeconds={timeSpent[selectedCourse.id] ?? 0} quizResults={quizResults[selectedCourse.id] ?? {}} now={now} initialLessonId={selectedLessonId} onBack={() => selectView(selectedCourseEnrollment.type === 'class' ? 'classes' : 'courses')} onStart={() => startCourse(selectedCourse.id)} onCompleteLesson={completeLesson} onQuizStart={startQuizAttempt} onQuizAnswer={saveQuizAnswerForAttempt} onQuizSubmit={submitQuiz} onQuizViolation={saveQuizViolationForAttempt} onQuizActiveChange={setQuizActive} onPracticeAnswer={recordPracticeAnswer} attendance={selectedCourseEnrollment.attendance} sessionJoinClicks={selectedCourseEnrollment.sessionJoinClicks} onJoinLiveSession={joinLiveSession} closedLiveSessionIds={closedLiveSessionIds} isClass={selectedCourseEnrollment.type === 'class'} weakAreas={selectedCourseEnrollment.weakAreas} readOnly={readOnlyQuizResult} />}
         </>}

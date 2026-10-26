@@ -11,11 +11,60 @@ export interface AuthUser {
   phone?: string
   role: string
   createdAt: string
+  mustResetPassword?: boolean
+}
+
+export interface SecuritySession {
+  sessionId: string
+  createdAt: string
+  lastActiveAt: string
+  clientIp: string
+  country: string | null
+  city: string | null
+  browser: string
+  os: string
+  deviceType: string
+  isCurrent: boolean
+}
+
+export interface LoginEvent {
+  id: number
+  succeeded: boolean
+  reason: string
+  clientIp: string
+  country: string | null
+  city: string | null
+  browser: string
+  os: string
+  deviceType: string
+  createdAt: string
+  email?: string
+  userName?: string
+  userId?: number
+}
+
+export interface SecurityAlert {
+  id: number
+  type: string
+  message: string
+  metadata: Record<string, unknown>
+  reviewedAt?: string | null
+  createdAt: string
+  userName?: string
+  email?: string
+  userId?: number
+}
+
+export interface AdminSecurityData {
+  loginEvents: LoginEvent[]
+  sessions: Array<SecuritySession & { userId: number; userName: string; email: string; role: string }>
+  alerts: SecurityAlert[]
+  users: Array<{ id: number; name: string; email: string; role: string; status: string; accountLocked: boolean; mustResetPassword: boolean }>
+  auditLog: Array<{ id: number; actorName: string | null; targetName: string | null; action: string; beforeState: unknown; afterState: unknown; clientIp: string; createdAt: string }>
 }
 
 interface AuthResponse {
   user: AuthUser
-  sessionToken?: string
 }
 
 interface AccountDetails {
@@ -339,7 +388,7 @@ export interface TutorClassStudent {
 }
 
 const authStorageKey = 'coursespace-auth-user'
-const authSessionTokenKey = 'coursespace-auth-session-token'
+const legacyAuthSessionTokenKey = 'coursespace-auth-session-token'
 
 const getErrorMessage = async (response: Response) => {
   const body = await response.json().catch(() => null)
@@ -463,10 +512,7 @@ export const updateAdminPracticeQuestion = async (examId: number, questionId: nu
 }
 
 const requestApi = async (url: string, init?: RequestInit) => {
-  const headers = new Headers(init?.headers)
-  const sessionToken = sessionStorage.getItem(authSessionTokenKey)
-  if (sessionToken) headers.set('Authorization', `Bearer ${sessionToken}`)
-  const response = await fetchApi(url, { ...init, headers })
+  const response = await fetchApi(url, init)
   if (response.status === 401) {
     const error = await response.clone().json().catch(() => null)
     if (error?.message === 'Authentication is required.' || error?.message === 'Admin authentication is required.') {
@@ -1070,7 +1116,7 @@ export const updateAdminUserStatus = async (accountType: AdminUser['accountType'
   return response.json()
 }
 
-export const resetAdminUserPassword = async (accountType: AdminUser['accountType'], accountId: number): Promise<{ temporaryPassword: string }> => {
+export const resetAdminUserPassword = async (accountType: AdminUser['accountType'], accountId: number): Promise<void> => {
   const response = await requestApi(`/api/admin/users/${accountType}/${accountId}/reset-password`, { method: 'POST' })
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
@@ -1105,9 +1151,7 @@ export const submitCredentials = async (mode: 'sign-in' | 'sign-up', email: stri
   })
 
   if (!response.ok) throw new Error(await getErrorMessage(response))
-  const authResponse: AuthResponse = await response.json()
-  if (authResponse.sessionToken) sessionStorage.setItem(authSessionTokenKey, authResponse.sessionToken)
-  return authResponse
+  return response.json() as Promise<AuthResponse>
 }
 
 export const saveAuthenticatedUser = (user: AuthUser) => {
@@ -1127,7 +1171,7 @@ export const getAuthenticatedUser = (): AuthUser | null => {
 
 export const clearAuthenticatedUser = () => {
   sessionStorage.removeItem(authStorageKey)
-  sessionStorage.removeItem(authSessionTokenKey)
+  sessionStorage.removeItem(legacyAuthSessionTokenKey)
 }
 
 export const getSavedStudents = async (): Promise<SavedStudent[]> => {
@@ -1213,6 +1257,84 @@ export const getGamification = async (): Promise<GamificationData> => {
   const response = await requestApi('/api/gamification')
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
+}
+
+export const getSecuritySessions = async (): Promise<SecuritySession[]> => {
+  const response = await requestApi('/api/auth/security/sessions')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const revokeSecuritySession = async (sessionId: string): Promise<void> => {
+  const response = await requestApi(`/api/auth/security/sessions/${sessionId}`, { method: 'DELETE' })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const signOutEverywhere = async (): Promise<void> => {
+  const response = await requestApi('/api/auth/security/sign-out-everywhere', { method: 'POST' })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  clearAuthenticatedUser()
+}
+
+export const getSecurityLoginHistory = async (): Promise<LoginEvent[]> => {
+  const response = await requestApi('/api/auth/security/login-history')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const getSecurityAlerts = async (): Promise<SecurityAlert[]> => {
+  const response = await requestApi('/api/auth/security/alerts')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const getTwoFactorStatus = async (): Promise<{ enabled: boolean }> => {
+  const response = await requestApi('/api/auth/security/two-factor')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const setupTwoFactor = async (): Promise<{ secret: string; provisioningUri: string }> => {
+  const response = await requestApi('/api/auth/security/two-factor/setup', { method: 'POST' })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const enableTwoFactor = async (code: string): Promise<{ backupCodes: string[] }> => {
+  const response = await requestApi('/api/auth/security/two-factor/enable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const disableTwoFactor = async (currentPassword: string, code: string): Promise<void> => {
+  const response = await requestApi('/api/auth/security/two-factor/disable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPassword, code }) })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const getAdminSecurity = async (): Promise<AdminSecurityData> => {
+  const response = await requestApi('/api/admin/security')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const revokeAdminSession = async (sessionId: string): Promise<void> => {
+  const response = await requestApi(`/api/admin/security/sessions/${sessionId}/revoke`, { method: 'POST' })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const forceLogoutUser = async (userId: number): Promise<void> => {
+  const response = await requestApi(`/api/admin/security/users/${userId}/force-logout`, { method: 'POST' })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const setAdminAccountLock = async (userId: number, locked: boolean): Promise<void> => {
+  const response = await requestApi(`/api/admin/security/users/${userId}/lock`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locked }) })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const forcePasswordReset = async (userId: number): Promise<void> => {
+  const response = await requestApi(`/api/admin/security/users/${userId}/force-password-reset`, { method: 'POST' })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
 }
 
 export const getPublicCourseReviews = async (id: number): Promise<CourseReview[]> => {
