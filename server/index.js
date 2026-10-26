@@ -80,27 +80,6 @@ const getGeoLocation = async (ip) => {
   const location = geoip.lookup(address)
   return { country: location?.country || null, city: location?.city || null }
 }
-const execFileAsync = promisify(execFile)
-const ensureGeoIpDatabase = async () => {
-  const { MAXMIND_ACCOUNT_ID: accountId, MAXMIND_LICENSE_KEY: licenseKey } = process.env
-  if (process.env.GEOIP_DB_PATH || !accountId || !licenseKey) return
-  const directory = path.join(os.tmpdir(), 'geoip')
-  const databasePath = path.join(directory, 'GeoLite2-City.mmdb')
-  if (!existsSync(databasePath)) {
-    await mkdir(directory, { recursive: true })
-    const response = await fetch('https://download.maxmind.com/geoip/databases/GeoLite2-City/download?suffix=tar.gz', {
-      headers: { Authorization: `Basic ${Buffer.from(`${accountId}:${licenseKey}`).toString('base64')}` },
-    })
-    if (!response.ok) throw new Error(`GeoLite2 download failed with status ${response.status}.`)
-    const archivePath = path.join(directory, 'GeoLite2-City.tar.gz')
-    await writeFile(archivePath, Buffer.from(await response.arrayBuffer()))
-    await execFileAsync('tar', ['-xzf', archivePath, '-C', directory])
-    const extracted = (await readdir(directory, { withFileTypes: true })).find((entry) => entry.isDirectory() && entry.name.startsWith('GeoLite2-City_'))
-    if (!extracted) throw new Error('GeoLite2 archive did not contain a database folder.')
-    await rename(path.join(directory, extracted.name, 'GeoLite2-City.mmdb'), databasePath)
-  }
-  process.env.GEOIP_DB_PATH = databasePath
-}
 const maskIpAddress = (ip) => ip.includes(':') ? `${ip.split(':').slice(0, 3).join(':')}:…` : ip.split('.').map((part, index) => index < 2 ? part : '•').join('.')
 const sessionPolicyFor = (role) => sessionPolicies[role] ?? defaultSessionPolicy
 const getDeviceId = (request) => {
