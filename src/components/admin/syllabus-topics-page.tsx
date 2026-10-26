@@ -7,6 +7,7 @@ import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import IconButton from '@mui/material/IconButton'
+import Pagination from '@mui/material/Pagination'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Tab from '@mui/material/Tab'
@@ -32,6 +33,7 @@ import {
 } from '@/services/api'
 
 const syllabusGrades = [6, 8, 12]
+const pageSize = 10
 
 type TopicEditor = { mode: 'create' } | { mode: 'edit'; topic: SyllabusTopic }
 
@@ -51,6 +53,8 @@ const SyllabusTopicsPage = () => {
   const [deleteTarget, setDeleteTarget] = useState<SyllabusTopic | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isReordering, setIsReordering] = useState(false)
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
 
   useEffect(() => {
     getSyllabusTopics()
@@ -60,6 +64,12 @@ const SyllabusTopicsPage = () => {
   }, [])
 
   const gradeTopics = topics.filter((topic) => topic.grade === grade)
+  const normalizedSearch = search.trim().toLowerCase()
+  const matchingTopics = normalizedSearch ? gradeTopics.filter((topic) => [topic.title, topic.description].join(' ').toLowerCase().includes(normalizedSearch)) : gradeTopics
+  const pageCount = Math.max(1, Math.ceil(matchingTopics.length / pageSize))
+  const currentPage = Math.min(page, pageCount)
+  const visibleTopics = matchingTopics.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const canReorder = !normalizedSearch
 
   const replaceGradeTopics = (nextTopics: SyllabusTopic[]) => {
     setTopics((current) => [...current.filter((topic) => topic.grade !== grade), ...nextTopics])
@@ -115,7 +125,8 @@ const SyllabusTopicsPage = () => {
     }
   }
 
-  const moveTopic = async (index: number, offset: -1 | 1) => {
+  const moveTopic = async (topic: SyllabusTopic, offset: -1 | 1) => {
+    const index = gradeTopics.indexOf(topic)
     const targetIndex = index + offset
     if (targetIndex < 0 || targetIndex >= gradeTopics.length) return
     const reordered = [...gradeTopics]
@@ -140,14 +151,19 @@ const SyllabusTopicsPage = () => {
         <Typography color="text.secondary">The official Ministry exam topics for each grade. Every Ministry Exam Prep class at a grade is measured against this list.</Typography>
       </Box>
 
-      <Tabs value={grade} onChange={(_, nextGrade: number) => setGrade(nextGrade)} aria-label="Syllabus grade">
+      <Tabs value={grade} onChange={(_, nextGrade: number) => { setGrade(nextGrade); setPage(1) }} aria-label="Syllabus grade">
         {syllabusGrades.map((gradeLevel) => <Tab key={gradeLevel} value={gradeLevel} label={`Grade ${gradeLevel} (${topics.filter((topic) => topic.grade === gradeLevel).length})`} />)}
       </Tabs>
 
       <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
-        <Typography color="text.secondary" variant="body2">{gradeTopics.length} official {gradeTopics.length === 1 ? 'topic' : 'topics'} for Grade {grade}</Typography>
+        <TextField size="small" type="search" placeholder="Filter topics" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} sx={{ width: 320, maxWidth: '100%' }} />
         <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>Add topic</Button>
       </Stack>
+      <Typography color="text.secondary" variant="body2">
+        {normalizedSearch
+          ? `${matchingTopics.length} of ${gradeTopics.length} topics match. Clear the filter to reorder.`
+          : `${gradeTopics.length} official ${gradeTopics.length === 1 ? 'topic' : 'topics'} for Grade ${grade}`}
+      </Typography>
 
       {gradeTopics.length === 0 && (
         <Paper elevation={0} sx={{ p: 3, border: 1, borderColor: 'divider', textAlign: 'center' }}>
@@ -156,21 +172,33 @@ const SyllabusTopicsPage = () => {
         </Paper>
       )}
 
-      {gradeTopics.map((topic, index) => (
+      {gradeTopics.length > 0 && matchingTopics.length === 0 && (
+        <Paper elevation={0} sx={{ p: 3, border: 1, borderColor: 'divider', textAlign: 'center' }}>
+          <Typography sx={{ fontWeight: 700 }}>No topics match &ldquo;{search.trim()}&rdquo;</Typography>
+        </Paper>
+      )}
+
+      {visibleTopics.map((topic) => (
         <Paper key={topic.id} elevation={0} sx={{ p: 2, border: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Typography color="text.secondary" sx={{ minWidth: 28, fontWeight: 700 }}>{index + 1}</Typography>
+          <Typography color="text.secondary" sx={{ minWidth: 28, fontWeight: 700 }}>{gradeTopics.indexOf(topic) + 1}</Typography>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography sx={{ fontWeight: 700 }}>{topic.title}</Typography>
             {topic.description && <Typography variant="body2" color="text.secondary">{topic.description}</Typography>}
           </Box>
           <Stack direction="row" spacing={0.5}>
-            <Tooltip title="Move up"><span><IconButton aria-label={`Move ${topic.title} up`} disabled={index === 0 || isReordering} onClick={() => void moveTopic(index, -1)}><ArrowUpwardIcon fontSize="small" /></IconButton></span></Tooltip>
-            <Tooltip title="Move down"><span><IconButton aria-label={`Move ${topic.title} down`} disabled={index === gradeTopics.length - 1 || isReordering} onClick={() => void moveTopic(index, 1)}><ArrowDownwardIcon fontSize="small" /></IconButton></span></Tooltip>
+            <Tooltip title="Move up"><span><IconButton aria-label={`Move ${topic.title} up`} disabled={!canReorder || gradeTopics.indexOf(topic) === 0 || isReordering} onClick={() => void moveTopic(topic, -1)}><ArrowUpwardIcon fontSize="small" /></IconButton></span></Tooltip>
+            <Tooltip title="Move down"><span><IconButton aria-label={`Move ${topic.title} down`} disabled={!canReorder || gradeTopics.indexOf(topic) === gradeTopics.length - 1 || isReordering} onClick={() => void moveTopic(topic, 1)}><ArrowDownwardIcon fontSize="small" /></IconButton></span></Tooltip>
             <Tooltip title="Edit topic"><IconButton aria-label={`Edit ${topic.title}`} onClick={() => openEdit(topic)}><EditOutlinedIcon fontSize="small" /></IconButton></Tooltip>
             <Tooltip title="Delete topic"><IconButton aria-label={`Delete ${topic.title}`} color="error" onClick={() => setDeleteTarget(topic)}><DeleteOutlineIcon fontSize="small" /></IconButton></Tooltip>
           </Stack>
         </Paper>
       ))}
+
+      {matchingTopics.length > pageSize && (
+        <Stack alignItems="center">
+          <Pagination count={pageCount} page={currentPage} onChange={(_, nextPage) => setPage(nextPage)} color="primary" />
+        </Stack>
+      )}
 
       <Dialog open={editor !== null} onClose={() => !isSaving && setEditor(null)} fullWidth maxWidth="sm">
         <DialogTitle>{editor?.mode === 'edit' ? 'Edit topic' : `Add Grade ${grade} topic`}</DialogTitle>
