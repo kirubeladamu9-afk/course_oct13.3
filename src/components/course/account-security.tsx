@@ -68,6 +68,7 @@ const AccountSecurity: FC = () => {
   const [tab, setTab] = useState<'password' | 'two-factor' | 'sessions' | 'alerts' | 'history'>('password')
 
   const user = getAuthenticatedUser()
+  const currentSessions = sessions.filter((session) => session.isCurrent)
   const updatePassword = async () => {
     if (newPassword.length < 8 || newPassword.length > 128 || newPassword !== confirmPassword) {
       setPasswordMessage('Use a password between 8 and 128 characters and make sure both entries match.')
@@ -181,8 +182,8 @@ const AccountSecurity: FC = () => {
         {twoFactorEnabled && <Stack spacing={1.5} sx={{ maxWidth: 520 }}><TextField label="Current password" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /><TextField label="Authenticator or backup code" value={code} onChange={(event) => setCode(event.target.value)} /><Button variant="outlined" color="error" onClick={() => void turnOffTwoFactor()} disabled={busy || !currentPassword || !code}>Turn off two-factor</Button></Stack>}
       </Paper>}
       {tab === 'sessions' && <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}><Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>Active sessions</Typography><Chip label={`${sessions.length} devices`} size="small" variant="outlined" /></Stack>
-        {sessions.length ? <Stack spacing={1.5}>{sessions.map((session) => <SecuritySessionCard key={session.sessionId} session={session} busy={busy} lastActiveText={formatDate(session.lastActiveAt)} onRevoke={() => void revoke(session)} onRename={async (nickname) => { await updateSecuritySessionNickname(session.sessionId, nickname); await reload() }} />)}</Stack> : <Typography color="text.secondary">No active sessions found.</Typography>}
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}><Typography component="h2" variant="h6" sx={{ fontWeight: 800 }}>Active sessions</Typography><Chip label={`${currentSessions.length} ${currentSessions.length === 1 ? 'device' : 'devices'}`} size="small" variant="outlined" /></Stack>
+        {currentSessions.length ? <Stack spacing={1.5}>{currentSessions.map((session) => <SecuritySessionCard key={session.sessionId} session={session} busy={busy} lastActiveText={formatDate(session.lastActiveAt)} onRevoke={() => void revoke(session)} onRename={async (nickname) => { await updateSecuritySessionNickname(session.sessionId, nickname); await reload() }} />)}</Stack> : <Typography color="text.secondary">No active sessions found.</Typography>}
       </Paper>}
       {tab === 'alerts' && <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: 1, borderColor: 'divider', borderRadius: 3 }}>
         <Typography component="h2" variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Recent security alerts</Typography>
