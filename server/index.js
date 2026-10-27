@@ -1520,7 +1520,13 @@ const getTopicPerformance = (modules, quizAttempts, practiceAnswers) => {
       if (selectedOption !== null) addAnswer(question.topic, selectedOption === question.correctOption)
     }
   }
-  for (const answer of Array.isArray(practiceAnswers) ? practiceAnswers : []) addAnswer(answer.topic, answer.correct)
+  const courseTopics = new Set(lessons.flatMap((lesson) => [
+    ...(lesson.quizQuestions ?? []).map((question) => question.topic),
+    ...(lesson.practiceQuestions ?? []).map((question) => question.topic),
+  ]).filter((topic) => typeof topic === 'string').map((topic) => topic.trim().toLocaleLowerCase()))
+  for (const answer of Array.isArray(practiceAnswers) ? practiceAnswers : []) {
+    if (courseTopics.has(String(answer.topic ?? '').trim().toLocaleLowerCase())) addAnswer(answer.topic, answer.correct)
+  }
   return [...topics.values()].map((area) => ({
     ...area,
     accuracy: Math.round((area.correct / area.total) * 100),
