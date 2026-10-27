@@ -4045,7 +4045,7 @@ const getTutorArticleInteractionReport = async (contentType, contentId) => {
   `
   const enrollmentIds = students.map((student) => student.id)
   const helpRequests = enrollmentIds.length ? await sql`
-    SELECT enrollment_id::INTEGER AS "enrollmentId", lesson_id::INTEGER AS "lessonId", section_index AS "sectionIndex", question, flagged_at AS "flaggedAt", question_at AS "questionAt"
+    SELECT enrollment_id::INTEGER AS "enrollmentId", lesson_id AS "lessonId", section_index AS "sectionIndex", question, flagged_at AS "flaggedAt", question_at AS "questionAt"
     FROM article_help_requests
     WHERE enrollment_id = ANY(${enrollmentIds})
     ORDER BY flagged_at DESC
@@ -4069,7 +4069,7 @@ const getTutorArticleInteractionReport = async (contentType, contentId) => {
         enrollmentId: student.id,
         studentName: student.studentName,
         studentEmail: student.studentEmail,
-        helpRequests: helpRequests.filter((request) => request.enrollmentId === student.id && request.lessonId === lesson.id).map(({ sectionIndex, question, flaggedAt, questionAt }) => ({ sectionIndex, sectionTitle: sectionTitles[sectionIndex] ?? 'Section', question, flaggedAt, questionAt })),
+        helpRequests: helpRequests.filter((request) => request.enrollmentId === student.id && Number(request.lessonId) === lesson.id).map(({ sectionIndex, question, flaggedAt, questionAt }) => ({ sectionIndex, sectionTitle: sectionTitles[sectionIndex] ?? 'Section', question, flaggedAt, questionAt })),
         checkpointResponses: checkpointRows
           .filter((row) => Number(row.enrollmentId) === student.id && Number(row.lessonId) === lesson.id && checkpoints.some((item) => item.id === Number(row.checkpointId)))
           .map((row) => ({ checkpointId: Number(row.checkpointId), status: row.skipped ? 'skipped' : row.isCorrect ? 'correct' : 'incorrect', selectedOption: row.selectedOption ?? null, answeredAt: row.answeredAt })),
