@@ -97,7 +97,7 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
   const [mediaDeletePosition, setMediaDeletePosition] = useState<{ top: number; left: number } | null>(null)
   const [checkpointDialog, setCheckpointDialog] = useState<{ checkpoint: ArticleCheckpoint; isNew: boolean } | null>(null)
   const initialHtml = useMemo(() => initialArticleHtml(lesson), [lesson.id])
-  const sectionTitles = useMemo(() => /<h2\b/i.test(lesson.articleBody ?? '') ? getArticleSectionTitles(lesson.articleBody ?? '') : [], [lesson.articleBody])
+  const sectionTitles = useMemo(() => getArticleSectionTitles(/<[^>]+>/.test(lesson.articleBody ?? '') ? lesson.articleBody ?? '' : initialHtml), [lesson.articleBody, initialHtml])
   const orderedCheckpoints = useMemo(() => syncCheckpoints(lesson.articleBody ?? '', lesson.articleCheckpoints), [lesson.articleBody, lesson.articleCheckpoints])
 
   useEffect(() => {
@@ -129,6 +129,7 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
   const insertCheckpoint = () => {
     const editor = editorRef.current
     if (!editor) return
+    saveSelection()
     const id = Date.now()
     const template = document.createElement('template')
     template.innerHTML = `${getCheckpointMarkerHtml(id, '')}<p><br></p>`
@@ -161,10 +162,13 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
   }
 
   const moveCheckpoint = (id: number, direction: -1 | 1) => {
+    const index = orderedCheckpoints.findIndex((item) => item.id === id)
+    const neighbor = index < 0 ? undefined : orderedCheckpoints[index + direction]
     const marker = findCheckpointMarker(id)
-    if (!marker) return
-    if (direction < 0 && marker.previousElementSibling) marker.previousElementSibling.before(marker)
-    if (direction > 0 && marker.nextElementSibling) marker.nextElementSibling.after(marker)
+    const neighborMarker = neighbor ? findCheckpointMarker(neighbor.id) : null
+    if (!marker || !neighborMarker) return
+    if (direction < 0) neighborMarker.before(marker)
+    else neighborMarker.after(marker)
     updateArticle()
   }
 
@@ -276,6 +280,10 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
     </Paper>
 
     <Paper elevation={0} sx={{ overflow: 'hidden', border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper' }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ px: 1.5, py: 1, borderBottom: 1, borderColor: 'divider', backgroundColor: 'background.default' }}>
+        <Typography variant="caption" color="text.secondary">Click where a question should appear, then add it.</Typography>
+        <Button size="small" variant="outlined" color="inherit" startIcon={<AddIcon />} onMouseDown={(event) => event.preventDefault()} onClick={insertCheckpoint} sx={{ textTransform: 'none', fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0 }}>Add Pause &amp; Check</Button>
+      </Stack>
       <Tabs value={toolbarTab} onChange={(_, value: number) => setToolbarTab(value)} aria-label="Article formatting tools" variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile sx={{ minHeight: 40, borderBottom: 1, borderColor: 'divider', backgroundColor: 'background.default', '& .MuiTab-root': { minHeight: 40, minWidth: 72, px: 1.5, fontSize: 12, textTransform: 'none' } }}>
         <Tab id="article-toolbar-tab-0" aria-controls="article-toolbar-panel-0" label="Text" />
         <Tab id="article-toolbar-tab-1" aria-controls="article-toolbar-panel-1" label="Layout" />
@@ -314,8 +322,6 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
           <input ref={imageInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload inline lesson image" onChange={(event) => { const [file] = Array.from(event.target.files ?? []); void insertInlineImage(file); event.target.value = '' }} />
           {toolbarButton('Embed video', <VideoLibraryOutlinedIcon fontSize="small" />, insertVideo)}
           {toolbarButton('Insert code block', <CodeOutlinedIcon fontSize="small" />, insertCode)}
-          {separators}
-          <Button size="small" variant="outlined" color="inherit" startIcon={<AddIcon />} onMouseDown={(event) => event.preventDefault()} onClick={insertCheckpoint} sx={{ textTransform: 'none', fontSize: 12, whiteSpace: 'nowrap' }}>Add Pause &amp; Check</Button>
         </>}
         {toolbarTab === 3 && <>
           {toolbarButton('Undo', <UndoOutlinedIcon fontSize="small" />, () => runCommand('undo'))}

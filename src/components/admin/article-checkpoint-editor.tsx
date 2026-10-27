@@ -65,7 +65,7 @@ export const ArticleCheckpointDialog: FC<{ checkpoint: ArticleCheckpoint; onSave
 
 export const ArticleCheckpointList: FC<{ checkpoints: ArticleCheckpoint[]; onEdit: (id: number) => void; onMove: (id: number, direction: -1 | 1) => void; onDelete: (id: number) => void }> = ({ checkpoints, onEdit, onMove, onDelete }) => <Paper elevation={0} sx={{ p: { xs: 1.5, sm: 2 }, border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper' }}>
   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Pause &amp; Check questions</Typography>
-  <Typography variant="caption" color="text.secondary">Place the cursor in the article and use Insert &gt; Add Pause &amp; Check. Students see each question where it appears in the article.</Typography>
+  <Typography variant="caption" color="text.secondary">Click where a question should appear in the article, then select Add Pause &amp; Check. Students see each question at that position.</Typography>
   {checkpoints.length === 0 && <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>No questions yet.</Typography>}
   <Stack spacing={1} sx={{ mt: 1.5 }}>
     {checkpoints.map((checkpoint, index) => <Stack key={checkpoint.id} direction="row" alignItems="center" spacing={1} sx={{ p: 1, border: 1, borderColor: 'divider', borderRadius: 1.5, minWidth: 0 }}>
