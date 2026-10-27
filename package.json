@@ -22,6 +22,7 @@
     "@mui/icons-material": "^5.15.20",
     "@mui/material": "^5.15.20",
     "bowser": "^2.14.1",
+    "compression": "^1.8.2",
     "concurrently": "^10.0.5",
     "docx": "^9.10.0",
     "express": "^5.2.1",

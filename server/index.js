@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, 
 import { promisify } from 'node:util'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import compression from 'compression'
 import express from 'express'
 import geoip from 'geoip-lite'
 import helmet from 'helmet'
@@ -48,6 +49,7 @@ app.use(helmet({
     },
   },
 }))
+app.use(compression())
 const port = Number(process.env.PORT ?? 3001)
 const distDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist')
 const isTestChapa = process.env.CHAPA_MODE !== 'live'

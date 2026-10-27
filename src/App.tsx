@@ -7,22 +7,23 @@ import { Footer } from '@/components/footer'
 import { Header } from '@/components/header'
 import { SpinnerCustom } from '@/components/spinner'
 import SignInPage from '@/components/auth/sign-in-page'
-import AdminDashboard from '@/components/admin/admin-dashboard'
-import CourseDetailPage from '@/components/course/course-detail-page'
-import CourseMarketplacePage from '@/components/course/course-marketplace-page'
-import StudentDashboard from '@/components/course/student-dashboard'
-import AccountSecurity from '@/components/course/account-security'
-import TutorDashboard from '@/components/tutor/tutor-dashboard'
-import PracticeExamCatalog from '@/components/practice/practice-exam-catalog'
-import PracticeExamPlayer from '@/components/practice/practice-exam-player'
-import InfoPage from '@/components/info/info-page'
-import { BookstorePage } from '@/components/bookstore/bookstore-page'
 import { navigateTo } from '@/lib/navigation'
 import { SITE_NAME } from '@/lib/site'
 import { type Course } from '@/interfaces/course'
 import { getAuthenticatedUser, getCourses } from '@/services/api'
 
 const loadSection = <Props extends object = {}>(load: () => Promise<{ default: React.ComponentType<Props> }>) => lazy(load)
+
+const AdminDashboard = loadSection(() => import('@/components/admin/admin-dashboard'))
+const CourseDetailPage = loadSection(() => import('@/components/course/course-detail-page'))
+const CourseMarketplacePage = loadSection(() => import('@/components/course/course-marketplace-page'))
+const StudentDashboard = loadSection(() => import('@/components/course/student-dashboard'))
+const AccountSecurity = loadSection(() => import('@/components/course/account-security'))
+const TutorDashboard = loadSection(() => import('@/components/tutor/tutor-dashboard'))
+const PracticeExamCatalog = loadSection(() => import('@/components/practice/practice-exam-catalog'))
+const PracticeExamPlayer = loadSection(() => import('@/components/practice/practice-exam-player'))
+const InfoPage = loadSection(() => import('@/components/info/info-page'))
+const BookstorePage = lazy(() => import('@/components/bookstore/bookstore-page').then((module) => ({ default: module.BookstorePage })))
 
 const HomeHero = loadSection(() => import('@/components/home/hero'))
 const HomeFeature = loadSection(() => import('@/components/home/feature'))
@@ -63,6 +64,10 @@ const getAdminPageTitle = (pathname: string) => {
   if (normalizedPath === '/admin/security') return 'Security'
   return 'Admin Dashboard'
 }
+
+const RouteSuspense: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <Suspense fallback={<div className="page-loading-state"><SpinnerCustom /></div>}>{children}</Suspense>
+)
 
 const RouteLoadingState: React.FC<{ message: string }> = ({ message }) => (
   <Box
@@ -172,16 +177,16 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   }, [currentPath, isAboutPath, isAdminPath, isBookstorePath, isContactPath, isDashboardPath, isPracticeCatalogPath, isSecurityPath, isTutorPath, practiceExamMatch])
 
   if ((isAdminPath && !canAccessAdmin) || (isTutorPath && !canAccessTutor) || (isSecurityPath && !isAuthenticated) || (isDashboardPath && (!isAuthenticated || currentUser?.role === 'admin' || currentUser?.role === 'tutor')) || (isAuthenticated && isPublicPath)) return <RouteLoadingState message="Returning to Coursespace..." />
-  if (isSecurityPath) return <Container maxWidth="lg" sx={{ py: { xs: 3, md: 6 } }}><Button onClick={() => navigateTo(currentUser?.role === 'admin' ? '/admin' : currentUser?.role === 'tutor' ? '/tutor' : '/dashboard')} sx={{ mb: 3 }}>Back to dashboard</Button><AccountSecurity /></Container>
-  if (isAdminPath) return <AdminDashboard darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
-  if (isTutorPath) return <TutorDashboard darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
-  if (isDashboardPath) return <StudentDashboard darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
-  if (isPracticeCatalogPath) return <PracticeExamCatalog darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
-  if (practiceExamMatch) return <PracticeExamPlayer examId={Number(practiceExamMatch[1])} darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
-  if (isAboutPath) return <InfoPage kind="about" darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
-  if (isBookstorePath) return <BookstorePage darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
-  if (isCourseMarketplacePath) return <CourseMarketplacePage courses={homeCourses ?? []} darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} isLoading={homeCourses === null} />
-  if (isContactPath) return <InfoPage kind="contact" darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
+  if (isSecurityPath) return <RouteSuspense><Container maxWidth="lg" sx={{ py: { xs: 3, md: 6 } }}><Button onClick={() => navigateTo(currentUser?.role === 'admin' ? '/admin' : currentUser?.role === 'tutor' ? '/tutor' : '/dashboard')} sx={{ mb: 3 }}>Back to dashboard</Button><AccountSecurity /></Container></RouteSuspense>
+  if (isAdminPath) return <RouteSuspense><AdminDashboard darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /></RouteSuspense>
+  if (isTutorPath) return <RouteSuspense><TutorDashboard darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /></RouteSuspense>
+  if (isDashboardPath) return <RouteSuspense><StudentDashboard darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /></RouteSuspense>
+  if (isPracticeCatalogPath) return <RouteSuspense><PracticeExamCatalog darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /></RouteSuspense>
+  if (practiceExamMatch) return <RouteSuspense><PracticeExamPlayer examId={Number(practiceExamMatch[1])} darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /></RouteSuspense>
+  if (isAboutPath) return <RouteSuspense><InfoPage kind="about" darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /></RouteSuspense>
+  if (isBookstorePath) return <RouteSuspense><BookstorePage darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /></RouteSuspense>
+  if (isCourseMarketplacePath) return <RouteSuspense><CourseMarketplacePage courses={homeCourses ?? []} darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} isLoading={homeCourses === null} /></RouteSuspense>
+  if (isContactPath) return <RouteSuspense><InfoPage kind="contact" darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /></RouteSuspense>
   if (isSignInPath) return <Box component="main"><Header darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /><SignInPage mode="sign-in" /><Footer /></Box>
   if (!courseMatch && !isCourseMarketplacePath && homeCourses === null) return <div className="page-loading-state"><SpinnerCustom /></div>
 
