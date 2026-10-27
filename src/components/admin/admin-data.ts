@@ -122,17 +122,6 @@ export interface ArticleVocabularyEntry {
   example: string
 }
 
-export interface ArticleCheckpoint {
-  id: number
-  afterSectionIndex: number
-  question: string
-  options: string[]
-  correctOption: number
-  explanation: string
-}
-
-export type LearnerArticleCheckpoint = Omit<ArticleCheckpoint, 'correctOption' | 'explanation'>
-
 export interface AdminLesson {
   id: number
   title: string
@@ -144,7 +133,6 @@ export interface AdminLesson {
   articleBody?: string
   articleBlocks?: ArticleContentBlock[]
   articleVocabulary?: ArticleVocabularyEntry[]
-  articleCheckpoints?: ArticleCheckpoint[]
   articleHeaderImageUrl?: string
   baseImageUrl?: string
   interactiveHotspots?: InteractiveHotspot[]

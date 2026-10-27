@@ -7,47 +7,7 @@ import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
-import { type LearnerArticleCheckpoint } from '@/components/admin/admin-data'
-import { type ArticleCheckpointAnswer, type ArticleHelpRequest } from '@/services/api'
-
-export const ArticleCheckpointCard: FC<{ checkpoint: LearnerArticleCheckpoint; answer?: ArticleCheckpointAnswer; saving: boolean; onAnswer: (values: { selectedOption?: number; skip?: boolean }) => void }> = ({ checkpoint, answer, saving, onAnswer }) => {
-  const [selectedOption, setSelectedOption] = useState<number | null>(null)
-  const answered = answer !== undefined && !answer.skipped
-  const chosenOption = answer ? answer.selectedOption : selectedOption
-
-  return <Paper elevation={0} role="group" aria-label="Pause and check" sx={{ p: { xs: 2.5, md: 3 }, mt: 3, border: 1, borderColor: 'primary.main', borderRadius: 2 }}>
-    <Stack spacing={2}>
-      <Typography variant="overline" color="primary.main" sx={{ fontWeight: 800, letterSpacing: 1 }}>Pause &amp; check</Typography>
-      <Typography variant="h6" sx={{ fontWeight: 700 }}>{checkpoint.question}</Typography>
-      <Stack spacing={1}>
-        {checkpoint.options.map((option, index) => {
-          const isCorrect = answered && answer?.correctOption === index
-          const isWrongChoice = answered && chosenOption === index && !isCorrect
-          return <Button
-            key={index}
-            aria-pressed={chosenOption === index}
-            variant={chosenOption === index ? 'contained' : 'outlined'}
-            color={isCorrect ? 'success' : isWrongChoice ? 'error' : 'inherit'}
-            disabled={saving}
-            onClick={() => { if (!answer) setSelectedOption(index) }}
-            sx={{ justifyContent: 'flex-start', textAlign: 'left' }}
-          >
-            {option}
-          </Button>
-        })}
-      </Stack>
-      {!answer && <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-        <Button variant="contained" disabled={selectedOption === null || saving} onClick={() => selectedOption !== null && onAnswer({ selectedOption })}>Check answer</Button>
-        <Button variant="text" color="inherit" disabled={saving} onClick={() => onAnswer({ skip: true })}>Skip for now</Button>
-      </Stack>}
-      {answered && <Paper elevation={0} role="status" sx={{ p: 2, backgroundColor: (theme) => answer?.selectedOption === answer?.correctOption ? theme.palette.success.light : theme.palette.error.light }}>
-        <Typography sx={{ fontWeight: 700, mb: 0.5 }}>{answer?.selectedOption === answer?.correctOption ? 'Correct' : `Not quite. The correct answer is ${checkpoint.options[answer?.correctOption ?? 0]}.`}</Typography>
-        {answer?.explanation && <Typography variant="body2">{answer.explanation}</Typography>}
-      </Paper>}
-      {answer?.skipped && <Typography variant="body2" color="text.secondary">You skipped this check.</Typography>}
-    </Stack>
-  </Paper>
-}
+import { type ArticleHelpRequest } from '@/services/api'
 
 export const ArticleSectionHelp: FC<{ sectionTitle: string; helpRequest?: ArticleHelpRequest; saving: boolean; onFlag: () => void; onAskQuestion: (question: string) => void }> = ({ sectionTitle, helpRequest, saving, onFlag, onAskQuestion }) => {
   const [question, setQuestion] = useState('')
