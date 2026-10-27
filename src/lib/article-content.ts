@@ -40,6 +40,16 @@ const copySafeNode = (node: Node, target: Node) => {
     node.childNodes.forEach((child) => copySafeNode(child, target))
     return
   }
+  if (tag === 'DIV' && node.hasAttribute('data-checkpoint-id')) {
+    const checkpointId = node.getAttribute('data-checkpoint-id') ?? ''
+    if (!/^\d+$/.test(checkpointId)) return
+    const marker = document.createElement('div')
+    marker.setAttribute('data-checkpoint-id', checkpointId)
+    marker.setAttribute('contenteditable', 'false')
+    marker.textContent = node.textContent ?? ''
+    target.appendChild(marker)
+    return
+  }
   if (tag === 'IFRAME' && !safeVideoEmbed(node.getAttribute('src') ?? '')) return
   if (tag === 'IMG' && !safeImage(node.getAttribute('src') ?? '')) return
 

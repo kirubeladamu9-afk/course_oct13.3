@@ -669,6 +669,19 @@ const initializeDatabase = async () => {
     )
   `
   await sql`
+    CREATE TABLE IF NOT EXISTS article_checkpoint_responses (
+      enrollment_id BIGINT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
+      lesson_id BIGINT NOT NULL,
+      checkpoint_id BIGINT NOT NULL,
+      selected_option INTEGER CHECK (selected_option >= 0),
+      skipped BOOLEAN NOT NULL DEFAULT FALSE,
+      is_correct BOOLEAN,
+      answered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (enrollment_id, lesson_id, checkpoint_id),
+      CHECK ((skipped AND selected_option IS NULL AND is_correct IS NULL) OR (NOT skipped AND selected_option IS NOT NULL AND is_correct IS NOT NULL))
+    )
+  `
+  await sql`
     CREATE TABLE IF NOT EXISTS step_by_step_solver_sessions (
       id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       enrollment_id BIGINT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
@@ -1416,12 +1429,13 @@ const sanitizeModulesForLearner = (modules) => Array.isArray(modules)
   ? modules.map((module) => ({
     ...module,
     lessons: Array.isArray(module?.lessons)
-      ? module.lessons.map(({ quizQuestions, stepByStepSolver, ...lesson }) => ({
+      ? module.lessons.map(({ quizQuestions, stepByStepSolver, articleCheckpoints, ...lesson }) => ({
         ...lesson,
         quizQuestions: Array.isArray(quizQuestions)
           ? quizQuestions.map(({ correctOption, ...question }) => question)
           : quizQuestions,
         ...(lesson.type === 'stepByStepSolver' ? { stepByStepSolver: { problems: (stepByStepSolver?.problems ?? []).map(({ id, prompt }) => ({ id, prompt })) } } : {}),
+        ...(Array.isArray(articleCheckpoints) ? { articleCheckpoints: articleCheckpoints.map(({ id, question, options }) => ({ id, question, options })) } : {}),
       }))
       : [],
   }))
@@ -2525,6 +2539,24 @@ const getOwnedEnrollment = async (transaction, userId, enrollmentId) => {
 
 const findCourseLesson = (modules, lessonId) => getCourseLessons(deserializeJson(modules)).find((lesson) => lesson?.id === lessonId) ?? null
 
+const getArticleCheckpoints = (lesson) => {
+  const body = String(lesson?.articleBody ?? '')
+  return (Array.isArray(lesson?.articleCheckpoints) ? lesson.articleCheckpoints : [])
+    .map((checkpoint) => ({ checkpoint, position: body.indexOf(`data-checkpoint-id="${checkpoint.id}"`) }))
+    .filter(({ position }) => position !== -1)
+    .sort((first, second) => first.position - second.position)
+    .map(({ checkpoint }) => checkpoint)
+}
+
+const toCheckpointResponse = (row, checkpoint) => ({
+  checkpointId: Number(row.checkpointId),
+  status: row.skipped ? 'skipped' : row.isCorrect ? 'correct' : 'incorrect',
+  selectedOption: row.selectedOption ?? null,
+  correctOption: row.skipped ? null : checkpoint.correctOption,
+  explanation: row.skipped ? '' : checkpoint.explanation ?? '',
+  answeredAt: row.answeredAt,
+})
+
 const decodeHtmlText = (value) => value
   .replace(/&nbsp;/g, ' ')
   .replace(/&lt;/g, '<')
@@ -2838,11 +2870,64 @@ app.get('/api/enrollments/:enrollmentId/lessons/:lessonId/article-interactions',
       WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}
       ORDER BY section_index
     `
-    return { helpRequests }
+    const checkpointRows = await transaction`
+      SELECT checkpoint_id AS "checkpointId", selected_option AS "selectedOption", skipped, is_correct AS "isCorrect", answered_at AS "answeredAt"
+      FROM article_checkpoint_responses
+      WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}
+      ORDER BY checkpoint_id
+    `
+    const checkpoints = getArticleCheckpoints(lesson)
+    const checkpointResponses = checkpointRows.flatMap((row) => {
+      const checkpoint = checkpoints.find((item) => item.id === Number(row.checkpointId))
+      return checkpoint ? [toCheckpointResponse(row, checkpoint)] : []
+    })
+    return { helpRequests, checkpointResponses }
   })
   if (!state) return response.status(404).json({ message: 'Course enrollment not found.' })
   if (state.error) return response.status(404).json({ message: state.error })
   return response.json(state)
+})
+
+app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/article-checkpoints/:checkpointId/answer', requireAuthenticated, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  const checkpointId = parseEnrollmentId(request.params.checkpointId)
+  const skipped = request.body?.skipped === true
+  const selectedOption = request.body?.selectedOption
+  if (enrollmentId === null || lessonId === null || checkpointId === null || (!skipped && !Number.isInteger(selectedOption))) return response.status(400).json({ message: 'Invalid checkpoint answer.' })
+
+  const result = await sql.begin(async (transaction) => {
+    const enrollment = await getOwnedEnrollment(transaction, request.userId, enrollmentId)
+    if (!enrollment) return null
+    const lesson = findCourseLesson(enrollment.modules, lessonId)
+    if (!lesson || lesson.type !== 'article') return { error: 'Article lesson not found.' }
+    const checkpoint = getArticleCheckpoints(lesson).find((item) => item.id === checkpointId)
+    if (!checkpoint) return { error: 'Check not found.' }
+    if (!skipped && (selectedOption < 0 || selectedOption >= checkpoint.options.length)) return { error: 'Choose one of the answer options.' }
+
+    const isCorrect = skipped ? null : selectedOption === checkpoint.correctOption
+    const [inserted] = await transaction`
+      INSERT INTO article_checkpoint_responses (enrollment_id, lesson_id, checkpoint_id, selected_option, skipped, is_correct)
+      VALUES (${enrollmentId}, ${lessonId}, ${checkpointId}, ${skipped ? null : selectedOption}, ${skipped}, ${isCorrect})
+      ON CONFLICT (enrollment_id, lesson_id, checkpoint_id) DO NOTHING
+      RETURNING checkpoint_id AS "checkpointId", selected_option AS "selectedOption", skipped, is_correct AS "isCorrect", answered_at AS "answeredAt"
+    `
+    const [row] = inserted ? [inserted] : await transaction`
+      SELECT checkpoint_id AS "checkpointId", selected_option AS "selectedOption", skipped, is_correct AS "isCorrect", answered_at AS "answeredAt"
+      FROM article_checkpoint_responses
+      WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND checkpoint_id = ${checkpointId}
+    `
+    await transaction`
+      INSERT INTO student_lesson_progress (enrollment_id, lesson_id)
+      VALUES (${enrollmentId}, ${lessonId})
+      ON CONFLICT (enrollment_id, lesson_id) DO UPDATE SET last_accessed_at = NOW()
+    `
+    return toCheckpointResponse(row, checkpoint)
+  })
+
+  if (!result) return response.status(404).json({ message: 'Course enrollment not found.' })
+  if (result.error) return response.status(404).json({ message: result.error })
+  return response.json(result)
 })
 
 app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/article-help', requireAuthenticated, async (request, response) => {
@@ -2858,6 +2943,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/article-help', requir
     const lesson = findCourseLesson(enrollment.modules, lessonId)
     if (!lesson || lesson.type !== 'article') return { error: 'Article lesson not found.' }
     if (sectionIndex >= getArticleSectionTitles(lesson.articleBody).length) return { error: 'Section not found.' }
+    if ((lesson.articleHelpDisabledSections ?? []).includes(sectionIndex)) return { error: 'Help requests are not enabled for this section.' }
 
     const [helpRequest] = await transaction`
       INSERT INTO article_help_requests (enrollment_id, lesson_id, section_index, question, question_at)
@@ -3965,17 +4051,28 @@ const getTutorArticleInteractionReport = async (contentType, contentId) => {
     ORDER BY flagged_at DESC
   ` : []
 
+  const checkpointRows = enrollmentIds.length ? await sql`
+    SELECT enrollment_id AS "enrollmentId", lesson_id AS "lessonId", checkpoint_id AS "checkpointId", selected_option AS "selectedOption", skipped, is_correct AS "isCorrect", answered_at AS "answeredAt"
+    FROM article_checkpoint_responses
+    WHERE enrollment_id = ANY(${enrollmentIds})
+  ` : []
+
   return getCourseLessons(deserializeJson(content?.modules) ?? []).filter((lesson) => lesson?.type === 'article').map((lesson) => {
     const sectionTitles = getArticleSectionTitles(lesson.articleBody)
+    const checkpoints = getArticleCheckpoints(lesson)
     return {
       lessonId: lesson.id,
       lessonTitle: lesson.title,
       sectionTitles,
+      checkpoints: checkpoints.map(({ id, question, options, correctOption }) => ({ id, question, options, correctOption })),
       students: students.map((student) => ({
         enrollmentId: student.id,
         studentName: student.studentName,
         studentEmail: student.studentEmail,
         helpRequests: helpRequests.filter((request) => request.enrollmentId === student.id && request.lessonId === lesson.id).map(({ sectionIndex, question, flaggedAt, questionAt }) => ({ sectionIndex, sectionTitle: sectionTitles[sectionIndex] ?? 'Section', question, flaggedAt, questionAt })),
+        checkpointResponses: checkpointRows
+          .filter((row) => Number(row.enrollmentId) === student.id && Number(row.lessonId) === lesson.id && checkpoints.some((item) => item.id === Number(row.checkpointId)))
+          .map((row) => ({ checkpointId: Number(row.checkpointId), status: row.skipped ? 'skipped' : row.isCorrect ? 'correct' : 'incorrect', selectedOption: row.selectedOption ?? null, answeredAt: row.answeredAt })),
       })),
     }
   })

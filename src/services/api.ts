@@ -2,6 +2,7 @@ import { type AdminCourse, type AdminModule, type AdminTutor, type AdminUser } f
 import { type Course } from '@/interfaces/course'
 import { type ArticleContentBlock, type ArticleVocabularyEntry, type SimulationConfig, type StepByStepSolverLearnerConfig, type StepByStepSolverSession, type StepByStepSolverState } from '@/components/admin/admin-data'
 import { type PracticeExam, type PracticeExamWithQuestions, type PracticePurchase, type PracticeQuestion } from '@/components/practice/practice-data'
+import { type LearnerArticleCheckpoint } from '@/lib/article-checkpoints'
 import { navigateTo } from '@/lib/navigation'
 import { readClientHints } from '@/lib/client-hints'
 
@@ -135,6 +136,8 @@ interface EnrollmentLesson {
   articleBlocks?: ArticleContentBlock[]
   articleVocabulary?: ArticleVocabularyEntry[]
   articleHeaderImageUrl?: string
+  articleCheckpoints?: LearnerArticleCheckpoint[]
+  articleHelpDisabledSections?: number[]
   baseImageUrl?: string
   interactiveHotspots?: Array<{ id: number; left: string; top: string; label: string; explanation: string }>
   simulation?: SimulationConfig
@@ -1435,11 +1438,27 @@ export interface ArticleHelpRequest {
   questionAt: string | null
 }
 
+export interface ArticleCheckpointResponse {
+  checkpointId: number
+  status: 'correct' | 'incorrect' | 'skipped'
+  selectedOption: number | null
+  correctOption: number | null
+  explanation: string
+  answeredAt: string
+}
+
 export interface ArticleInteractionState {
   helpRequests: ArticleHelpRequest[]
+  checkpointResponses: ArticleCheckpointResponse[]
 }
 
 export const getArticleInteractions = (enrollmentId: number, lessonId: number) => requestLearningProgress<ArticleInteractionState>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/article-interactions`, {})
+
+export const recordArticleCheckpointAnswer = (enrollmentId: number, lessonId: number, checkpointId: number, answer: { selectedOption: number } | { skipped: true }) => requestLearningProgress<ArticleCheckpointResponse>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/article-checkpoints/${checkpointId}/answer`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(answer),
+})
 
 export const requestArticleSectionHelp = (enrollmentId: number, lessonId: number, sectionIndex: number, question: string) => requestLearningProgress<ArticleHelpRequest>(`/api/enrollments/${enrollmentId}/lessons/${lessonId}/article-help`, {
   method: 'POST',
@@ -1452,11 +1471,13 @@ export interface TutorArticleInteractionReport {
     lessonId: number
     lessonTitle: string
     sectionTitles: string[]
+    checkpoints: Array<{ id: number; question: string; options: string[]; correctOption: number }>
     students: Array<{
       enrollmentId: number
       studentName: string
       studentEmail: string
       helpRequests: Array<{ sectionIndex: number; sectionTitle: string; question: string | null; flaggedAt: string; questionAt: string | null }>
+      checkpointResponses: Array<{ checkpointId: number; status: 'correct' | 'incorrect' | 'skipped'; selectedOption: number | null; answeredAt: string }>
     }>
   }>
 }

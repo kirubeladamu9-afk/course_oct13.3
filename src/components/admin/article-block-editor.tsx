@@ -1,3 +1,4 @@
+import AddIcon from '@mui/icons-material/Add'
 import AddPhotoAlternateOutlinedIcon from '@mui/icons-material/AddPhotoAlternateOutlined'
 import CloseIcon from '@mui/icons-material/Close'
 import CodeOutlinedIcon from '@mui/icons-material/CodeOutlined'
@@ -40,7 +41,10 @@ import Typography from '@mui/material/Typography'
 import { type FC, type ReactElement, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from '@/components/toast'
 import { sanitizeArticleHtml } from '@/lib/article-content'
+import { type ArticleCheckpoint, getCheckpointIdsInOrder, getCheckpointLabel, getCheckpointMarkerHtml } from '@/lib/article-checkpoints'
+import { getArticleSectionTitles } from '@/lib/article-sections'
 import { type AdminLesson } from './admin-data'
+import { ArticleCheckpointDialog, ArticleCheckpointList, ArticleHelpSettings } from './article-checkpoint-editor'
 
 type Props = { lesson: AdminLesson; onChange: (lesson: AdminLesson) => void; readImage: (file: File) => Promise<string> }
 
@@ -55,6 +59,11 @@ const initialArticleHtml = (lesson: AdminLesson) => {
   }).join('')
   return (lesson.articleBody ?? '').split(/\n+/).filter(Boolean).map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join('') || '<p><br></p>'
 }
+
+const syncCheckpoints = (articleBody: string, checkpoints: ArticleCheckpoint[] = []) => getCheckpointIdsInOrder(articleBody).flatMap((id) => {
+  const checkpoint = checkpoints.find((item) => item.id === id)
+  return checkpoint ? [checkpoint] : []
+})
 
 const getVideoEmbedUrl = (value: string) => {
   try {
@@ -86,7 +95,10 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
   const [headerError, setHeaderError] = useState<string | null>(null)
   const [toolbarTab, setToolbarTab] = useState(0)
   const [mediaDeletePosition, setMediaDeletePosition] = useState<{ top: number; left: number } | null>(null)
+  const [checkpointDialog, setCheckpointDialog] = useState<{ checkpoint: ArticleCheckpoint; isNew: boolean } | null>(null)
   const initialHtml = useMemo(() => initialArticleHtml(lesson), [lesson.id])
+  const sectionTitles = useMemo(() => /<h2\b/i.test(lesson.articleBody ?? '') ? getArticleSectionTitles(lesson.articleBody ?? '') : [], [lesson.articleBody])
+  const orderedCheckpoints = useMemo(() => syncCheckpoints(lesson.articleBody ?? '', lesson.articleCheckpoints), [lesson.articleBody, lesson.articleCheckpoints])
 
   useEffect(() => {
     if (editorRef.current) editorRef.current.innerHTML = initialHtml
@@ -108,8 +120,57 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
   const updateArticle = () => {
     if (!editorRef.current) return
     const articleBody = sanitizeArticleHtml(editorRef.current.innerHTML)
-    onChange({ ...lesson, articleBody, articleBlocks: undefined })
+    onChange({ ...lesson, articleBody, articleBlocks: undefined, articleCheckpoints: syncCheckpoints(articleBody, lesson.articleCheckpoints) })
     saveSelection()
+  }
+
+  const findCheckpointMarker = (id: number) => editorRef.current?.querySelector(`[data-checkpoint-id="${id}"]`) ?? null
+
+  const insertCheckpoint = () => {
+    const editor = editorRef.current
+    if (!editor) return
+    const id = Date.now()
+    const template = document.createElement('template')
+    template.innerHTML = `${getCheckpointMarkerHtml(id, '')}<p><br></p>`
+    let block: Node | null = selectionRef.current?.startContainer ?? null
+    while (block && block.parentNode !== editor) block = block.parentNode
+    if (block) (block as ChildNode).after(template.content)
+    else editor.append(template.content)
+    const newCheckpoint: ArticleCheckpoint = { id, question: '', options: ['', ''], correctOption: 0, explanation: '' }
+    const articleBody = sanitizeArticleHtml(editor.innerHTML)
+    onChange({ ...lesson, articleBody, articleBlocks: undefined, articleCheckpoints: syncCheckpoints(articleBody, [...(lesson.articleCheckpoints ?? []), newCheckpoint]) })
+    setCheckpointDialog({ checkpoint: newCheckpoint, isNew: true })
+  }
+
+  const saveCheckpoint = (checkpoint: ArticleCheckpoint) => {
+    const marker = findCheckpointMarker(checkpoint.id)
+    if (marker) marker.textContent = getCheckpointLabel(checkpoint.question)
+    const existing = lesson.articleCheckpoints ?? []
+    const checkpoints = existing.some((item) => item.id === checkpoint.id) ? existing.map((item) => item.id === checkpoint.id ? checkpoint : item) : [...existing, checkpoint]
+    const articleBody = editorRef.current ? sanitizeArticleHtml(editorRef.current.innerHTML) : lesson.articleBody ?? ''
+    onChange({ ...lesson, articleBody, articleBlocks: undefined, articleCheckpoints: syncCheckpoints(articleBody, checkpoints) })
+    setCheckpointDialog(null)
+  }
+
+  const cancelCheckpoint = () => {
+    if (checkpointDialog?.isNew) {
+      findCheckpointMarker(checkpointDialog.checkpoint.id)?.remove()
+      updateArticle()
+    }
+    setCheckpointDialog(null)
+  }
+
+  const moveCheckpoint = (id: number, direction: -1 | 1) => {
+    const marker = findCheckpointMarker(id)
+    if (!marker) return
+    if (direction < 0 && marker.previousElementSibling) marker.previousElementSibling.before(marker)
+    if (direction > 0 && marker.nextElementSibling) marker.nextElementSibling.after(marker)
+    updateArticle()
+  }
+
+  const deleteCheckpoint = (id: number) => {
+    findCheckpointMarker(id)?.remove()
+    updateArticle()
   }
 
   const selectArticleMedia = (media: HTMLImageElement | HTMLIFrameElement) => {
@@ -253,6 +314,8 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
           <input ref={imageInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload inline lesson image" onChange={(event) => { const [file] = Array.from(event.target.files ?? []); void insertInlineImage(file); event.target.value = '' }} />
           {toolbarButton('Embed video', <VideoLibraryOutlinedIcon fontSize="small" />, insertVideo)}
           {toolbarButton('Insert code block', <CodeOutlinedIcon fontSize="small" />, insertCode)}
+          {separators}
+          <Button size="small" variant="outlined" color="inherit" startIcon={<AddIcon />} onMouseDown={(event) => event.preventDefault()} onClick={insertCheckpoint} sx={{ textTransform: 'none', fontSize: 12, whiteSpace: 'nowrap' }}>Add Pause &amp; Check</Button>
         </>}
         {toolbarTab === 3 && <>
           {toolbarButton('Undo', <UndoOutlinedIcon fontSize="small" />, () => runCommand('undo'))}
@@ -270,6 +333,12 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
           onInput={updateArticle}
           onClick={(event) => {
             const target = event.target
+            const checkpointMarker = target instanceof Element ? target.closest('[data-checkpoint-id]') : null
+            if (checkpointMarker) {
+              const checkpoint = lesson.articleCheckpoints?.find((item) => item.id === Number(checkpointMarker.getAttribute('data-checkpoint-id')))
+              if (checkpoint) setCheckpointDialog({ checkpoint, isNew: false })
+              return
+            }
             if (target instanceof HTMLImageElement || target instanceof HTMLIFrameElement) selectArticleMedia(target)
             else {
               selectedMediaRef.current = null
@@ -305,11 +374,15 @@ const ArticleBlockEditor: FC<Props> = ({ lesson, onChange, readImage }) => {
             '& td, & th': { minWidth: 80, border: 1, borderColor: 'divider', p: 1, textAlign: 'left' },
             '& pre': { p: 2, overflowX: 'auto', borderRadius: 1.5, backgroundColor: 'action.hover', fontFamily: 'monospace', lineHeight: 1.5 },
             '& blockquote': { mx: 0, my: 2, pl: 2, borderLeft: 3, borderColor: 'primary.main', color: 'text.secondary' },
+            '& [data-checkpoint-id]': { my: 2, px: 2, py: 1.25, borderLeft: 4, borderColor: 'primary.main', borderRadius: 1.5, backgroundColor: 'action.hover', color: 'primary.dark', fontWeight: 700, fontSize: 14, cursor: 'pointer', userSelect: 'none' },
           }}
         />
         {mediaDeletePosition && <IconButton aria-label="Delete selected image or video" title="Delete embedded media" onMouseDown={(event) => event.preventDefault()} onClick={deleteSelectedMedia} sx={{ position: 'absolute', top: mediaDeletePosition.top, left: mediaDeletePosition.left, zIndex: 2, width: 30, height: 30, color: 'common.white', backgroundColor: 'error.main', boxShadow: 2, '&:hover': { backgroundColor: 'error.dark' } }}><CloseIcon fontSize="small" /></IconButton>}
       </Box>
     </Paper>
+    <ArticleCheckpointList checkpoints={orderedCheckpoints} onEdit={(id) => { const checkpoint = lesson.articleCheckpoints?.find((item) => item.id === id); if (checkpoint) setCheckpointDialog({ checkpoint, isNew: false }) }} onMove={moveCheckpoint} onDelete={deleteCheckpoint} />
+    <ArticleHelpSettings sectionTitles={sectionTitles} disabledSections={lesson.articleHelpDisabledSections ?? []} onChange={(disabledSections) => onChange({ ...lesson, articleHelpDisabledSections: disabledSections })} />
+    {checkpointDialog && <ArticleCheckpointDialog key={checkpointDialog.checkpoint.id} checkpoint={checkpointDialog.checkpoint} onSave={saveCheckpoint} onCancel={cancelCheckpoint} />}
   </Stack>
 }
 

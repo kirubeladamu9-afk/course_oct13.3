@@ -1,3 +1,5 @@
+import { type ArticleCheckpoint } from '@/lib/article-checkpoints'
+
 export type LessonType = 'video' | 'article' | 'interactive' | 'simulation' | 'quiz' | 'practice' | 'live' | 'stepByStepSolver'
 
 export interface StepByStepSolverStep {
@@ -134,6 +136,8 @@ export interface AdminLesson {
   articleBlocks?: ArticleContentBlock[]
   articleVocabulary?: ArticleVocabularyEntry[]
   articleHeaderImageUrl?: string
+  articleCheckpoints?: ArticleCheckpoint[]
+  articleHelpDisabledSections?: number[]
   baseImageUrl?: string
   interactiveHotspots?: InteractiveHotspot[]
   simulation?: SimulationConfig
