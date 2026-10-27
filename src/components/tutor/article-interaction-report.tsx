@@ -1,6 +1,7 @@
 import { useEffect, useState, type FC } from 'react'
 import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
@@ -61,30 +62,33 @@ const OverviewTable: FC<{ article: Article; selectedId: number | null; onSelect:
   </Table>
 )
 
-const ResponsesTable: FC<{ article: Article }> = ({ article }) => (
-  <Stack spacing={2}>
-    <Stack spacing={0.5}>
-      {article.checkpoints.map((checkpoint, index) => (
-        <Typography key={checkpoint.id} variant="body2" sx={{ overflowWrap: 'anywhere' }}><strong>Q{index + 1}.</strong> {checkpoint.question}</Typography>
-      ))}
-    </Stack>
-    <Table size="small" sx={{ minWidth: 480 }}>
-      <TableHead>
-        <TableRow>
-          <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>Student</TableCell>
-          {article.checkpoints.map((checkpoint, index) => (
-            <TableCell key={checkpoint.id} sx={{ fontWeight: 700, color: 'text.secondary' }}>Q{index + 1}</TableCell>
-          ))}
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {article.students.map((student) => (
-          <TableRow key={student.enrollmentId}>
-            <TableCell sx={{ fontWeight: 600 }}>{student.studentName}</TableCell>
-            {article.checkpoints.map((checkpoint) => {
-              const response = student.checkpointResponses.find((item) => item.checkpointId === checkpoint.id)
-              return (
-                <TableCell key={checkpoint.id}>
+const ResponsesTable: FC<{ article: Article }> = ({ article }) => {
+  const [questionIndex, setQuestionIndex] = useState(0)
+  const checkpoint = article.checkpoints[questionIndex]
+  if (!checkpoint) return null
+
+  return (
+    <Stack spacing={2}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+        <Button size="small" onClick={() => setQuestionIndex((index) => index - 1)} disabled={questionIndex === 0}>Previous</Button>
+        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>Question {questionIndex + 1} of {article.checkpoints.length}</Typography>
+        <Button size="small" onClick={() => setQuestionIndex((index) => index + 1)} disabled={questionIndex === article.checkpoints.length - 1}>Next</Button>
+      </Stack>
+      <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{checkpoint.question}</Typography>
+      <Table size="small" sx={{ minWidth: 360 }}>
+        <TableHead>
+          <TableRow>
+            <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>Student</TableCell>
+            <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>Response</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {article.students.map((student) => {
+            const response = student.checkpointResponses.find((item) => item.checkpointId === checkpoint.id)
+            return (
+              <TableRow key={student.enrollmentId}>
+                <TableCell sx={{ fontWeight: 600 }}>{student.studentName}</TableCell>
+                <TableCell>
                   {statusChip(response?.status)}
                   {response?.selectedOption !== null && response?.selectedOption !== undefined && (
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, overflowWrap: 'anywhere' }}>
@@ -92,14 +96,14 @@ const ResponsesTable: FC<{ article: Article }> = ({ article }) => (
                     </Typography>
                   )}
                 </TableCell>
-              )
-            })}
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  </Stack>
-)
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </Stack>
+  )
+}
 
 const HelpRequestsList: FC<{ article: Article }> = ({ article }) => {
   const requests = article.students
@@ -124,9 +128,15 @@ const HelpRequestsList: FC<{ article: Article }> = ({ article }) => {
   )
 }
 
+const PANEL_PREVIEW_COUNT = 3
+
 const StudentDetails: FC<{ article: Article; student: Student | undefined }> = ({ article, student }) => {
+  const [showAll, setShowAll] = useState(false)
   if (!student) return null
   const total = article.checkpoints.length
+  const visibleCheckpoints = showAll ? article.checkpoints : article.checkpoints.slice(0, PANEL_PREVIEW_COUNT)
+  const visibleHelpRequests = showAll ? student.helpRequests : student.helpRequests.slice(0, PANEL_PREVIEW_COUNT)
+  const hasMore = total > PANEL_PREVIEW_COUNT || student.helpRequests.length > PANEL_PREVIEW_COUNT
 
   return (
     <Box sx={{ p: { xs: 2, md: 2.5 }, borderTop: { xs: 1, lg: 0 }, borderLeft: { lg: 1 }, borderColor: 'divider', backgroundColor: 'background.default' }}>
@@ -141,7 +151,7 @@ const StudentDetails: FC<{ article: Article; student: Student | undefined }> = (
       <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Responses</Typography>
       <Stack spacing={1} sx={{ mb: 2.5 }}>
         {total === 0 && <Typography variant="body2" color="text.secondary">No Pause &amp; Check questions.</Typography>}
-        {article.checkpoints.map((checkpoint, index) => {
+        {visibleCheckpoints.map((checkpoint, index) => {
           const response = student.checkpointResponses.find((item) => item.checkpointId === checkpoint.id)
           return (
             <Box key={checkpoint.id} sx={{ p: 1.25, border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper' }}>
@@ -160,7 +170,7 @@ const StudentDetails: FC<{ article: Article; student: Student | undefined }> = (
       <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>Help requests</Typography>
       {student.helpRequests.length === 0 && <Typography variant="body2" color="text.secondary">No help requests.</Typography>}
       <Stack spacing={1}>
-        {student.helpRequests.map((request) => (
+        {visibleHelpRequests.map((request) => (
           <Box key={`${request.sectionIndex}-${request.flaggedAt}`} sx={{ p: 1.25, border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper' }}>
             <Chip size="small" color="info" variant="outlined" label={request.sectionTitle} sx={{ mb: 0.75 }} />
             <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{request.question ? request.question : 'No question submitted.'}</Typography>
@@ -168,6 +178,7 @@ const StudentDetails: FC<{ article: Article; student: Student | undefined }> = (
           </Box>
         ))}
       </Stack>
+      {hasMore && <Button size="small" onClick={() => setShowAll((value) => !value)} sx={{ mt: 1.5 }}>{showAll ? 'Show less' : 'Show all'}</Button>}
     </Box>
   )
 }
@@ -196,7 +207,7 @@ const ArticleReport: FC<{ article: Article }> = ({ article }) => {
           {article.students.length > 0 && tab === 'responses' && <ResponsesTable article={article} />}
           {article.students.length > 0 && tab === 'help' && <HelpRequestsList article={article} />}
         </Box>
-        {article.students.length > 0 && <StudentDetails article={article} student={selectedStudent} />}
+        {article.students.length > 0 && <StudentDetails key={selectedStudent?.enrollmentId} article={article} student={selectedStudent} />}
       </Box>
     </Paper>
   )
