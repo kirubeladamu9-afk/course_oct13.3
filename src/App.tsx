@@ -188,8 +188,6 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   if (isCourseMarketplacePath) return <RouteSuspense><CourseMarketplacePage courses={homeCourses ?? []} darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} isLoading={homeCourses === null} /></RouteSuspense>
   if (isContactPath) return <RouteSuspense><InfoPage kind="contact" darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /></RouteSuspense>
   if (isSignInPath) return <Box component="main"><Header darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /><SignInPage mode="sign-in" /><Footer /></Box>
-  if (!courseMatch && !isCourseMarketplacePath && homeCourses === null) return <div className="page-loading-state"><SpinnerCustom /></div>
-
   return (
     <Box component="main">
       <Suspense
