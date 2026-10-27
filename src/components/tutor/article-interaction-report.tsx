@@ -1,8 +1,13 @@
 import { useEffect, useState, type FC } from 'react'
+import Alert from '@mui/material/Alert'
 import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Tab from '@mui/material/Tab'
@@ -12,12 +17,14 @@ import TableCell from '@mui/material/TableCell'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Tabs from '@mui/material/Tabs'
+import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import { getTutorClassArticleInteractions, getTutorCourseArticleInteractions, type TutorArticleInteractionReport as Report } from '@/services/api'
+import { getTutorClassArticleInteractions, getTutorCourseArticleInteractions, resolveTutorArticleHelpRequest, saveTutorArticleHelpReply, type TutorArticleHelpRequestUpdate, type TutorArticleInteractionReport as Report } from '@/services/api'
 
 type Article = Report['articles'][number]
 type Student = Article['students'][number]
 type ArticleTab = 'overview' | 'responses' | 'help'
+type ReplyTarget = { enrollmentId: number; sectionIndex: number }
 
 const statusChip = (status: 'correct' | 'incorrect' | 'skipped' | undefined) => {
   if (status === 'correct') return <Chip size="small" color="success" label="Correct" />
@@ -36,6 +43,10 @@ const reviewChip = (student: Student) => needsReview(student)
   : <Chip size="small" color="success" variant="outlined" label="On track" />
 
 const initialsOf = (name: string) => name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+
+const helpStatusChip = (status: 'pending' | 'resolved') => status === 'resolved'
+  ? <Chip size="small" color="success" label="Resolved" />
+  : <Chip size="small" color="warning" variant="outlined" label="Pending" />
 
 const OverviewTable: FC<{ article: Article; selectedId: number | null; onSelect: (enrollmentId: number) => void }> = ({ article, selectedId, onSelect }) => (
   <Table size="small" sx={{ minWidth: 640 }}>
@@ -105,7 +116,7 @@ const ResponsesTable: FC<{ article: Article }> = ({ article }) => {
   )
 }
 
-const HelpRequestsList: FC<{ article: Article }> = ({ article }) => {
+const HelpRequestsList: FC<{ article: Article; onReply: (target: ReplyTarget) => void }> = ({ article, onReply }) => {
   const requests = article.students
     .flatMap((student) => student.helpRequests.map((request) => ({ student, request })))
     .sort((first, second) => new Date(second.request.flaggedAt).getTime() - new Date(first.request.flaggedAt).getTime())
@@ -119,9 +130,13 @@ const HelpRequestsList: FC<{ article: Article }> = ({ article }) => {
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.5 }}>
             <Typography variant="body2" sx={{ fontWeight: 700 }}>{student.studentName}</Typography>
             <Chip size="small" color="info" variant="outlined" label={request.sectionTitle} />
+            {helpStatusChip(request.status)}
           </Stack>
           <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{request.question ? request.question : 'No question submitted.'}</Typography>
-          <Typography variant="caption" color="text.secondary">Flagged {new Date(request.flaggedAt).toLocaleString()}</Typography>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mt: 0.5 }}>
+            <Typography variant="caption" color="text.secondary">Flagged {new Date(request.flaggedAt).toLocaleString()}</Typography>
+            <Button size="small" onClick={() => onReply({ enrollmentId: student.enrollmentId, sectionIndex: request.sectionIndex })}>{request.teacherReply ? 'Edit reply' : 'Reply'}</Button>
+          </Stack>
         </Box>
       ))}
     </Stack>
@@ -130,7 +145,7 @@ const HelpRequestsList: FC<{ article: Article }> = ({ article }) => {
 
 const PANEL_PREVIEW_COUNT = 3
 
-const StudentDetails: FC<{ article: Article; student: Student | undefined }> = ({ article, student }) => {
+const StudentDetails: FC<{ article: Article; student: Student | undefined; onReply: (target: ReplyTarget) => void }> = ({ article, student, onReply }) => {
   const [showAll, setShowAll] = useState(false)
   if (!student) return null
   const total = article.checkpoints.length
@@ -172,9 +187,15 @@ const StudentDetails: FC<{ article: Article; student: Student | undefined }> = (
       <Stack spacing={1}>
         {visibleHelpRequests.map((request) => (
           <Box key={`${request.sectionIndex}-${request.flaggedAt}`} sx={{ p: 1.25, border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.paper' }}>
-            <Chip size="small" color="info" variant="outlined" label={request.sectionTitle} sx={{ mb: 0.75 }} />
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.75 }}>
+              <Chip size="small" color="info" variant="outlined" label={request.sectionTitle} />
+              {helpStatusChip(request.status)}
+            </Stack>
             <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{request.question ? request.question : 'No question submitted.'}</Typography>
-            <Typography variant="caption" color="text.secondary">{new Date(request.flaggedAt).toLocaleString()}</Typography>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Typography variant="caption" color="text.secondary">{new Date(request.flaggedAt).toLocaleString()}</Typography>
+              <Button size="small" onClick={() => onReply({ enrollmentId: student.enrollmentId, sectionIndex: request.sectionIndex })}>{request.teacherReply ? 'Edit reply' : 'Reply'}</Button>
+            </Stack>
           </Box>
         ))}
       </Stack>
@@ -183,8 +204,72 @@ const StudentDetails: FC<{ article: Article; student: Student | undefined }> = (
   )
 }
 
-const ArticleReport: FC<{ article: Article }> = ({ article }) => {
+const HelpReplyDialog: FC<{ article: Article; target: ReplyTarget; onClose: () => void; onUpdated: (update: TutorArticleHelpRequestUpdate) => void }> = ({ article, target, onClose, onUpdated }) => {
+  const student = article.students.find((item) => item.enrollmentId === target.enrollmentId)
+  const request = student?.helpRequests.find((item) => item.sectionIndex === target.sectionIndex)
+  const [reply, setReply] = useState(request?.teacherReply ?? '')
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<{ severity: 'success' | 'error'; text: string } | null>(null)
+
+  if (!student || !request) return null
+  const isResolved = request.status === 'resolved'
+  const trimmedReply = reply.trim()
+
+  const runAction = async (action: () => Promise<TutorArticleHelpRequestUpdate>, successText: string) => {
+    setSaving(true)
+    setMessage(null)
+    try {
+      onUpdated(await action())
+      setMessage({ severity: 'success', text: successText })
+    } catch (actionError) {
+      setMessage({ severity: 'error', text: actionError instanceof Error ? actionError.message : 'Unable to update this help request.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle sx={{ fontWeight: 800 }}>Help request from {student.studentName}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Chip size="small" color="info" variant="outlined" label={request.sectionTitle} />
+            {helpStatusChip(request.status)}
+          </Stack>
+          <Box sx={{ p: 1.5, borderRadius: 2, backgroundColor: 'background.default' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>Student question</Typography>
+            <Typography variant="body2" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>{request.question ?? 'No question submitted.'}</Typography>
+          </Box>
+          <TextField
+            label="Reply to student"
+            helperText={`Only ${student.studentName} can see this reply in their lesson.`}
+            multiline
+            minRows={4}
+            fullWidth
+            value={reply}
+            onChange={(event) => setReply(event.target.value)}
+            inputProps={{ maxLength: 2000 }}
+            disabled={saving}
+          />
+          {message && <Alert severity={message.severity}>{message.text}</Alert>}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
+        <Button color="success" variant="outlined" disabled={isResolved || saving} onClick={() => runAction(() => resolveTutorArticleHelpRequest(student.enrollmentId, article.lessonId, request.sectionIndex), 'Marked as resolved.')}>
+          {isResolved ? 'Resolved' : 'Mark as Resolved'}
+        </Button>
+        <Box sx={{ flexGrow: 1 }} />
+        <Button color="inherit" onClick={onClose}>Close</Button>
+        <Button variant="contained" disabled={!trimmedReply || saving} onClick={() => runAction(() => saveTutorArticleHelpReply(student.enrollmentId, article.lessonId, request.sectionIndex, trimmedReply), 'Reply saved. The student can see it in their lesson.')}>Save reply</Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
+
+const ArticleReport: FC<{ article: Article; onHelpRequestUpdated: (enrollmentId: number, update: TutorArticleHelpRequestUpdate) => void }> = ({ article, onHelpRequestUpdated }) => {
   const [tab, setTab] = useState<ArticleTab>('overview')
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(article.students[0]?.enrollmentId ?? null)
   const selectedStudent = article.students.find((student) => student.enrollmentId === selectedId) ?? article.students[0]
   const helpCount = article.students.reduce((total, student) => total + student.helpRequests.length, 0)
@@ -205,10 +290,11 @@ const ArticleReport: FC<{ article: Article }> = ({ article }) => {
           {article.students.length === 0 && <Typography color="text.secondary">No students enrolled.</Typography>}
           {article.students.length > 0 && tab === 'overview' && <OverviewTable article={article} selectedId={selectedStudent?.enrollmentId ?? null} onSelect={setSelectedId} />}
           {article.students.length > 0 && tab === 'responses' && <ResponsesTable article={article} />}
-          {article.students.length > 0 && tab === 'help' && <HelpRequestsList article={article} />}
+          {article.students.length > 0 && tab === 'help' && <HelpRequestsList article={article} onReply={setReplyTarget} />}
         </Box>
-        {article.students.length > 0 && <StudentDetails key={selectedStudent?.enrollmentId} article={article} student={selectedStudent} />}
+        {article.students.length > 0 && <StudentDetails key={selectedStudent?.enrollmentId} article={article} student={selectedStudent} onReply={setReplyTarget} />}
       </Box>
+      {replyTarget && <HelpReplyDialog key={`${replyTarget.enrollmentId}-${replyTarget.sectionIndex}`} article={article} target={replyTarget} onClose={() => setReplyTarget(null)} onUpdated={(update) => onHelpRequestUpdated(replyTarget.enrollmentId, update)} />}
     </Paper>
   )
 }
@@ -228,6 +314,17 @@ const ArticleInteractionReport: FC<{ target: { type: 'course' | 'class'; id: num
     return () => { active = false }
   }, [target.type, target.id])
 
+  const updateHelpRequest = (lessonId: number, enrollmentId: number, update: TutorArticleHelpRequestUpdate) => setReport((current) => current && {
+    ...current,
+    articles: current.articles.map((article) => article.lessonId !== lessonId ? article : {
+      ...article,
+      students: article.students.map((student) => student.enrollmentId !== enrollmentId ? student : {
+        ...student,
+        helpRequests: student.helpRequests.map((request) => request.sectionIndex === update.sectionIndex ? { ...request, ...update } : request),
+      }),
+    }),
+  })
+
   const articles = (report?.articles ?? []).filter((article) => article.checkpoints.length > 0 || article.students.some((student) => student.helpRequests.length > 0))
   if (!report && !error) return null
 
@@ -237,7 +334,7 @@ const ArticleInteractionReport: FC<{ target: { type: 'course' | 'class'; id: num
     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>A missing response is not counted as a misunderstanding.</Typography>
     {error && <Typography color="error">{error}</Typography>}
     {report && articles.length === 0 && <Typography color="text.secondary">No article interactions yet.</Typography>}
-    <Stack spacing={2}>{articles.map((article) => <ArticleReport key={article.lessonId} article={article} />)}</Stack>
+    <Stack spacing={2}>{articles.map((article) => <ArticleReport key={article.lessonId} article={article} onHelpRequestUpdated={(enrollmentId, update) => updateHelpRequest(article.lessonId, enrollmentId, update)} />)}</Stack>
   </Box>
 }
 

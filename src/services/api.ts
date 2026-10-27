@@ -1436,6 +1436,8 @@ export interface ArticleHelpRequest {
   question: string | null
   flaggedAt: string
   questionAt: string | null
+  teacherReply: string | null
+  teacherReplyAt: string | null
 }
 
 export interface ArticleCheckpointResponse {
@@ -1466,6 +1468,24 @@ export const requestArticleSectionHelp = (enrollmentId: number, lessonId: number
   body: JSON.stringify({ sectionIndex, question }),
 })
 
+export interface TutorArticleHelpRequest {
+  sectionIndex: number
+  sectionTitle: string
+  question: string | null
+  flaggedAt: string
+  questionAt: string | null
+  status: 'pending' | 'resolved'
+  teacherReply: string | null
+  teacherReplyAt: string | null
+}
+
+export interface TutorArticleHelpRequestUpdate {
+  sectionIndex: number
+  status: 'pending' | 'resolved'
+  teacherReply: string | null
+  teacherReplyAt: string | null
+}
+
 export interface TutorArticleInteractionReport {
   articles: Array<{
     lessonId: number
@@ -1476,7 +1496,7 @@ export interface TutorArticleInteractionReport {
       enrollmentId: number
       studentName: string
       studentEmail: string
-      helpRequests: Array<{ sectionIndex: number; sectionTitle: string; question: string | null; flaggedAt: string; questionAt: string | null }>
+      helpRequests: TutorArticleHelpRequest[]
       checkpointResponses: Array<{ checkpointId: number; status: 'correct' | 'incorrect' | 'skipped'; selectedOption: number | null; answeredAt: string }>
     }>
   }>
@@ -1490,6 +1510,22 @@ export const getTutorClassArticleInteractions = async (classId: number): Promise
 
 export const getTutorCourseArticleInteractions = async (courseId: number): Promise<TutorArticleInteractionReport> => {
   const response = await requestApi(`/api/tutor/courses/${courseId}/article-interactions`)
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const saveTutorArticleHelpReply = async (enrollmentId: number, lessonId: number, sectionIndex: number, reply: string): Promise<TutorArticleHelpRequestUpdate> => {
+  const response = await requestApi(`/api/tutor/enrollments/${enrollmentId}/lessons/${lessonId}/article-help/${sectionIndex}/reply`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reply }),
+  })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const resolveTutorArticleHelpRequest = async (enrollmentId: number, lessonId: number, sectionIndex: number): Promise<TutorArticleHelpRequestUpdate> => {
+  const response = await requestApi(`/api/tutor/enrollments/${enrollmentId}/lessons/${lessonId}/article-help/${sectionIndex}/resolve`, { method: 'POST' })
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
 }

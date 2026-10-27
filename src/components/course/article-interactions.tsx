@@ -29,6 +29,10 @@ export const ArticleSectionHelp: FC<{ sectionTitle: string; helpRequest?: Articl
         {!helpRequest.question && !isAsking && <Button size="small" disabled={saving} onClick={() => setIsAsking(true)}>Ask a question</Button>}
       </Stack>
       {helpRequest.question && <Typography variant="body2" color="text.secondary">Your question: {helpRequest.question}</Typography>}
+      {helpRequest.teacherReply && <Box sx={{ p: 1.5, borderRadius: 1, backgroundColor: 'action.hover' }}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>Reply from your teacher</Typography>
+        <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.7 }}>{helpRequest.teacherReply}</Typography>
+      </Box>}
       {!helpRequest.question && isAsking && <>
         <TextField size="small" multiline minRows={2} fullWidth label="Your question for the teacher" value={question} onChange={(event) => setQuestion(event.target.value)} inputProps={{ maxLength: 1000 }} />
         <Stack direction="row" spacing={1}>

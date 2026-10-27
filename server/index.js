@@ -668,6 +668,12 @@ const initializeDatabase = async () => {
       PRIMARY KEY (enrollment_id, lesson_id, section_index)
     )
   `
+  await ensureColumns('article_help_requests', {
+    status: "TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'resolved'))",
+    teacher_reply: 'TEXT CHECK (char_length(teacher_reply) <= 2000)',
+    teacher_reply_at: 'TIMESTAMPTZ',
+    resolved_at: 'TIMESTAMPTZ',
+  })
   await sql`
     CREATE TABLE IF NOT EXISTS article_checkpoint_responses (
       enrollment_id BIGINT NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
@@ -2865,7 +2871,7 @@ app.get('/api/enrollments/:enrollmentId/lessons/:lessonId/article-interactions',
     const lesson = findCourseLesson(enrollment.modules, lessonId)
     if (!lesson || lesson.type !== 'article') return { error: 'Article lesson not found.' }
     const helpRequests = await transaction`
-      SELECT section_index AS "sectionIndex", question, flagged_at AS "flaggedAt", question_at AS "questionAt"
+      SELECT section_index AS "sectionIndex", question, flagged_at AS "flaggedAt", question_at AS "questionAt", teacher_reply AS "teacherReply", teacher_reply_at AS "teacherReplyAt"
       FROM article_help_requests
       WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId}
       ORDER BY section_index
@@ -2951,7 +2957,7 @@ app.post('/api/enrollments/:enrollmentId/lessons/:lessonId/article-help', requir
       ON CONFLICT (enrollment_id, lesson_id, section_index) DO UPDATE
       SET question = COALESCE(EXCLUDED.question, article_help_requests.question),
           question_at = COALESCE(EXCLUDED.question_at, article_help_requests.question_at)
-      RETURNING section_index AS "sectionIndex", question, flagged_at AS "flaggedAt", question_at AS "questionAt"
+      RETURNING section_index AS "sectionIndex", question, flagged_at AS "flaggedAt", question_at AS "questionAt", teacher_reply AS "teacherReply", teacher_reply_at AS "teacherReplyAt"
     `
     await transaction`
       INSERT INTO student_lesson_progress (enrollment_id, lesson_id)
@@ -4045,7 +4051,7 @@ const getTutorArticleInteractionReport = async (contentType, contentId) => {
   `
   const enrollmentIds = students.map((student) => student.id)
   const helpRequests = enrollmentIds.length ? await sql`
-    SELECT enrollment_id::INTEGER AS "enrollmentId", lesson_id AS "lessonId", section_index AS "sectionIndex", question, flagged_at AS "flaggedAt", question_at AS "questionAt"
+    SELECT enrollment_id::INTEGER AS "enrollmentId", lesson_id AS "lessonId", section_index AS "sectionIndex", question, flagged_at AS "flaggedAt", question_at AS "questionAt", status, teacher_reply AS "teacherReply", teacher_reply_at AS "teacherReplyAt"
     FROM article_help_requests
     WHERE enrollment_id = ANY(${enrollmentIds})
     ORDER BY flagged_at DESC
@@ -4069,7 +4075,7 @@ const getTutorArticleInteractionReport = async (contentType, contentId) => {
         enrollmentId: student.id,
         studentName: student.studentName,
         studentEmail: student.studentEmail,
-        helpRequests: helpRequests.filter((request) => request.enrollmentId === student.id && Number(request.lessonId) === lesson.id).map(({ sectionIndex, question, flaggedAt, questionAt }) => ({ sectionIndex, sectionTitle: sectionTitles[sectionIndex] ?? 'Section', question, flaggedAt, questionAt })),
+        helpRequests: helpRequests.filter((request) => request.enrollmentId === student.id && Number(request.lessonId) === lesson.id).map(({ sectionIndex, question, flaggedAt, questionAt, status, teacherReply, teacherReplyAt }) => ({ sectionIndex, sectionTitle: sectionTitles[sectionIndex] ?? 'Section', question, flaggedAt, questionAt, status, teacherReply, teacherReplyAt })),
         checkpointResponses: checkpointRows
           .filter((row) => Number(row.enrollmentId) === student.id && Number(row.lessonId) === lesson.id && checkpoints.some((item) => item.id === Number(row.checkpointId)))
           .map((row) => ({ checkpointId: Number(row.checkpointId), status: row.skipped ? 'skipped' : row.isCorrect ? 'correct' : 'incorrect', selectedOption: row.selectedOption ?? null, answeredAt: row.answeredAt })),
@@ -4092,6 +4098,57 @@ app.get('/api/tutor/courses/:id/article-interactions', requireTutor, async (requ
   const [course] = await sql`SELECT id FROM courses WHERE id = ${courseId} AND tutor_id = ${request.tutorId}`
   if (!course) return response.status(404).json({ message: 'Course not found.' })
   return response.json({ articles: await getTutorArticleInteractionReport('course', courseId) })
+})
+
+const tutorOwnsArticleHelpEnrollment = (tutorId) => sql`EXISTS (
+  SELECT 1
+  FROM enrollments
+  LEFT JOIN courses ON courses.id = enrollments.course_id
+  LEFT JOIN classes ON classes.id = enrollments.class_id
+  WHERE enrollments.id = article_help_requests.enrollment_id
+    AND (CASE WHEN enrollments.class_id IS NULL THEN courses.tutor_id ELSE classes.tutor_id END) = ${tutorId}
+)`
+
+const parseArticleHelpSectionIndex = (value) => {
+  const sectionIndex = parseEnrollmentId(value)
+  return sectionIndex !== null && sectionIndex <= 2147483647 ? sectionIndex : null
+}
+
+app.put('/api/tutor/enrollments/:enrollmentId/lessons/:lessonId/article-help/:sectionIndex/reply', requireTutor, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  const sectionIndex = parseArticleHelpSectionIndex(request.params.sectionIndex)
+  const reply = typeof request.body?.reply === 'string' ? request.body.reply.trim() : ''
+  if (enrollmentId === null || lessonId === null || sectionIndex === null || !reply || reply.length > 2000) {
+    return response.status(400).json({ message: 'Enter a reply between 1 and 2000 characters.' })
+  }
+
+  const [updated] = await sql`
+    UPDATE article_help_requests
+    SET teacher_reply = ${reply}, teacher_reply_at = NOW()
+    WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND section_index = ${sectionIndex}
+      AND ${tutorOwnsArticleHelpEnrollment(request.tutorId)}
+    RETURNING section_index AS "sectionIndex", status, teacher_reply AS "teacherReply", teacher_reply_at AS "teacherReplyAt"
+  `
+  if (!updated) return response.status(404).json({ message: 'Help request not found.' })
+  return response.json(updated)
+})
+
+app.post('/api/tutor/enrollments/:enrollmentId/lessons/:lessonId/article-help/:sectionIndex/resolve', requireTutor, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  const lessonId = parseEnrollmentId(request.params.lessonId)
+  const sectionIndex = parseArticleHelpSectionIndex(request.params.sectionIndex)
+  if (enrollmentId === null || lessonId === null || sectionIndex === null) return response.status(400).json({ message: 'Invalid help request.' })
+
+  const [updated] = await sql`
+    UPDATE article_help_requests
+    SET status = 'resolved', resolved_at = COALESCE(resolved_at, NOW())
+    WHERE enrollment_id = ${enrollmentId} AND lesson_id = ${lessonId} AND section_index = ${sectionIndex}
+      AND ${tutorOwnsArticleHelpEnrollment(request.tutorId)}
+    RETURNING section_index AS "sectionIndex", status, teacher_reply AS "teacherReply", teacher_reply_at AS "teacherReplyAt"
+  `
+  if (!updated) return response.status(404).json({ message: 'Help request not found.' })
+  return response.json(updated)
 })
 
 app.patch('/api/tutor/classes/enrollments/:id/attendance', requireTutor, async (request, response) => {
