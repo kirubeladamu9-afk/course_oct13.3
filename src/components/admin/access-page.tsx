@@ -112,7 +112,7 @@ const AccessPage: FC = () => {
       ...target,
       reason,
       note: note.trim(),
-      expiresAt: expiresAt ? new Date(`${expiresAt}T23:59:59`).toISOString() : undefined,
+      expiresAt: expiresAt ? new Date(`${expiresAt}T00:00:00Z`).toISOString() : undefined,
       sponsorId: sponsorId ? Number(sponsorId) : null,
     }
   }
@@ -168,6 +168,12 @@ const AccessOptionsCard: FC<{
     getSponsors().then(setSponsors).catch(() => setSponsors([]))
   }, [])
   const items = props.targetType === 'course' ? props.courses : props.classes
+  const selectedSponsorEndDate = sponsors.find((sponsor) => String(sponsor.id) === props.sponsorId)?.endDate ?? undefined
+  const handleSponsorChange = (value: string) => {
+    props.onSponsorIdChange(value)
+    const endDate = sponsors.find((sponsor) => String(sponsor.id) === value)?.endDate
+    if (endDate) props.onExpiresAtChange(endDate)
+  }
   return (
     <Card variant="outlined">
       <CardContent>
@@ -192,10 +198,18 @@ const AccessOptionsCard: FC<{
               {reasons.map((item) => <MenuItem key={item} value={item}>{item}</MenuItem>)}
             </Select>
           </FormControl>
-          <TextField label="Expires on (optional)" type="date" value={props.expiresAt} onChange={(event) => props.onExpiresAtChange(event.target.value)} InputLabelProps={{ shrink: true }} />
+          <TextField
+            label="Access ends (optional)"
+            type="date"
+            value={props.expiresAt}
+            onChange={(event) => props.onExpiresAtChange(event.target.value)}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ max: selectedSponsorEndDate }}
+            helperText={selectedSponsorEndDate ? `Cannot be later than the sponsorship end date (${selectedSponsorEndDate}).` : undefined}
+          />
           <FormControl sx={{ minWidth: 200 }}>
             <InputLabel id="access-sponsor">Sponsor</InputLabel>
-            <Select labelId="access-sponsor" label="Sponsor" value={props.sponsorId} onChange={(event) => props.onSponsorIdChange(String(event.target.value))}>
+            <Select labelId="access-sponsor" label="Sponsor" value={props.sponsorId} onChange={(event) => handleSponsorChange(String(event.target.value))}>
               <MenuItem value="">None</MenuItem>
               {sponsors.map((sponsor) => <MenuItem key={sponsor.id} value={String(sponsor.id)}>{sponsor.name}</MenuItem>)}
             </Select>
@@ -632,6 +646,12 @@ const SponsorsCard: FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const currentPage = Math.min(page, Math.max(0, Math.ceil(sponsors.length / rowsPerPage) - 1))
   const visibleSponsors = sponsors.slice(currentPage * rowsPerPage, currentPage * rowsPerPage + rowsPerPage)
+  const todayTime = Date.parse(new Date().toISOString().slice(0, 10))
+  const expiringSponsors = sponsors.filter((sponsor) => {
+    if (!sponsor.endDate) return false
+    const daysLeft = (Date.parse(sponsor.endDate) - todayTime) / 86_400_000
+    return daysLeft > 0 && daysLeft <= 30
+  })
 
   const load = () => getSponsors().then(setSponsors).catch((loadError) => setError(errorText(loadError)))
   useEffect(() => {
@@ -694,12 +714,21 @@ const SponsorsCard: FC = () => {
             <TextField label="Name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
             <TextField label="Contact" value={form.contact} onChange={(event) => setForm({ ...form, contact: event.target.value })} />
             <TextField label="Seat limit (optional)" type="number" value={form.seatLimit} onChange={(event) => setForm({ ...form, seatLimit: event.target.value })} inputProps={{ min: 0, step: 1 }} />
-            <TextField label="Agreement ends (optional)" type="date" value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} InputLabelProps={{ shrink: true }} />
+            <TextField label="Sponsorship ends (optional)" type="date" value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} InputLabelProps={{ shrink: true }} helperText="Students lose access on this date unless extended." />
             <TextField label="Notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} sx={{ flex: 1, minWidth: 200 }} />
             <Button type="submit" variant="contained">{editingId === null ? 'Add sponsor' : 'Save sponsor'}</Button>
             {editingId !== null && <Button onClick={reset}>Cancel</Button>}
           </Stack>
         </Box>
+        {expiringSponsors.length > 0 && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {expiringSponsors.map((sponsor) => (
+              <Box key={sponsor.id}>
+                {sponsor.name} ends {sponsor.endDate}. {sponsor.seatsUsed} {sponsor.seatsUsed === 1 ? 'student' : 'students'} will lose access unless the sponsorship is extended.
+              </Box>
+            ))}
+          </Alert>
+        )}
         <Box sx={{ overflowX: 'auto' }}>
           <Table size="small">
             <TableHead>
@@ -708,7 +737,7 @@ const SponsorsCard: FC = () => {
                 <TableCell>Contact</TableCell>
                 <TableCell>Seats used</TableCell>
                 <TableCell>Seats remaining</TableCell>
-                <TableCell>Agreement ends</TableCell>
+                <TableCell>Sponsorship ends</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>

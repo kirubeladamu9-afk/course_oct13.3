@@ -1979,9 +1979,14 @@ const verifyChapaTransaction = async (reference) => {
   return { status: getChapaStatus(verification), data: verification?.data ?? {} }
 }
 
+const sponsorEndedCondition = () => sql`enrollments.sponsor_id IS NOT NULL AND EXISTS (
+  SELECT 1 FROM sponsors WHERE sponsors.id = enrollments.sponsor_id AND sponsors.end_date IS NOT NULL AND sponsors.end_date <= (NOW() AT TIME ZONE 'UTC')::date
+)`
+
 const enrollmentAccessCondition = () => sql`
   enrollments.access_status = 'active'
   AND (enrollments.expires_at IS NULL OR enrollments.expires_at > NOW())
+  AND NOT (${sponsorEndedCondition()})
   AND (enrollments.source <> 'paid' OR EXISTS (SELECT 1 FROM payments WHERE payments.id = enrollments.payment_id AND payments.status = 'paid'))
 `
 
@@ -2057,7 +2062,7 @@ class EnrollmentRefusal extends Error {
 
 const grantEnrollmentAccess = async (transaction, { userId, student, courseId, classId, reason, note, expiresAt, sponsorId, grantedBy, override }) => {
   const targetCondition = targetAccessCondition(courseId, classId)
-  await transaction`UPDATE enrollments SET access_status = 'expired' WHERE user_id = ${userId} AND ${targetCondition} AND access_status = 'active' AND expires_at <= NOW()`
+  await transaction`UPDATE enrollments SET access_status = 'expired' WHERE user_id = ${userId} AND ${targetCondition} AND access_status = 'active' AND (expires_at <= NOW() OR ${sponsorEndedCondition()})`
   const [existing] = await transaction`SELECT 1 FROM enrollments WHERE user_id = ${userId} AND ${targetCondition} AND ${enrollmentAccessCondition()} LIMIT 1`
   if (existing) return { status: 'skipped' }
 
@@ -2068,7 +2073,7 @@ const grantEnrollmentAccess = async (transaction, { userId, student, courseId, c
   let enrollmentExpiresAt = expiresAt
   if (sponsorId !== null) {
     const [sponsor] = await transaction`
-      SELECT seat_limit, to_char(end_date, 'YYYY-MM-DD') AS "endDate", (end_date IS NOT NULL AND end_date < CURRENT_DATE) AS ended,
+      SELECT seat_limit, (sponsors.end_date::timestamp AT TIME ZONE 'UTC') AS "endsAt", (end_date IS NOT NULL AND end_date <= (NOW() AT TIME ZONE 'UTC')::date) AS ended,
              (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed"
       FROM sponsors
       WHERE id = ${sponsorId}
@@ -2077,8 +2082,10 @@ const grantEnrollmentAccess = async (transaction, { userId, student, courseId, c
     if (!sponsor) throw new EnrollmentRefusal(404, { message: 'Sponsor not found.' })
     if (sponsor.ended) throw new EnrollmentRefusal(409, { message: 'This sponsor agreement has ended.' })
     if (sponsor.seat_limit !== null && sponsor.seatsUsed >= sponsor.seat_limit) throw new EnrollmentRefusal(409, { message: 'This sponsor has no seats left.' })
-    const sponsorEndsAt = sponsor.endDate ? new Date(sponsor.endDate) : null
-    if (sponsorEndsAt && (enrollmentExpiresAt === null || sponsorEndsAt < enrollmentExpiresAt)) enrollmentExpiresAt = sponsorEndsAt
+    if (sponsor.endsAt) {
+      if (enrollmentExpiresAt !== null && enrollmentExpiresAt > sponsor.endsAt) throw new EnrollmentRefusal(400, { message: 'Access cannot end after the sponsorship ends.' })
+      if (enrollmentExpiresAt === null || enrollmentExpiresAt.getTime() === sponsor.endsAt.getTime()) enrollmentExpiresAt = null
+    }
   }
 
   await transaction`
@@ -5000,7 +5007,7 @@ const getSponsorReport = async (sponsorId) => {
            COALESCE(classes.title, courses.title) AS item,
            enrollments.class_status AS "classStatus",
            enrollments.access_status AS "accessStatus",
-           to_char(enrollments.expires_at, 'YYYY-MM-DD') AS "expiresAt",
+           to_char(LEAST(enrollments.expires_at, (SELECT sponsors.end_date::timestamp AT TIME ZONE 'UTC' FROM sponsors WHERE sponsors.id = enrollments.sponsor_id)) AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS "expiresAt",
            to_char(enrollments.created_at, 'YYYY-MM-DD') AS "grantedAt",
            CASE WHEN enrollments.class_id IS NULL THEN courses.modules ELSE classes.modules END AS modules,
            (SELECT COALESCE(jsonb_object_agg(lesson_id::TEXT, jsonb_build_object('completedAt', completed_at)), '{}'::jsonb)
@@ -5122,7 +5129,7 @@ app.get('/api/admin/access-grants', requireAdmin, async (_request, response) => 
            enrollments.class_status AS "classStatus",
            enrollments.grant_reason AS "grantReason",
            sponsors.name AS "sponsorName",
-           to_char(enrollments.expires_at, 'YYYY-MM-DD') AS "expiresAt",
+           to_char(LEAST(enrollments.expires_at, (SELECT sponsors.end_date::timestamp AT TIME ZONE 'UTC' FROM sponsors WHERE sponsors.id = enrollments.sponsor_id)) AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS "expiresAt",
            enrollments.created_at AS "grantedAt",
            enrollments.revoked_at AS "revokedAt",
            users.username IS NOT NULL AS "usernameAccount"
