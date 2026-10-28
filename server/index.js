@@ -5314,6 +5314,10 @@ app.post('/api/admin/sponsors/:id/payments', requireAdmin, async (request, respo
   if (sponsorId === null || !payment) return response.status(400).json({ message: 'Enter a positive amount and choose one course or class.' })
   const targetIssues = await getEnrollmentTargetIssues(sql, payment.courseId, payment.classId)
   if (targetIssues.includes('missing')) return response.status(404).json({ message: 'The selected course or class was not found.' })
+  const [item] = payment.courseId !== null
+    ? await sql`SELECT price::FLOAT AS price FROM courses WHERE id = ${payment.courseId}`
+    : await sql`SELECT price::FLOAT AS price FROM classes WHERE id = ${payment.classId}`
+  if (Math.round(item.price * 100) !== payment.amountCents) return response.status(400).json({ message: `The amount must equal the selected course or class price ($${item.price.toFixed(2)}).` })
   const [created] = await sql`
     INSERT INTO sponsor_payments (sponsor_id, amount_cents, reference, status, course_id, class_id)
     SELECT id, ${payment.amountCents}, ${payment.reference}, 'pending', ${payment.courseId}, ${payment.classId}
@@ -5920,7 +5924,7 @@ app.get('/api/admin/tutors', requireAdmin, async (_request, response) => {
 
 app.get('/api/admin/course-options', requireAdmin, async (_request, response) => {
   const courses = await sql`
-    SELECT id::INTEGER AS id, title
+    SELECT id::INTEGER AS id, title, price::FLOAT AS price
     FROM courses
     ORDER BY id
   `

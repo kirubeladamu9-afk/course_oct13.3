@@ -9,6 +9,7 @@ import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import FormControl from '@mui/material/FormControl'
+import FormHelperText from '@mui/material/FormHelperText'
 import InputLabel from '@mui/material/InputLabel'
 import ListSubheader from '@mui/material/ListSubheader'
 import MenuItem from '@mui/material/MenuItem'
@@ -62,7 +63,7 @@ const reasons: AccessGrantReason[] = ['Scholarship', 'Staff', 'Promotion', 'Spon
 const maxCsvBytes = 1024 * 1024
 
 type TargetType = 'course' | 'class'
-type ItemOption = { id: number; title: string }
+type ItemOption = { id: number; title: string; price: number }
 
 const PageHeading: FC<{ title: string; description: string }> = ({ title, description }) => (
   <Box sx={{ mb: 4 }}>
@@ -89,22 +90,33 @@ const buildTarget = (key: string): AccessTarget | null => {
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong.'
 
-const CourseClassSelect: FC<{ id: string; value: string; courses: ItemOption[]; classes: ItemOption[]; onChange: (value: string) => void; required?: boolean }> = ({ id, value, courses, classes, onChange, required }) => (
-  <FormControl sx={{ minWidth: 280, flex: 1 }} required={required}>
-    <InputLabel id={`${id}-label`}>Course or class</InputLabel>
-    <Select labelId={`${id}-label`} label="Course or class" value={value} onChange={(event) => onChange(String(event.target.value))}>
-      <ListSubheader>Courses</ListSubheader>
-      {courses.map((item) => <MenuItem key={`course-${item.id}`} value={targetKey('course', item.id)}>{item.title}</MenuItem>)}
-      <ListSubheader>Classes</ListSubheader>
-      {classes.map((item) => <MenuItem key={`class-${item.id}`} value={targetKey('class', item.id)}>{item.title}</MenuItem>)}
-    </Select>
-  </FormControl>
-)
+const priceForTarget = (key: string, courses: ItemOption[], classes: ItemOption[]) => {
+  const parsed = parseTargetKey(key)
+  const item = (parsed?.type === 'class' ? classes : courses).find((option) => option.id === parsed?.id)
+  return item ? item.price.toFixed(2) : ''
+}
+
+const CourseClassSelect: FC<{ id: string; value: string; courses: ItemOption[]; classes: ItemOption[]; onChange: (value: string) => void; required?: boolean; allowedKeys?: string[] | null }> = ({ id, value, courses, classes, onChange, required, allowedKeys }) => {
+  const isAllowed = (key: string) => !allowedKeys || allowedKeys.includes(key)
+  return (
+    <FormControl sx={{ minWidth: 280, flex: 1 }} required={required}>
+      <InputLabel id={`${id}-label`}>Course or class</InputLabel>
+      <Select labelId={`${id}-label`} label="Course or class" value={value} onChange={(event) => onChange(String(event.target.value))}>
+        <ListSubheader>Courses</ListSubheader>
+        {courses.filter((item) => isAllowed(targetKey('course', item.id))).map((item) => <MenuItem key={`course-${item.id}`} value={targetKey('course', item.id)}>{item.title}</MenuItem>)}
+        <ListSubheader>Classes</ListSubheader>
+        {classes.filter((item) => isAllowed(targetKey('class', item.id))).map((item) => <MenuItem key={`class-${item.id}`} value={targetKey('class', item.id)}>{item.title}</MenuItem>)}
+      </Select>
+      {allowedKeys?.length === 0 && <FormHelperText>This sponsor has no paid course or class yet. Record and mark a payment paid first.</FormHelperText>}
+    </FormControl>
+  )
+}
 
 const AccessPage: FC = () => {
   const [courses, setCourses] = useState<ItemOption[]>([])
   const [classes, setClasses] = useState<ItemOption[]>([])
   const [selectedTarget, setSelectedTarget] = useState('')
+  const [sponsorPaidTargets, setSponsorPaidTargets] = useState<string[] | null>(null)
   const [reason, setReason] = useState<AccessGrantReason>('Scholarship')
   const [note, setNote] = useState('')
   const [expiresAt, setExpiresAt] = useState('')
@@ -113,8 +125,29 @@ const AccessPage: FC = () => {
 
   useEffect(() => {
     getAdminCourseOptions().then(setCourses).catch(() => setSharedError('Unable to load courses.'))
-    getAdminClassesWorkspace().then((workspace) => setClasses(workspace.classes.map((item) => ({ id: item.id, title: item.title })))).catch(() => setSharedError('Unable to load classes.'))
+    getAdminClassesWorkspace().then((workspace) => setClasses(workspace.classes.map((item) => ({ id: item.id, title: item.title, price: item.price })))).catch(() => setSharedError('Unable to load classes.'))
   }, [])
+
+  useEffect(() => {
+    if (!sponsorId) {
+      setSponsorPaidTargets(null)
+      return
+    }
+    let active = true
+    getSponsorPayments(Number(sponsorId)).then((payments) => {
+      if (!active) return
+      const keys = payments.flatMap((payment) => {
+        if (payment.status !== 'paid') return []
+        if (payment.courseId !== null) return [targetKey('course', payment.courseId)]
+        return payment.classId !== null ? [targetKey('class', payment.classId)] : []
+      })
+      setSponsorPaidTargets(keys)
+      setSelectedTarget((current) => keys.includes(current) ? current : '')
+    }).catch(() => {
+      if (active) setSponsorPaidTargets([])
+    })
+    return () => { active = false }
+  }, [sponsorId])
 
   const buildOptions = (): AccessGrantOptions | null => {
     const target = buildTarget(selectedTarget)
@@ -128,6 +161,10 @@ const AccessPage: FC = () => {
     }
     if (reason === 'Sponsored' && !sponsorId) {
       setSharedError('Choose a sponsor for sponsored access.')
+      return null
+    }
+    if (reason === 'Sponsored' && sponsorPaidTargets && !sponsorPaidTargets.includes(selectedTarget)) {
+      setSharedError('Choose a course or class this sponsor has paid for.')
       return null
     }
     setSharedError(null)
@@ -149,6 +186,7 @@ const AccessPage: FC = () => {
           courses={courses}
           classes={classes}
           selectedTarget={selectedTarget}
+          allowedTargets={sponsorPaidTargets}
           reason={reason}
           note={note}
           expiresAt={expiresAt}
@@ -172,6 +210,7 @@ const AccessOptionsCard: FC<{
   courses: ItemOption[]
   classes: ItemOption[]
   selectedTarget: string
+  allowedTargets: string[] | null
   reason: AccessGrantReason
   note: string
   expiresAt: string
@@ -197,7 +236,7 @@ const AccessOptionsCard: FC<{
       <CardContent>
         <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Access details</Typography>
         <Stack spacing={2} direction={{ xs: 'column', md: 'row' }} useFlexGap sx={{ flexWrap: 'wrap' }}>
-          <CourseClassSelect id="access-target" value={props.selectedTarget} courses={props.courses} classes={props.classes} onChange={props.onTargetChange} />
+          <CourseClassSelect id="access-target" value={props.selectedTarget} courses={props.courses} classes={props.classes} onChange={props.onTargetChange} allowedKeys={props.reason === 'Sponsored' && props.sponsorId ? props.allowedTargets : null} />
           <FormControl sx={{ minWidth: 200 }}>
             <InputLabel id="access-reason">Reason</InputLabel>
             <Select labelId="access-reason" label="Reason" value={props.reason} onChange={(event) => props.onReasonChange(event.target.value as AccessGrantReason)}>
@@ -933,8 +972,8 @@ const SponsorsCard: FC<{ courses: ItemOption[]; classes: ItemOption[] }> = ({ co
           </Table>
           <Box component="form" onSubmit={recordPayment} sx={{ mt: 3 }}>
             <Stack spacing={2} direction={{ xs: 'column', md: 'row' }} useFlexGap sx={{ flexWrap: 'wrap' }}>
-              <CourseClassSelect id="sponsor-payment-target" required value={paymentForm.target} courses={courses} classes={classes} onChange={(value) => setPaymentForm({ ...paymentForm, target: value })} />
-              <TextField label="Amount ($)" type="number" value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} inputProps={{ min: 0.01, step: 0.01 }} required />
+              <CourseClassSelect id="sponsor-payment-target" required value={paymentForm.target} courses={courses} classes={classes} onChange={(value) => setPaymentForm({ ...paymentForm, target: value, amount: priceForTarget(value, courses, classes) })} />
+              <TextField label="Amount ($)" type="number" value={paymentForm.amount} InputProps={{ readOnly: true }} helperText="Set to the selected course or class price" required />
               <TextField label="Reference (optional)" value={paymentForm.reference} onChange={(event) => setPaymentForm({ ...paymentForm, reference: event.target.value })} inputProps={{ maxLength: 200 }} />
               <Button component="label" variant="outlined">
                 {paymentForm.invoice ? paymentForm.invoice.name : 'Choose paid invoice (optional)'}
