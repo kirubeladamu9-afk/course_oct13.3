@@ -934,6 +934,180 @@ export const reviewManualPayment = async (paymentId: number, decision: 'approve'
   if (!response.ok) throw new Error(await getErrorMessage(response))
 }
 
+export type AccessGrantReason = 'Scholarship' | 'Staff' | 'Promotion' | 'Sponsored' | 'Other'
+
+export type AccessTarget = { courseId: number; classId?: never } | { classId: number; courseId?: never }
+
+export type AccessGrantOptions = AccessTarget & {
+  reason: AccessGrantReason
+  note: string
+  expiresAt?: string
+  sponsorId?: number | null
+  override?: boolean
+}
+
+export interface AccessGrantResult {
+  status: 'granted' | 'skipped'
+  message?: string
+  enrollmentId?: number
+  classStatus?: 'enrolled' | 'waitlisted'
+  username?: string
+  temporaryPassword?: string
+  setPasswordPath?: string
+}
+
+export interface AccessGrantRecord {
+  id: number
+  userId: number
+  studentName: string
+  email: string
+  item: string
+  source: 'free_grant' | 'sponsored'
+  accessStatus: 'active' | 'revoked' | 'expired'
+  classStatus: 'enrolled' | 'waitlisted' | null
+  grantReason: string
+  sponsorName: string | null
+  expiresAt: string | null
+  grantedAt: string
+  revokedAt: string | null
+}
+
+export interface Sponsor {
+  id: number
+  name: string
+  contact: string
+  notes: string
+  seatLimit: number | null
+  endDate: string | null
+  seatsUsed: number
+  seatsRemaining: number | null
+}
+
+export interface SponsorInput {
+  name: string
+  contact: string
+  notes: string
+  seatLimit: number | null
+  endDate: string | null
+}
+
+export interface SponsorReportRow {
+  enrollmentId: number
+  name: string
+  email: string
+  item: string
+  seat: string
+  accessStatus: string
+  expiresAt: string
+  progressPercentage: number
+  lessonsCompleted: number
+  liveSessionsAttended: number
+  liveSessionsTotal: number
+}
+
+export interface SponsorReport {
+  sponsor: Sponsor
+  students: SponsorReportRow[]
+}
+
+export type ImportRowStatus = 'new' | 'existing' | 'duplicate' | 'invalid' | 'overflow'
+
+export interface AccessImportPreview {
+  batchId: number
+  summary: Record<ImportRowStatus, number>
+  targetIssues: string[]
+  rows: Array<{ row: number; name: string; email: string; status: ImportRowStatus; message: string }>
+}
+
+export interface AccessImportResult {
+  row: number
+  name: string
+  outcome: 'granted' | 'skipped' | 'refused' | 'failed' | ImportRowStatus
+  message?: string
+  username?: string
+  temporaryPassword?: string
+  setPasswordPath?: string
+}
+
+const jsonRequest = (method: string, body?: unknown): RequestInit => ({
+  method,
+  headers: { 'Content-Type': 'application/json' },
+  body: body === undefined ? undefined : JSON.stringify(body),
+})
+
+export class AccessWarningError extends Error {
+  warnings: string[]
+  constructor(message: string, warnings: string[]) {
+    super(message)
+    this.warnings = warnings
+  }
+}
+
+export const grantAccess = async (payload: AccessGrantOptions & { userId?: number; email?: string; name?: string; phone?: string; grade?: string }): Promise<AccessGrantResult> => {
+  const response = await requestApi('/api/admin/access-grants', jsonRequest('POST', payload))
+  const body = await response.json().catch(() => null)
+  if (response.status === 409 && Array.isArray(body?.warnings)) throw new AccessWarningError(body.message, body.warnings)
+  if (!response.ok) throw new Error(body?.message ?? 'Unable to complete your request.')
+  return body
+}
+
+export const getAccessGrants = async (): Promise<AccessGrantRecord[]> => {
+  const response = await requestApi('/api/admin/access-grants')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const revokeAccessGrant = async (enrollmentId: number): Promise<void> => {
+  const response = await requestApi(`/api/admin/access-grants/${enrollmentId}/revoke`, jsonRequest('POST'))
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const getSponsors = async (): Promise<Sponsor[]> => {
+  const response = await requestApi('/api/admin/sponsors')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const saveSponsor = async (sponsorId: number | null, input: SponsorInput): Promise<void> => {
+  const response = await requestApi(sponsorId === null ? '/api/admin/sponsors' : `/api/admin/sponsors/${sponsorId}`, jsonRequest(sponsorId === null ? 'POST' : 'PUT', input))
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const deleteSponsor = async (sponsorId: number): Promise<void> => {
+  const response = await requestApi(`/api/admin/sponsors/${sponsorId}`, jsonRequest('DELETE'))
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const getSponsorReport = async (sponsorId: number): Promise<SponsorReport> => {
+  const response = await requestApi(`/api/admin/sponsors/${sponsorId}/report`)
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const previewAccessImport = async (csv: string, options: AccessGrantOptions): Promise<AccessImportPreview> => {
+  const response = await requestApi('/api/admin/access-imports', jsonRequest('POST', { ...options, csv }))
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const confirmAccessImport = async (batchId: number, override: boolean): Promise<{ results: AccessImportResult[] }> => {
+  const response = await requestApi(`/api/admin/access-imports/${batchId}/confirm`, jsonRequest('POST', { override }))
+  const body = await response.json().catch(() => null)
+  if (response.status === 409 && Array.isArray(body?.warnings)) throw new AccessWarningError(body.message, body.warnings)
+  if (!response.ok) throw new Error(body?.message ?? 'Unable to complete your request.')
+  return body
+}
+
+export const cancelAccessImport = async (batchId: number): Promise<void> => {
+  const response = await requestApi(`/api/admin/access-imports/${batchId}`, jsonRequest('DELETE'))
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const setPasswordWithToken = async (token: string, password: string): Promise<void> => {
+  const response = await requestApi('/api/auth/set-password', jsonRequest('POST', { token, password }))
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
 export const getAdminRegistrations = async (): Promise<AdminRegistration[]> => {
   const response = await requestApi('/api/admin/registrations')
   if (!response.ok) throw new Error(await getErrorMessage(response))

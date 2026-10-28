@@ -92,6 +92,8 @@ import AtRiskStudentsPanel from '@/components/at-risk-students-panel'
 import AdminDataTable, { type DataColumn } from './admin-data-table'
 import ClassesWorkspace from './classes-workspace'
 import PaymentsPage from './payments-page'
+import AccessPage from './access-page'
+import CardGiftcardOutlinedIcon from '@mui/icons-material/CardGiftcardOutlined'
 import ReportsPage from './reports-page'
 import PracticeExamManagement from './practice-exam-management'
 import SyllabusTopicsPage from './syllabus-topics-page'
@@ -109,7 +111,7 @@ import { STEM_TOOL_LIBRARY, STEM_TOOL_PICKER_COMING_SOON, type StemToolDefinitio
 
 const drawerWidth = 272
 
-type Section = 'overview' | 'courses' | 'registrations' | 'classes' | 'tutors' | 'blog' | 'practice-exams' | 'syllabus' | 'payments' | 'reports' | 'violations' | 'reviews' | 'users' | 'security'
+type Section = 'overview' | 'courses' | 'registrations' | 'classes' | 'tutors' | 'blog' | 'practice-exams' | 'syllabus' | 'payments' | 'access' | 'reports' | 'violations' | 'reviews' | 'users' | 'security'
 
 type AdminNavigationItem = {
   key: Section
@@ -127,6 +129,7 @@ const navigation: AdminNavigationItem[] = [
   { key: 'practice-exams', label: 'Practice Exams', icon: <QuizOutlinedIcon /> },
   { key: 'syllabus', label: 'Syllabus Topics', icon: <FactCheckOutlinedIcon /> },
   { key: 'payments', label: 'Payments', icon: <PaymentsOutlinedIcon /> },
+  { key: 'access', label: 'Access & Sponsors', icon: <CardGiftcardOutlinedIcon /> },
   { key: 'reports', label: 'Reports', icon: <AssessmentOutlinedIcon /> },
   { key: 'violations', label: 'Violations', icon: <BlockIcon /> },
   { key: 'reviews', label: 'Learner Reviews', icon: <RateReviewOutlinedIcon /> },
@@ -1816,6 +1819,7 @@ const AdminDashboard: FC<AdminDashboardProps> = ({ darkMode, onToggleDarkMode })
       case 'practice-exams': return <PracticeExamManagement />
       case 'syllabus': return <SyllabusTopicsPage />
       case 'payments': return <PaymentsPage />
+      case 'access': return <AccessPage />
       case 'reports': return <ReportsPage />
       case 'violations': return <ViolationsPage />
       case 'reviews': return <ReviewsPage />

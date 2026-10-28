@@ -7,6 +7,7 @@ import { Footer } from '@/components/footer'
 import { Header } from '@/components/header'
 import { SpinnerCustom } from '@/components/spinner'
 import SignInPage from '@/components/auth/sign-in-page'
+import SetPasswordPage from '@/components/auth/set-password-page'
 import { navigateTo } from '@/lib/navigation'
 import { SITE_NAME } from '@/lib/site'
 import { type Course } from '@/interfaces/course'
@@ -57,6 +58,7 @@ const getAdminPageTitle = (pathname: string) => {
   if (normalizedPath === '/admin/practice-exams') return 'Practice Exams'
   if (normalizedPath === '/admin/syllabus') return 'Syllabus Topics'
   if (normalizedPath === '/admin/payments') return 'Payments'
+  if (normalizedPath === '/admin/access') return 'Access & Sponsors'
   if (normalizedPath === '/admin/reports') return 'Reports'
   if (normalizedPath === '/admin/violations') return 'Quiz Violations'
   if (normalizedPath === '/admin/reviews') return 'Learner Reviews'
@@ -100,13 +102,14 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   const isBookstorePath = /^\/bookstore\/?$/.test(currentPath)
   const isContactPath = /^\/contact-us\/?$/.test(currentPath)
   const isSignInPath = /^\/sign-in\/?$/.test(currentPath)
+  const isSetPasswordPath = /^\/set-password\/?$/.test(currentPath)
   const isCourseMarketplacePath = /^\/courses\/?$/.test(currentPath)
   const courseMatch = currentPath.match(/^\/courses\/([^/]+)\/?$/)
   const currentUser = getAuthenticatedUser()
   const isAuthenticated = currentUser !== null
   const canAccessAdmin = currentUser?.role === 'admin'
   const canAccessTutor = currentUser?.role === 'tutor'
-  const isPublicPath = !isAdminPath && !isTutorPath && !isDashboardPath && !isSecurityPath
+  const isPublicPath = !isAdminPath && !isTutorPath && !isDashboardPath && !isSecurityPath && !isSetPasswordPath
   const signedInHomePath = currentUser?.role === 'admin' ? '/admin' : currentUser?.role === 'tutor' ? '/tutor' : '/dashboard'
 
   useEffect(() => {
@@ -188,6 +191,7 @@ const App: React.FC<AppProps> = ({ darkMode, onToggleDarkMode }) => {
   if (isCourseMarketplacePath) return <RouteSuspense><CourseMarketplacePage courses={homeCourses ?? []} darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} isLoading={homeCourses === null} /></RouteSuspense>
   if (isContactPath) return <RouteSuspense><InfoPage kind="contact" darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /></RouteSuspense>
   if (isSignInPath) return <Box component="main"><Header darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /><SignInPage mode="sign-in" /><Footer /></Box>
+  if (isSetPasswordPath) return <Box component="main"><Header darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} /><SetPasswordPage /><Footer /></Box>
   return (
     <Box component="main">
       <Suspense

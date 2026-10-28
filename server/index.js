@@ -2036,14 +2036,13 @@ const createEnrollments = async (transaction, { userId, students, courseId, clas
     const classStatus = classRecord ? (classRecord.status === 'full' || classRecord.enrolled_count >= classRecord.capacity ? 'waitlisted' : 'enrolled') : null
     const [enrollment] = await transaction`
       INSERT INTO enrollments ${transaction({ user_id: userId, student_id: savedStudent.id, course_id: courseId, payment_id: paymentId, class_id: classRecord?.id ?? null, class_status: classStatus, source, sponsor_id: sponsorId, granted_by: grantedBy, grant_reason: grantReason, grant_note: grantNote, expires_at: expiresAt })}
-      ON CONFLICT DO NOTHING
       RETURNING id::INTEGER AS id
     `
     if (classRecord && classStatus === 'enrolled' && classRecord.enrolled_count + 1 >= classRecord.capacity) {
       await transaction`UPDATE classes SET status = 'full', updated_at = NOW() WHERE id = ${classRecord.id}`
     }
     if (courseId !== null) await transaction`UPDATE courses SET students = students + 1 WHERE id = ${courseId}`
-    created.push({ id: enrollment?.id ?? null, classStatus })
+    created.push({ id: enrollment.id, classStatus })
   }
   return created
 }
@@ -2481,6 +2480,7 @@ app.get('/api/gamification', requireAuthenticated, async (request, response) => 
     WHERE enrollments.user_id = ${request.userId}
       AND enrollments.class_id IS NOT NULL
       AND enrollments.class_status = 'enrolled'
+      AND ${enrollmentAccessCondition()}
       AND classes.published = true
     ORDER BY enrollments.created_at DESC
     LIMIT 1
@@ -2495,6 +2495,7 @@ app.get('/api/gamification', requireAuthenticated, async (request, response) => 
       INNER JOIN classes ON classes.id = enrollments.class_id AND classes.published = true
       WHERE enrollments.class_id IS NOT NULL
         AND enrollments.class_status = 'enrolled'
+        AND ${enrollmentAccessCondition()}
     ), class_scores AS (
       SELECT class_users.class_id,
              class_users.user_id,
