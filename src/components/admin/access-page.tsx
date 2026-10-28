@@ -12,6 +12,7 @@ import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
+import Snackbar from '@mui/material/Snackbar'
 import Stack from '@mui/material/Stack'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -207,21 +208,35 @@ const AccessOptionsCard: FC<{
 
 const formatExpiry = (iso?: string) => iso ? new Date(iso).toLocaleString() : ''
 
-const CredentialNotice: FC<{ username?: string; temporaryPassword?: string; oneTimePasswordExpiresAt?: string; setPasswordPath?: string }> = ({ username, temporaryPassword, oneTimePasswordExpiresAt, setPasswordPath }) => {
-  if (!username && !setPasswordPath) return null
-  const fullLink = setPasswordPath ? `${window.location.origin}${setPasswordPath}` : ''
+const downloadOneTimeCredentialsText = (credentials: { name: string; username: string; temporaryPassword: string; oneTimePasswordExpiresAt?: string }) => {
+  const content = [
+    'Student access credentials',
+    '',
+    `Student: ${credentials.name}`,
+    `Username: ${credentials.username}`,
+    `One-time password: ${credentials.temporaryPassword}`,
+    `Expires: ${formatExpiry(credentials.oneTimePasswordExpiresAt)}`,
+    '',
+    'This password is shown only once and expires. The student must set a new password at first sign-in.',
+    '',
+  ].join('\r\n')
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `access-credentials-${credentials.username}.txt`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+const CredentialNotice: FC<{ setPasswordPath?: string }> = ({ setPasswordPath }) => {
+  if (!setPasswordPath) return null
+  const fullLink = `${window.location.origin}${setPasswordPath}`
   return (
     <Alert severity="warning" sx={{ mt: 2 }}>
-      {username && (
-        <Typography variant="body2" sx={{ mb: 1 }}>
-          Username <strong>{username}</strong> and one-time password <strong>{temporaryPassword}</strong>. This password is shown only once and expires {formatExpiry(oneTimePasswordExpiresAt)}. The student must set a new password at first sign-in.
-        </Typography>
-      )}
-      {fullLink && (
-        <Typography variant="body2">
-          No email service is connected to this app, so this set-password link was not emailed. Share it with the student yourself. It is single-use and expires in 72 hours: <strong style={{ wordBreak: 'break-all' }}>{fullLink}</strong>
-        </Typography>
-      )}
+      <Typography variant="body2">
+        No email service is connected to this app, so this set-password link was not emailed. Share it with the student yourself. It is single-use and expires in 72 hours: <strong style={{ wordBreak: 'break-all' }}>{fullLink}</strong>
+      </Typography>
     </Alert>
   )
 }
@@ -235,6 +250,7 @@ const SingleGrantCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = (
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   const [result, setResult] = useState<AccessGrantResult | null>(null)
+  const [credentialNoticeOpen, setCredentialNoticeOpen] = useState(false)
 
   const submit = async (override: boolean) => {
     const options = buildOptions()
@@ -243,11 +259,16 @@ const SingleGrantCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = (
     setIsSaving(true)
     setError(null)
     setResult(null)
+    setCredentialNoticeOpen(false)
     try {
       const outcome = await grantAccess({ ...options, email: email.trim() || undefined, name: name.trim(), phone: phone.trim(), grade: grade.trim(), override })
       setResult(outcome)
       setWarnings([])
       if (outcome.status === 'granted') {
+        if (outcome.username && outcome.temporaryPassword) {
+          downloadOneTimeCredentialsText({ name: name.trim(), username: outcome.username, temporaryPassword: outcome.temporaryPassword, oneTimePasswordExpiresAt: outcome.oneTimePasswordExpiresAt })
+          setCredentialNoticeOpen(true)
+        }
         setEmail('')
         setName('')
         setPhone('')
@@ -291,7 +312,16 @@ const SingleGrantCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = (
             Access granted.{result.classStatus === 'waitlisted' ? ' The class is full, so the student is waitlisted and has no meeting link yet.' : ''}
           </Alert>
         )}
-        {result?.status === 'granted' && <CredentialNotice username={result.username} temporaryPassword={result.temporaryPassword} oneTimePasswordExpiresAt={result.oneTimePasswordExpiresAt} setPasswordPath={result.setPasswordPath} />}
+        {result?.status === 'granted' && <CredentialNotice setPasswordPath={result.setPasswordPath} />}
+        <Snackbar
+          open={credentialNoticeOpen}
+          onClose={(_event, reason) => { if (reason !== 'clickaway') setCredentialNoticeOpen(false) }}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert severity="warning" variant="filled" onClose={() => setCredentialNoticeOpen(false)} sx={{ maxWidth: 560 }}>
+            Username <strong>{result?.username}</strong> and one-time password <strong>{result?.temporaryPassword}</strong>. This password is shown only once and expires {formatExpiry(result?.oneTimePasswordExpiresAt)}. The student must set a new password at first sign-in. A text file with these credentials was downloaded.
+          </Alert>
+        </Snackbar>
       </CardContent>
     </Card>
   )
