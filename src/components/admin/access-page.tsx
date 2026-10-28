@@ -41,7 +41,6 @@ import {
   recordSponsorPayment,
   uploadSponsorPaymentInvoice,
   previewAccessImport,
-  resetStudentOneTimePassword,
   revokeAccessGrant,
   saveSponsor,
   type AccessGrantOptions,
@@ -51,7 +50,6 @@ import {
   type AccessImportPreview,
   type AccessImportResult,
   type AccessTarget,
-  type OneTimePasswordReset,
   type Sponsor,
   type SponsorPayment,
   type SponsorInput,
@@ -570,7 +568,7 @@ const BulkImportCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = ({
           </Alert>
         )}
         {credentialRows.length === 0 && credentialsDownloaded && (
-          <Alert severity="info" sx={{ mt: 3 }}>The credentials file was downloaded. Use New password in Granted access to issue a new one if needed.</Alert>
+          <Alert severity="info" sx={{ mt: 3 }}>The credentials file was downloaded. Keep it somewhere safe, since the one-time passwords cannot be shown again.</Alert>
         )}
       </CardContent>
     </Card>
@@ -580,8 +578,6 @@ const BulkImportCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = ({
 const GrantsCard: FC = () => {
   const [grants, setGrants] = useState<AccessGrantRecord[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [resettingUserId, setResettingUserId] = useState<number | null>(null)
-  const [issuedPassword, setIssuedPassword] = useState<OneTimePasswordReset | null>(null)
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const currentPage = Math.min(page, Math.max(0, Math.ceil(grants.length / rowsPerPage) - 1))
@@ -599,19 +595,6 @@ const GrantsCard: FC = () => {
       await load()
     } catch (revokeError) {
       setError(errorText(revokeError))
-    }
-  }
-
-  const issueNewPassword = async (grant: AccessGrantRecord) => {
-    if (!window.confirm(`Issue a new one-time password for ${grant.studentName}? Their current password and active sessions stop working.`)) return
-    setResettingUserId(grant.userId)
-    setError(null)
-    try {
-      setIssuedPassword(await resetStudentOneTimePassword(grant.userId))
-    } catch (resetError) {
-      setError(errorText(resetError))
-    } finally {
-      setResettingUserId(null)
     }
   }
 
@@ -646,7 +629,6 @@ const GrantsCard: FC = () => {
                   <TableCell>{grant.expiresAt ?? 'No expiry'}</TableCell>
                   <TableCell>{grant.accessStatus}</TableCell>
                   <TableCell align="right">
-                    {grant.usernameAccount && <Button size="small" disabled={resettingUserId === grant.userId} onClick={() => void issueNewPassword(grant)}>New password</Button>}
                     {grant.accessStatus === 'active' && <Button color="error" size="small" onClick={() => void revoke(grant)}>Revoke</Button>}
                   </TableCell>
                 </TableRow>
@@ -664,17 +646,6 @@ const GrantsCard: FC = () => {
           onRowsPerPageChange={(event) => { setRowsPerPage(Number(event.target.value)); setPage(0) }}
         />
       </CardContent>
-      <Dialog open={issuedPassword !== null} onClose={() => setIssuedPassword(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>New one-time password</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ mb: 1.5 }}>Username <strong>{issuedPassword?.username}</strong></Typography>
-          <Typography variant="body2" sx={{ mb: 1.5 }}>One-time password <strong>{issuedPassword?.temporaryPassword}</strong></Typography>
-          <Typography variant="body2" color="text.secondary">Shown only once. Expires {formatExpiry(issuedPassword?.oneTimePasswordExpiresAt)}. The student must set a new password at first sign-in.</Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setIssuedPassword(null)}>Done</Button>
-        </DialogActions>
-      </Dialog>
     </Card>
   )
 }
