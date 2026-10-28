@@ -2065,9 +2065,10 @@ const grantEnrollmentAccess = async (transaction, { userId, student, courseId, c
   if (issues.includes('missing')) throw new EnrollmentRefusal(404, { message: 'The selected course or class was not found.' })
   if (issues.length > 0 && !override) throw new EnrollmentRefusal(409, { message: 'Confirm the warnings to grant access anyway.', warnings: issues })
 
+  let enrollmentExpiresAt = expiresAt
   if (sponsorId !== null) {
     const [sponsor] = await transaction`
-      SELECT seat_limit, (end_date IS NOT NULL AND end_date < CURRENT_DATE) AS ended,
+      SELECT seat_limit, to_char(end_date, 'YYYY-MM-DD') AS "endDate", (end_date IS NOT NULL AND end_date < CURRENT_DATE) AS ended,
              (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed"
       FROM sponsors
       WHERE id = ${sponsorId}
@@ -2076,6 +2077,7 @@ const grantEnrollmentAccess = async (transaction, { userId, student, courseId, c
     if (!sponsor) throw new EnrollmentRefusal(404, { message: 'Sponsor not found.' })
     if (sponsor.ended) throw new EnrollmentRefusal(409, { message: 'This sponsor agreement has ended.' })
     if (sponsor.seat_limit !== null && sponsor.seatsUsed >= sponsor.seat_limit) throw new EnrollmentRefusal(409, { message: 'This sponsor has no seats left.' })
+    if (sponsor.endDate && (enrollmentExpiresAt === null || sponsor.endDate < enrollmentExpiresAt)) enrollmentExpiresAt = sponsor.endDate
   }
 
   await transaction`
@@ -2095,7 +2097,7 @@ const grantEnrollmentAccess = async (transaction, { userId, student, courseId, c
     grantedBy,
     grantReason: reason,
     grantNote: note,
-    expiresAt,
+    expiresAt: enrollmentExpiresAt,
   })
   return { status: 'granted', enrollmentId: created.id, classStatus: created.classStatus }
 }
@@ -5119,7 +5121,6 @@ app.get('/api/admin/access-grants', requireAdmin, async (_request, response) => 
            enrollments.class_status AS "classStatus",
            enrollments.grant_reason AS "grantReason",
            sponsors.name AS "sponsorName",
-           to_char(sponsors.end_date, 'YYYY-MM-DD') AS "sponsorEndDate",
            to_char(enrollments.expires_at, 'YYYY-MM-DD') AS "expiresAt",
            enrollments.created_at AS "grantedAt",
            enrollments.revoked_at AS "revokedAt",

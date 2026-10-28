@@ -584,10 +584,7 @@ const GrantsCard: FC = () => {
                   <TableCell>{grant.source === 'sponsored' ? `Sponsored${grant.sponsorName ? ` (${grant.sponsorName})` : ''}` : 'Free grant'}</TableCell>
                   <TableCell>{grant.grantReason}</TableCell>
                   <TableCell>{grant.classStatus ?? 'Course'}</TableCell>
-                  <TableCell>
-                    {grant.expiresAt ?? 'No expiry'}
-                    {grant.sponsorEndDate && <Typography variant="caption" display="block" color="text.secondary">Sponsor agreement ends {grant.sponsorEndDate}. This does not end access.</Typography>}
-                  </TableCell>
+                  <TableCell>{grant.expiresAt ?? 'No expiry'}</TableCell>
                   <TableCell>{grant.accessStatus}</TableCell>
                   <TableCell align="right">
                     {grant.usernameAccount && <Button size="small" disabled={resettingUserId === grant.userId} onClick={() => void issueNewPassword(grant)}>New password</Button>}

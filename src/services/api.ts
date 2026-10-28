@@ -974,7 +974,6 @@ export interface AccessGrantRecord {
   classStatus: 'enrolled' | 'waitlisted' | null
   grantReason: string
   sponsorName: string | null
-  sponsorEndDate: string | null
   expiresAt: string | null
   grantedAt: string
   revokedAt: string | null
