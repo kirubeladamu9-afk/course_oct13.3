@@ -1710,7 +1710,8 @@ const paymentColumns: DataColumn<MyPayment>[] = [
   { key: 'itemName', label: 'Item' },
   { key: 'type', label: 'Type' },
   { key: 'amount', label: 'Amount', render: (value, row) => `${row.currency} ${Number(value).toFixed(2)}` },
-  { key: 'status', label: 'Status', render: (value) => <Chip label={String(value)} color={value === 'Paid' ? 'success' : value === 'Failed' ? 'error' : 'warning'} size="small" /> },
+  { key: 'status', label: 'Status', render: (value) => <Chip label={String(value)} color={value === 'Paid' ? 'success' : ['Failed', 'Declined'].includes(String(value)) ? 'error' : 'warning'} size="small" /> },
+  { key: 'reviewNote', label: 'Review note' },
   { key: 'date', label: 'Date' },
   { key: 'txRef', label: 'Transaction Reference' },
 ]
@@ -2631,8 +2632,8 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
         </>}
       </Box>
     </Box>
-    {classCheckoutCourse && classToEnroll && <EnrollmentModal course={classCheckoutCourse} classId={classToEnroll.id} open={true} onClose={() => setClassToEnroll(null)} onPaid={() => { void getMyEnrollments().then((records) => setEnrollments(mapMyEnrollments(records, currentUserId))).catch(() => undefined) }} />}
-    {courseToEnroll && <EnrollmentModal course={courseToEnroll} open={true} onClose={() => setCourseToEnroll(null)} onPaid={() => { void getMyEnrollments().then((records) => setEnrollments(mapMyEnrollments(records, currentUserId))).catch(() => undefined) }} />}
+    {classCheckoutCourse && classToEnroll && <EnrollmentModal course={classCheckoutCourse} classId={classToEnroll.id} open={true} onClose={() => setClassToEnroll(null)} onSubmitted={() => { void getMyPayments().then(setPayments).catch(() => undefined) }} />}
+    {courseToEnroll && <EnrollmentModal course={courseToEnroll} open={true} onClose={() => setCourseToEnroll(null)} onSubmitted={() => { void getMyPayments().then(setPayments).catch(() => undefined) }} />}
     {victoryCelebrationId > 0 && <QuizVictoryCelebration key={victoryCelebrationId} />}
   </Box>
 }

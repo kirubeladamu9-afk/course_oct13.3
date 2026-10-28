@@ -511,6 +511,15 @@ const initializeDatabase = async () => {
     bookstore_item_id: 'BIGINT REFERENCES bookstore_items(id) ON DELETE RESTRICT',
     currency: "TEXT NOT NULL DEFAULT 'ETB'",
     chapa_reference: 'TEXT',
+    payment_method: "TEXT NOT NULL DEFAULT 'chapa'",
+    verification_status: "TEXT CHECK (verification_status IN ('pending', 'approved', 'declined'))",
+    proof_image: 'BYTEA',
+    proof_mime_type: 'TEXT',
+    proof_file_name: 'TEXT',
+    contact_data: 'JSONB',
+    review_note: 'TEXT',
+    reviewed_by: 'BIGINT REFERENCES users(id) ON DELETE SET NULL',
+    reviewed_at: 'TIMESTAMPTZ',
   })
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS payments_chapa_reference_idx ON payments(chapa_reference) WHERE chapa_reference IS NOT NULL`
 
@@ -629,6 +638,8 @@ const initializeDatabase = async () => {
     class_id: 'BIGINT REFERENCES classes(id) ON DELETE SET NULL',
   })
   await ensureNullable('payments', 'course_id')
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS payments_manual_pending_course_idx ON payments(user_id, course_id) WHERE payment_method = 'manual' AND verification_status = 'pending' AND course_id IS NOT NULL`
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS payments_manual_pending_class_idx ON payments(user_id, class_id) WHERE payment_method = 'manual' AND verification_status = 'pending' AND class_id IS NOT NULL`
 
   await sql`
     CREATE TABLE IF NOT EXISTS course_progress (
@@ -1929,13 +1940,14 @@ const verifyChapaTransaction = async (reference) => {
 
 const updatePaymentStatus = async (reference, status, verification = {}) => sql.begin(async (transaction) => {
   const [payment] = await transaction`
-    SELECT id, user_id AS "userId", course_id AS "courseId", class_id AS "classId", practice_exam_id AS "practiceExamId", bookstore_item_id AS "bookstoreItemId", student_data AS "studentData", amount::FLOAT AS amount, currency, status
+    SELECT id, user_id AS "userId", course_id AS "courseId", class_id AS "classId", practice_exam_id AS "practiceExamId", bookstore_item_id AS "bookstoreItemId", student_data AS "studentData", payment_method AS "paymentMethod", verification_status AS "verificationStatus", amount::FLOAT AS amount, currency, status
     FROM payments
     WHERE reference = ${reference}
     FOR UPDATE
   `
   if (!payment || payment.status === status || payment.status === 'paid') return payment?.status ?? null
-  if (status === 'paid' && !isTestChapa && (Number(verification.amount) !== payment.amount || String(verification.currency).toUpperCase() !== payment.currency.toUpperCase() || verification.merchant_reference !== payment.reference)) return payment.status
+  if (payment.paymentMethod === 'manual' && (status !== 'paid' || !verification.manualApproval || payment.verificationStatus !== 'pending')) return payment.status
+  if (status === 'paid' && payment.paymentMethod !== 'manual' && !isTestChapa && (Number(verification.amount) !== payment.amount || String(verification.currency).toUpperCase() !== payment.currency.toUpperCase() || verification.merchant_reference !== payment.reference)) return payment.status
   if (status === 'paid' && payment.classId !== null) {
     const [classRecord] = await transaction`
       SELECT schedule
@@ -1943,14 +1955,26 @@ const updatePaymentStatus = async (reference, status, verification = {}) => sql.
       WHERE id = ${payment.classId}
     `
     if (!classRecord || isClassEnrollmentClosed(deserializeJson(classRecord.schedule))) {
-      await transaction`UPDATE payments SET status = 'failed', paid_at = NULL WHERE id = ${payment.id}`
+      await transaction`
+        UPDATE payments
+        SET status = 'failed', paid_at = NULL,
+            verification_status = CASE WHEN payment_method = 'manual' THEN 'declined' ELSE verification_status END,
+            review_note = CASE WHEN payment_method = 'manual' THEN 'This class has closed and can no longer accept enrollments.' ELSE review_note END,
+            reviewed_at = CASE WHEN payment_method = 'manual' THEN NOW() ELSE reviewed_at END
+        WHERE id = ${payment.id}
+      `
       return 'failed'
     }
   }
 
   await transaction`
     UPDATE payments
-    SET status = ${status}, paid_at = ${status === 'paid' ? new Date() : null}, chapa_reference = COALESCE(chapa_reference, ${verification.chapa_reference ?? null})
+    SET status = ${status},
+        paid_at = ${status === 'paid' ? new Date() : null},
+        chapa_reference = COALESCE(chapa_reference, ${verification.chapa_reference ?? null}),
+        verification_status = CASE WHEN payment_method = 'manual' AND ${status} = 'paid' THEN 'approved' ELSE verification_status END,
+        reviewed_by = CASE WHEN payment_method = 'manual' AND ${status} = 'paid' THEN ${verification.adminUserId ?? null} ELSE reviewed_by END,
+        reviewed_at = CASE WHEN payment_method = 'manual' AND ${status} = 'paid' THEN NOW() ELSE reviewed_at END
     WHERE id = ${payment.id}
   `
   if (status !== 'paid') return status
@@ -3255,11 +3279,130 @@ app.post('/api/admin/quiz-attempts/:attemptId/retake-approval', requireAdmin, as
   return response.json(attempt)
 })
 
+const paymentProofMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
+
+const parsePaymentProof = (fileData, fileName) => {
+  if (typeof fileData !== 'string' || typeof fileName !== 'string') return null
+  const match = fileData.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/i)
+  const safeFileName = fileName.trim().replace(/[\r\n"]/g, '')
+  if (!match || !paymentProofMimeTypes.has(match[1].toLowerCase()) || !safeFileName || safeFileName.length > 255 || /[\\/]/.test(safeFileName)) return null
+  const content = Buffer.from(match[2], 'base64')
+  if (!content.length || content.length > 6 * 1024 * 1024) return null
+  const mimeType = match[1].toLowerCase()
+  const isJpeg = mimeType === 'image/jpeg' && content[0] === 0xff && content[1] === 0xd8 && content[2] === 0xff
+  const isPng = mimeType === 'image/png' && content.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  const isWebp = mimeType === 'image/webp' && content.toString('ascii', 0, 4) === 'RIFF' && content.toString('ascii', 8, 12) === 'WEBP'
+  if (!isJpeg && !isPng && !isWebp) return null
+  return { content, fileName: safeFileName, mimeType }
+}
+
+app.get('/api/enrollment/payment-info', async (request, response) => {
+  const courseId = parseCourseId(String(request.query.courseId ?? ''))
+  const classId = parseCourseId(String(request.query.classId ?? ''))
+  if ((courseId === null) === (classId === null)) return response.status(400).json({ message: 'Choose a course or class.' })
+
+  const [item] = classId === null ? await sql`
+    SELECT id::INTEGER AS id, title, price::FLOAT AS amount
+    FROM courses
+    WHERE id = ${courseId} AND status = 'Published'
+  ` : await sql`
+    SELECT id::INTEGER AS id, title, price::FLOAT AS amount
+    FROM classes
+    WHERE id = ${classId} AND published = true AND status IN ('open', 'full')
+  `
+  if (!item) return response.status(404).json({ message: 'This enrollment is not available.' })
+
+  const provider = process.env.MANUAL_PAYMENT_PROVIDER?.trim() ?? ''
+  const accountName = process.env.MANUAL_PAYMENT_ACCOUNT_NAME?.trim() ?? ''
+  const accountNumber = process.env.MANUAL_PAYMENT_ACCOUNT_NUMBER?.trim() ?? ''
+  return response.json({
+    ...item,
+    currency: process.env.MANUAL_PAYMENT_CURRENCY ?? process.env.CHAPA_CURRENCY ?? 'ETB',
+    provider,
+    accountName,
+    accountNumber,
+    instructions: process.env.MANUAL_PAYMENT_INSTRUCTIONS?.trim() ?? '',
+    configured: Boolean(provider && accountName && accountNumber),
+  })
+})
+
+app.post('/api/enrollment/manual-payment', requireAuthenticated, async (request, response) => {
+  const courseId = parseCourseId(String(request.body?.courseId ?? ''))
+  const classId = parseCourseId(String(request.body?.classId ?? ''))
+  if ((courseId === null) === (classId === null)) return response.status(400).json({ message: 'Choose a course or class.' })
+  const proof = parsePaymentProof(request.body?.proofData, request.body?.proofFileName)
+  if (!proof) return response.status(400).json({ message: 'Upload a JPG, PNG, or WebP payment screenshot up to 6 MB.' })
+
+  const [user] = await sql`SELECT name, email, phone FROM users WHERE id = ${request.userId} AND status = 'Active'`
+  if (!user) return response.status(404).json({ message: 'Student account not found.' })
+  if (!user.name.trim() || !user.email.trim() || !user.phone.trim()) return response.status(400).json({ message: 'Complete your name, email, and phone number before submitting payment.' })
+
+  const result = await sql.begin(async (transaction) => {
+    const [item] = classId === null ? await transaction`
+      SELECT id, title, price::FLOAT AS amount
+      FROM courses
+      WHERE id = ${courseId} AND status = 'Published'
+      FOR SHARE
+    ` : await transaction`
+      SELECT id, title, price::FLOAT AS amount, schedule
+      FROM classes
+      WHERE id = ${classId} AND published = true AND status IN ('open', 'full')
+      FOR SHARE
+    `
+    if (!item) return { error: 'This enrollment is not available.', status: 404 }
+    if (classId !== null && isClassEnrollmentClosed(deserializeJson(item.schedule))) return { error: 'This batch has already started. Enrollment is closed.', status: 409 }
+
+    const [activeEnrollment] = await transaction`
+      SELECT enrollments.id
+      FROM enrollments
+      INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+      WHERE enrollments.user_id = ${request.userId}
+        AND (payments.course_id = ${courseId} OR payments.class_id = ${classId})
+      LIMIT 1
+    `
+    if (activeEnrollment) return { error: 'You already have active access to this item.', status: 409 }
+
+    const [pendingPayment] = await transaction`
+      SELECT id FROM payments
+      WHERE user_id = ${request.userId} AND payment_method = 'manual' AND verification_status = 'pending'
+        AND (course_id = ${courseId} OR class_id = ${classId})
+      LIMIT 1
+    `
+    if (pendingPayment) return { error: 'A payment for this item is already awaiting verification.', status: 409 }
+
+    const reference = `manual-${classId === null ? 'course' : 'class'}-${item.id}-${randomBytes(12).toString('hex')}`
+    const students = [{ fullName: user.name, ageOrGrade: 'Not provided', relationship: 'Self', preferredLanguage: 'Not provided', emergencyPhone: user.phone, notes: '' }]
+    const [payment] = await transaction`
+      INSERT INTO payments ${transaction({
+        reference,
+        user_id: request.userId,
+        course_id: classId === null ? item.id : null,
+        class_id: classId,
+        student_data: JSON.stringify(students),
+        contact_data: JSON.stringify({ name: user.name, email: user.email, phone: user.phone }),
+        amount: item.amount,
+        currency: process.env.MANUAL_PAYMENT_CURRENCY ?? process.env.CHAPA_CURRENCY ?? 'ETB',
+        payment_method: 'manual',
+        verification_status: 'pending',
+        proof_image: proof.content,
+        proof_mime_type: proof.mimeType,
+        proof_file_name: proof.fileName,
+      })}
+      RETURNING id::INTEGER AS id
+    `
+    return { id: payment.id, item: item.title }
+  })
+
+  if (result.error) return response.status(result.status).json({ message: result.error })
+  return response.status(201).json({ ...result, status: 'pending_verification' })
+})
+
 app.post('/api/payments/chapa', async (request, response) => {
   await loadAuthenticatedUser(request)
   const courseId = parseCourseId(String(request.body?.courseId ?? ''))
   const practiceExamId = parseCourseId(String(request.body?.practiceExamId ?? ''))
   const bookstoreItemId = parseCourseId(String(request.body?.bookstoreItemId ?? ''))
+  if (courseId !== null) return response.status(410).json({ message: 'Course enrollment now uses manual payment verification.' })
   const itemCount = [courseId, practiceExamId, bookstoreItemId].filter((id) => id !== null).length
   if (itemCount === 0) return response.status(400).json({ message: 'Choose a valid item.' })
   if (itemCount > 1) return response.status(400).json({ message: 'Choose only one item.' })
@@ -3376,86 +3519,7 @@ app.post('/api/payments/chapa', async (request, response) => {
   }
 })
 
-app.post('/api/payments/chapa/class', requireAuthenticated, async (request, response) => {
-  const classId = parseCourseId(String(request.body?.classId ?? ''))
-  if (classId === null) return response.status(400).json({ message: 'Choose a valid batch.' })
-  if (!isTestChapa && !process.env.CHAPA_SECRET_KEY) return response.status(503).json({ message: 'Chapa checkout has not been configured yet.' })
-
-  const [classRecord] = await sql`
-    SELECT classes.id,
-           classes.title,
-           classes.schedule,
-           classes.price::FLOAT AS price,
-           users.name,
-           users.email,
-           users.phone
-    FROM classes
-    INNER JOIN users ON users.id = ${request.userId}
-    WHERE classes.id = ${classId}
-      AND classes.published = true
-      AND classes.status IN ('open', 'full')
-  `
-  if (!classRecord) return response.status(404).json({ message: 'This batch is not available for enrollment.' })
-  if (isClassEnrollmentClosed(deserializeJson(classRecord.schedule))) {
-    return response.status(409).json({ message: 'This batch has already started. Enrollment is closed.' })
-  }
-  const [existingEnrollment] = await sql`SELECT id FROM enrollments WHERE user_id = ${request.userId} AND class_id = ${classId} LIMIT 1`
-  if (existingEnrollment) return response.status(409).json({ message: 'You are already enrolled in this batch.' })
-
-  const students = [{
-    fullName: classRecord.name.trim() || 'Student',
-    ageOrGrade: 'Not provided',
-    relationship: 'Self',
-    preferredLanguage: 'Not provided',
-    emergencyPhone: '',
-    notes: '',
-  }]
-  const referencePrefix = isTestChapa ? 'test-class' : 'class'
-  const reference = `${referencePrefix}-${classRecord.id}-${randomBytes(12).toString('hex')}`
-  const currency = process.env.CHAPA_CURRENCY ?? 'ETB'
-  const amount = classRecord.price * students.length
-  const [payment] = await sql`
-    INSERT INTO payments ${sql({ reference, user_id: request.userId, course_id: null, class_id: classRecord.id, student_data: JSON.stringify(students), amount, currency })}
-    RETURNING id
-  `
-
-  if (isTestChapa) return response.status(201).json({ checkoutUrl: '', paymentReference: reference, mode: 'test' })
-
-  const baseUrl = process.env.APP_URL ?? `${request.protocol}://${request.get('host')}`
-  const nameParts = classRecord.name.trim().split(/\s+/)
-  try {
-    const chapaResponse = await fetch('https://api.chapa.global/v2/payments/hosted', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        amount,
-        currency,
-        merchant_reference: reference,
-        customer: {
-          first_name: nameParts[0] || 'Student',
-          last_name: nameParts.slice(1).join(' '),
-          email: classRecord.email,
-          phone_number: classRecord.phone || undefined,
-        },
-        meta: { order_id: reference, class_id: classRecord.id },
-        return_url: `${baseUrl}/?payment=${reference}&class=${classRecord.id}`,
-        callback_url: `${baseUrl}/api/payments/chapa/webhook`,
-      }),
-    })
-    const chapaPayment = await chapaResponse.json().catch(() => null)
-    const checkoutUrl = chapaPayment?.data?.checkout_url
-    const chapaReference = chapaPayment?.data?.chapa_reference
-    if (!chapaResponse.ok || typeof checkoutUrl !== 'string') throw new Error('Chapa did not return a checkout link.')
-    if (typeof chapaReference === 'string' && chapaReference) await sql`UPDATE payments SET chapa_reference = ${chapaReference} WHERE id = ${payment.id}`
-    return response.status(201).json({ checkoutUrl, paymentReference: typeof chapaReference === 'string' && chapaReference ? chapaReference : reference, mode: 'live' })
-  } catch (error) {
-    await sql`UPDATE payments SET status = 'failed' WHERE id = ${payment.id}`
-    throw error
-  }
-})
+app.post('/api/payments/chapa/class', requireAuthenticated, (_request, response) => response.status(410).json({ message: 'Class enrollment now uses manual payment verification.' }))
 
 app.get('/api/payments/chapa/:reference/bookstore-download', async (request, response) => {
   const requestedReference = request.params.reference
@@ -3609,11 +3673,14 @@ app.get('/api/payments', requireAuthenticated, async (request, response) => {
            END AS type,
            payments.amount::FLOAT AS amount,
            payments.currency,
-           CASE payments.status
-             WHEN 'paid' THEN 'Paid'
-             WHEN 'failed' THEN 'Failed'
+           CASE
+             WHEN payments.verification_status = 'pending' THEN 'Pending Verification'
+             WHEN payments.verification_status = 'declined' THEN 'Declined'
+             WHEN payments.status = 'paid' THEN 'Paid'
+             WHEN payments.status = 'failed' THEN 'Failed'
              ELSE 'Pending'
            END AS status,
+           payments.review_note AS "reviewNote",
            to_char(payments.created_at, 'Mon DD, YYYY') AS date,
            payments.reference AS "txRef"
     FROM payments
@@ -4447,6 +4514,8 @@ app.get('/api/admin/registrations', requireAdmin, async (_request, response) => 
            to_char(COALESCE(enrollments.created_at, payments.created_at), 'Mon DD, YYYY') AS date,
            CASE
              WHEN enrollments.class_status = 'waitlisted' THEN 'Waitlisted'
+             WHEN payments.verification_status = 'pending' THEN 'Pending Verification'
+             WHEN payments.verification_status = 'declined' THEN 'Declined'
              WHEN payments.status = 'paid' THEN 'Approved'
              WHEN payments.status = 'failed' THEN 'Rejected'
              ELSE 'Pending'
@@ -4463,6 +4532,64 @@ app.get('/api/admin/registrations', requireAdmin, async (_request, response) => 
   return response.json(registrations)
 })
 
+app.get('/api/admin/pending-payments', requireAdmin, async (_request, response) => {
+  const payments = await sql`
+    SELECT payments.id::INTEGER AS id,
+           COALESCE(NULLIF(users.name, ''), 'Unknown student') AS student,
+           users.email AS email,
+           users.phone AS phone,
+           COALESCE(classes.title, courses.title, 'Course enrollment') AS course,
+           payments.amount::FLOAT AS amount,
+           payments.currency AS currency,
+           payments.created_at AS "submittedAt",
+           payments.proof_file_name AS "proofFileName"
+    FROM payments
+    INNER JOIN users ON users.id = payments.user_id
+    LEFT JOIN courses ON courses.id = payments.course_id
+    LEFT JOIN classes ON classes.id = payments.class_id
+    WHERE payments.payment_method = 'manual' AND payments.verification_status = 'pending' AND payments.status = 'pending'
+    ORDER BY payments.created_at ASC, payments.id ASC
+  `
+  return response.json(payments)
+})
+
+app.get('/api/admin/pending-payments/:paymentId/proof', requireAdmin, async (request, response) => {
+  const paymentId = parseEnrollmentId(request.params.paymentId)
+  if (paymentId === null) return response.status(404).end()
+  const [payment] = await sql`
+    SELECT proof_image AS image, proof_mime_type AS "mimeType"
+    FROM payments
+    WHERE id = ${paymentId} AND payment_method = 'manual'
+  `
+  if (!payment?.image || !payment.mimeType) return response.status(404).end()
+  response.set({ 'Content-Type': payment.mimeType, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
+  return response.send(payment.image)
+})
+
+app.post('/api/admin/pending-payments/:paymentId/approve', requireAdmin, async (request, response) => {
+  const paymentId = parseEnrollmentId(request.params.paymentId)
+  if (paymentId === null) return response.status(400).json({ message: 'Invalid payment.' })
+  const [payment] = await sql`SELECT reference FROM payments WHERE id = ${paymentId} AND payment_method = 'manual' AND verification_status = 'pending' AND status = 'pending'`
+  if (!payment) return response.status(409).json({ message: 'This payment is no longer pending verification.' })
+  const status = await updatePaymentStatus(payment.reference, 'paid', { manualApproval: true, adminUserId: request.userId })
+  if (status !== 'paid') return response.status(409).json({ message: 'This payment could not be approved.' })
+  return response.json({ id: paymentId, status: 'approved' })
+})
+
+app.post('/api/admin/pending-payments/:paymentId/decline', requireAdmin, async (request, response) => {
+  const paymentId = parseEnrollmentId(request.params.paymentId)
+  const reason = typeof request.body?.reason === 'string' ? request.body.reason.trim() : ''
+  if (paymentId === null || reason.length > 500) return response.status(400).json({ message: 'Enter a valid payment and decline reason.' })
+  const [payment] = await sql`
+    UPDATE payments
+    SET status = 'failed', verification_status = 'declined', review_note = ${reason || null}, reviewed_by = ${request.userId}, reviewed_at = NOW()
+    WHERE id = ${paymentId} AND payment_method = 'manual' AND verification_status = 'pending' AND status = 'pending'
+    RETURNING id::INTEGER AS id
+  `
+  if (!payment) return response.status(409).json({ message: 'This payment is no longer pending verification.' })
+  return response.json({ id: paymentId, status: 'declined' })
+})
+
 app.get('/api/admin/payments', requireAdmin, async (_request, response) => {
   const payments = await sql`
     SELECT payments.id::INTEGER AS id,
@@ -4477,11 +4604,14 @@ app.get('/api/admin/payments', requireAdmin, async (_request, response) => {
            payments.amount::FLOAT AS amount,
            payments.currency,
            to_char(payments.created_at, 'Mon DD, YYYY') AS date,
-           CASE payments.status
-             WHEN 'paid' THEN 'Paid'
-             WHEN 'failed' THEN 'Failed'
+           CASE
+             WHEN payments.verification_status = 'pending' THEN 'Pending Verification'
+             WHEN payments.verification_status = 'declined' THEN 'Declined'
+             WHEN payments.status = 'paid' THEN 'Paid'
+             WHEN payments.status = 'failed' THEN 'Failed'
              ELSE 'Pending'
-           END AS status
+           END AS status,
+           payments.review_note AS "reviewNote"
     FROM payments
     INNER JOIN users ON users.id = payments.user_id
     LEFT JOIN courses ON courses.id = payments.course_id
@@ -5739,8 +5869,9 @@ app.patch('/api/auth/profile', requireAuthenticated, async (request, response) =
 
 app.post('/api/auth/sign-up', async (request, response) => {
   const { email, password, name } = request.body ?? {}
-  if (!isValidCredentials(email, password) || typeof name !== 'string' || !name.trim() || name.trim().length > 120) {
-    return response.status(400).json({ message: 'Enter your full name, valid email, and a password between 8 and 128 characters.' })
+  const phone = typeof request.body?.phone === 'string' ? request.body.phone.trim() : ''
+  if (!isValidCredentials(email, password) || typeof name !== 'string' || !name.trim() || name.trim().length > 120 || phone.length > 40) {
+    return response.status(400).json({ message: 'Enter your full name, valid email, phone number, and a password between 8 and 128 characters.' })
   }
 
   const normalizedEmail = email.trim().toLowerCase()
@@ -5748,7 +5879,7 @@ app.post('/api/auth/sign-up', async (request, response) => {
 
   try {
     const [user] = await sql`
-      INSERT INTO users ${sql({ name: name.trim(), phone: '', email: normalizedEmail, password_hash: passwordHash })}
+      INSERT INTO users ${sql({ name: name.trim(), phone, email: normalizedEmail, password_hash: passwordHash })}
       RETURNING id, name, email, phone, role, created_at AS "createdAt"
     `
     request.securityDeviceId = getDeviceId(request)

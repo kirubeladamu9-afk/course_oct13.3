@@ -97,7 +97,7 @@ const ReportsPage: FC = () => {
       return { columns: ['Student', 'Class', 'Program', 'Tutor', 'Status', 'Enrolled date'], rows }
     }
     if (generatedType === 'revenue') {
-      const rows = payments.filter((item) => (!filters.program || item.course === filters.program) && (!filters.paymentStatus || item.status === filters.paymentStatus) && inDateRange(item.date, filters)).map((item) => ({ id: item.id, Student: item.student, Program: item.course, Amount: item.amount, Status: item.status, Date: displayDate(item.date) }))
+      const rows = payments.filter((item) => item.status === 'Paid' && (!filters.program || item.course === filters.program) && inDateRange(item.date, filters)).map((item) => ({ id: item.id, Student: item.student, Program: item.course, Amount: item.amount, Status: item.status, Date: displayDate(item.date) }))
       return { columns: ['Student', 'Program', 'Amount', 'Status', 'Date'], rows }
     }
     if (generatedType === 'attendance') {
@@ -194,7 +194,7 @@ const ReportsPage: FC = () => {
   const filterPanel = () => {
     if (!reportType) return null
     if (reportType === 'enrollment') return <>{selectField('program', 'Program', programOptions.map((item) => ({ value: item, label: programLabel(item) })))}{dateFields}{selectField('status', 'Status', [{ value: 'enrolled', label: 'Enrolled' }, { value: 'waitlisted', label: 'Waitlisted' }])}</>
-    if (reportType === 'revenue') return <>{selectField('program', 'Program', Array.from(new Set(payments.map((item) => item.course))).map((item) => ({ value: item, label: item })))}{dateFields}{selectField('paymentStatus', 'Payment status', ['Paid', 'Pending', 'Failed'].map((item) => ({ value: item, label: item })))}</>
+    if (reportType === 'revenue') return <>{selectField('program', 'Program', Array.from(new Set(payments.filter((item) => item.status === 'Paid').map((item) => item.course))).map((item) => ({ value: item, label: item })))}{dateFields}</>
     if (reportType === 'attendance') return <>{selectField('classId', 'Class', classes.map((item) => ({ value: String(item.id), label: item.title })))}{selectField('tutorId', 'Tutor', tutors.map((item) => ({ value: String(item.id), label: item.name })))}{dateFields}</>
     if (reportType === 'academic') return <>{selectField('course', 'Course / Class', Array.from(new Set(violations.map((item) => item.courseTitle))).map((item) => ({ value: item, label: item })))}{selectField('subject', 'Subject', Array.from(new Set(violations.map((item) => item.lessonTitle))).map((item) => ({ value: item, label: item })))}{dateFields}</>
     if (reportType === 'tutor') return <>{selectField('tutorId', 'Tutor', tutors.map((item) => ({ value: String(item.id), label: item.name })))}{dateFields}</>

@@ -88,6 +88,7 @@ export class AuthFlowError extends Error {
 
 interface AccountDetails {
   name: string
+  phone?: string
 }
 
 export interface EnrollmentStudent {
@@ -621,8 +622,34 @@ export interface AdminPayment {
   course: string
   type: 'Course' | 'Class' | 'Book' | 'Practice exam'
   amount: number
+  currency: string
   date: string
-  status: 'Paid' | 'Pending' | 'Failed'
+  status: 'Paid' | 'Pending' | 'Pending Verification' | 'Declined' | 'Failed'
+  reviewNote?: string | null
+}
+
+export interface ManualPaymentInfo {
+  id: number
+  title: string
+  amount: number
+  currency: string
+  provider: string
+  accountName: string
+  accountNumber: string
+  instructions: string
+  configured: boolean
+}
+
+export interface PendingManualPayment {
+  id: number
+  student: string
+  email: string
+  phone: string
+  course: string
+  amount: number
+  currency: string
+  submittedAt: string
+  proofFileName: string
 }
 
 export interface AdminRegistration {
@@ -631,7 +658,7 @@ export interface AdminRegistration {
   email: string
   course: string
   date: string
-  status: 'Pending' | 'Approved' | 'Waitlisted' | 'Rejected'
+  status: 'Pending' | 'Pending Verification' | 'Approved' | 'Waitlisted' | 'Rejected' | 'Declined'
 }
 
 export interface MyPayment {
@@ -640,7 +667,8 @@ export interface MyPayment {
   type: 'course' | 'class' | 'book' | 'practice_exam'
   amount: number
   currency: string
-  status: 'Paid' | 'Pending' | 'Failed'
+  status: 'Paid' | 'Pending' | 'Pending Verification' | 'Declined' | 'Failed'
+  reviewNote?: string | null
   date: string
   txRef: string
 }
@@ -891,6 +919,21 @@ export const getAdminPayments = async (): Promise<AdminPayment[]> => {
   const response = await requestApi('/api/admin/payments')
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
+}
+
+export const getPendingManualPayments = async (): Promise<PendingManualPayment[]> => {
+  const response = await requestApi('/api/admin/pending-payments')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const reviewManualPayment = async (paymentId: number, decision: 'approve' | 'decline', reason = '') => {
+  const response = await requestApi(`/api/admin/pending-payments/${paymentId}/${decision}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
 }
 
 export const getAdminRegistrations = async (): Promise<AdminRegistration[]> => {
@@ -1206,6 +1249,23 @@ interface ChapaCheckout {
   checkoutUrl: string
   paymentReference: string
   mode: 'test' | 'live'
+}
+
+export const getManualPaymentInfo = async (courseId: number, classId?: number | null): Promise<ManualPaymentInfo> => {
+  const query = classId === undefined || classId === null ? `courseId=${courseId}` : `classId=${classId}`
+  const response = await requestApi(`/api/enrollment/payment-info?${query}`)
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const submitManualPayment = async (courseId: number, classId: number | null, proofData: string, proofFileName: string) => {
+  const response = await requestApi('/api/enrollment/manual-payment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...(classId === null ? { courseId } : { classId }), proofData, proofFileName }),
+  })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json() as Promise<{ id: number; item: string; status: 'pending_verification' }>
 }
 
 export const createChapaCheckout = async (courseId: AdminCourse['id'], practiceExamId?: number): Promise<ChapaCheckout> => {

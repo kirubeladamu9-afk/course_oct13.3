@@ -14,82 +14,88 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import CloseIcon from '@mui/icons-material/Close'
 import { type FC, type FormEvent, useEffect, useState } from 'react'
+import QRCode from 'qrcode'
 import { type AdminCourse } from '@/components/admin/admin-data'
-import { completeTestPayment, createChapaCheckout, createClassChapaCheckout, getAuthenticatedUser, saveAuthenticatedUser, submitCredentials, verifyChapaPayment } from '@/services/api'
+import { getAuthenticatedUser, getManualPaymentInfo, saveAuthenticatedUser, submitCredentials, submitManualPayment, updateAuthenticatedProfile, type ManualPaymentInfo } from '@/services/api'
 import { navigateTo } from '@/lib/navigation'
-
-type PaymentState = 'ready' | 'processing' | 'success' | 'failed'
 
 interface EnrollmentModalProps {
   course: Pick<AdminCourse, 'id' | 'title' | 'price'>
   classId?: number | null
-  practiceExamId?: number
   open: boolean
-  paymentReference?: string | null
   onClose: () => void
-  onPaid?: () => void
+  onSubmitted?: () => void
 }
 
-const steps = ['Account', 'Payment']
+const steps = ['Personal Info', 'Payment Info']
+const maximumProofSize = 6 * 1024 * 1024
 
-const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, practiceExamId, open, paymentReference, onClose, onPaid }) => {
+const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader()
+  reader.onload = () => resolve(String(reader.result))
+  reader.onerror = () => reject(new Error('We could not read this image.'))
+  reader.readAsDataURL(file)
+})
+
+const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, open, onClose, onSubmitted }) => {
   const [activeStep, setActiveStep] = useState(0)
   const [accountError, setAccountError] = useState<string | null>(null)
-  const [isSubmittingAccount, setIsSubmittingAccount] = useState(false)
-  const [paymentState, setPaymentState] = useState<PaymentState>('ready')
   const [paymentError, setPaymentError] = useState<string | null>(null)
-  const [isStartingCheckout, setIsStartingCheckout] = useState(false)
-  const [isCompletingTestPayment, setIsCompletingTestPayment] = useState(false)
-  const [testCheckoutReference, setTestCheckoutReference] = useState<string | null>(null)
-  const isAuthenticated = Boolean(getAuthenticatedUser())
+  const [isSubmittingAccount, setIsSubmittingAccount] = useState(false)
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
+  const [paymentInfo, setPaymentInfo] = useState<ManualPaymentInfo | null>(null)
+  const [paymentInfoError, setPaymentInfoError] = useState<string | null>(null)
+  const [qrImage, setQrImage] = useState<string | null>(null)
+  const [proofFile, setProofFile] = useState<File | null>(null)
+  const [proofData, setProofData] = useState<string | null>(null)
+  const [contact, setContact] = useState({ name: '', email: '', phone: '' })
+  const [isAuthenticated, setIsAuthenticated] = useState(Boolean(getAuthenticatedUser()))
+  const [submitted, setSubmitted] = useState(false)
 
   useEffect(() => {
     if (!open) return
+    let current = true
+    const user = getAuthenticatedUser()
+    setIsAuthenticated(Boolean(user))
+    setContact({ name: user?.name ?? '', email: user?.email ?? '', phone: user?.phone ?? '' })
+    setActiveStep(0)
     setAccountError(null)
     setPaymentError(null)
-    setTestCheckoutReference(null)
-    setPaymentState(paymentReference ? 'processing' : 'ready')
-    setActiveStep(paymentReference || getAuthenticatedUser() ? 1 : 0)
-  }, [classId, open, paymentReference, practiceExamId])
+    setPaymentInfo(null)
+    setPaymentInfoError(null)
+    setQrImage(null)
+    setProofFile(null)
+    setProofData(null)
+    setSubmitted(false)
+    getManualPaymentInfo(course.id, classId)
+      .then((info) => { if (current) setPaymentInfo(info) })
+      .catch((error) => { if (current) setPaymentInfoError(error instanceof Error ? error.message : 'Payment instructions are unavailable.') })
+    return () => { current = false }
+  }, [classId, course.id, open])
 
   useEffect(() => {
-    if (!open || !paymentReference || paymentState !== 'processing') return
+    if (!paymentInfo?.configured) return
+    const payload = [paymentInfo.provider, `Account name: ${paymentInfo.accountName}`, `Account number: ${paymentInfo.accountNumber}`, `Amount: ${paymentInfo.currency} ${paymentInfo.amount.toFixed(2)}`].join('\n')
+    let current = true
+    void QRCode.toDataURL(payload, { errorCorrectionLevel: 'M', margin: 2, width: 260 })
+      .then((dataUrl) => { if (current) setQrImage(dataUrl) })
+      .catch(() => { if (current) setPaymentInfoError('We could not generate the payment QR code.') })
+    return () => { current = false }
+  }, [paymentInfo])
 
-    let isCurrent = true
-    const checkPayment = async () => {
-      try {
-        const payment = await verifyChapaPayment(paymentReference)
-        if (!isCurrent) return
-        if (payment.status === 'paid') {
-          setPaymentState('success')
-          onPaid?.()
-          return
-        }
-        if (payment.status === 'failed') {
-          setPaymentState('failed')
-          setPaymentError('Chapa was unable to complete this payment. Please try again.')
-          return
-        }
-        window.setTimeout(checkPayment, 3000)
-      } catch (error) {
-        if (!isCurrent) return
-        setPaymentState('failed')
-        setPaymentError(error instanceof Error ? error.message : 'We could not confirm the payment status.')
-      }
-    }
-
-    void checkPayment()
-    return () => {
-      isCurrent = false
-    }
-  }, [open, paymentReference, paymentState])
-
-  const handleAccountSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handlePersonalSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
+    const name = String(formData.get('fullName') ?? '').trim()
+    const email = String(formData.get('email') ?? '').trim()
+    const phone = String(formData.get('phone') ?? '').trim()
     const password = String(formData.get('password') ?? '')
 
-    if (password !== String(formData.get('confirmPassword') ?? '')) {
+    if (!name || !email || !phone) {
+      setAccountError('Enter your name, email, and phone number to continue.')
+      return
+    }
+    if (!isAuthenticated && password !== String(formData.get('confirmPassword') ?? '')) {
       setAccountError('The passwords do not match.')
       return
     }
@@ -97,140 +103,145 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, pra
     setAccountError(null)
     setIsSubmittingAccount(true)
     try {
-      const { user } = await submitCredentials('sign-up', String(formData.get('email') ?? ''), password, {
-        name: String(formData.get('fullName') ?? ''),
-      })
-      saveAuthenticatedUser(user)
+      if (isAuthenticated) {
+        const user = await updateAuthenticatedProfile({ name, email, phone })
+        saveAuthenticatedUser(user)
+      } else {
+        const { user } = await submitCredentials('sign-up', email, password, { name, phone })
+        saveAuthenticatedUser(user)
+        setIsAuthenticated(true)
+      }
+      setContact({ name, email, phone })
       setActiveStep(1)
     } catch (error) {
-      setAccountError(error instanceof Error ? error.message : 'We could not create your account.')
+      setAccountError(error instanceof Error ? error.message : 'We could not save your personal information.')
     } finally {
       setIsSubmittingAccount(false)
     }
   }
 
-  const handleStartCheckout = async () => {
+  const handleProofChange = async (file: File | undefined) => {
     setPaymentError(null)
-    setIsStartingCheckout(true)
+    if (!file) {
+      setProofFile(null)
+      setProofData(null)
+      return
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > maximumProofSize) {
+      setProofFile(null)
+      setProofData(null)
+      setPaymentError('Choose a JPG, PNG, or WebP screenshot no larger than 6 MB.')
+      return
+    }
     try {
-      const checkout = classId === null ? await createChapaCheckout(course.id, practiceExamId) : await createClassChapaCheckout(classId)
-      if (checkout.mode === 'test') {
-        setTestCheckoutReference(checkout.paymentReference)
-        return
-      }
-      window.location.assign(checkout.checkoutUrl)
+      setProofData(await readFileAsDataUrl(file))
+      setProofFile(file)
     } catch (error) {
-      setPaymentState('failed')
-      setPaymentError(error instanceof Error ? error.message : 'We could not start secure checkout.')
-    } finally {
-      setIsStartingCheckout(false)
+      setProofFile(null)
+      setProofData(null)
+      setPaymentError(error instanceof Error ? error.message : 'We could not read this image.')
     }
   }
 
-  const renderAccountStep = () => (
-    <Box component="form" onSubmit={handleAccountSubmit}>
-      <Stack spacing={2}>
-        <TextField required fullWidth label="Full Name" name="fullName" autoComplete="name" />
-        <TextField required fullWidth label="Email" name="email" type="email" autoComplete="email" />
+  const handlePaymentSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!paymentInfo?.configured) {
+      setPaymentError('Payment details are not available yet. Please contact support before sending money.')
+      return
+    }
+    if (!proofFile || !proofData) {
+      setPaymentError('Attach a screenshot of your completed payment to continue.')
+      return
+    }
+    setPaymentError(null)
+    setIsSubmittingPayment(true)
+    try {
+      await submitManualPayment(course.id, classId, proofData, proofFile.name)
+      setSubmitted(true)
+      onSubmitted?.()
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : 'We could not submit your payment for review.')
+    } finally {
+      setIsSubmittingPayment(false)
+    }
+  }
+
+  const renderPersonalInfo = () => <Box component="form" onSubmit={(event) => void handlePersonalSubmit(event)}>
+    <Stack spacing={2}>
+      <TextField required fullWidth label="Full Name" name="fullName" autoComplete="name" value={contact.name} onChange={(event) => setContact({ ...contact, name: event.target.value })} />
+      <TextField required fullWidth label="Email" name="email" type="email" autoComplete="email" value={contact.email} onChange={(event) => setContact({ ...contact, email: event.target.value })} />
+      <TextField required fullWidth label="Phone" name="phone" type="tel" autoComplete="tel" value={contact.phone} onChange={(event) => setContact({ ...contact, phone: event.target.value })} />
+      {!isAuthenticated && <>
         <TextField required fullWidth label="Password" name="password" type="password" autoComplete="new-password" inputProps={{ minLength: 8 }} />
         <TextField required fullWidth label="Confirm Password" name="confirmPassword" type="password" autoComplete="new-password" inputProps={{ minLength: 8 }} />
-        {accountError && <Alert severity="error">{accountError}</Alert>}
-        <Button type="submit" variant="contained" size="large" disabled={isSubmittingAccount}>
-          {isSubmittingAccount ? 'Creating account...' : 'Continue to payment'}
-        </Button>
-      </Stack>
-    </Box>
-  )
-
-  const handleTestPayment = async (status: 'paid' | 'failed') => {
-    if (!testCheckoutReference) return
-    setPaymentError(null)
-    setIsCompletingTestPayment(true)
-    try {
-      const payment = await completeTestPayment(testCheckoutReference, status)
-      if (payment.status === 'paid') {
-        setPaymentState('success')
-        onPaid?.()
-      } else {
-        setPaymentState('failed')
-        setPaymentError('The test payment was declined. You can retry with another test result.')
-      }
-    } catch (error) {
-      setPaymentState('failed')
-      setPaymentError(error instanceof Error ? error.message : 'We could not complete the test payment.')
-    } finally {
-      setIsCompletingTestPayment(false)
-    }
-  }
-
-  const renderPaymentStep = () => {
-    if (paymentState === 'processing') {
-      return <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2.5, py: 5, textAlign: 'center' }} aria-live="polite">
-        <CircularProgress aria-label="Confirming payment" />
-        <Box>
-          <Typography variant="h5" sx={{ mb: 0.75 }}>Payment Processing...</Typography>
-          <Typography color="text.secondary">We are securely confirming your payment with Chapa.</Typography>
-        </Box>
-      </Box>
-    }
-
-    if (paymentState === 'success') {
-      return <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2.5, py: 4, textAlign: 'center' }} aria-live="polite">
-        <Typography variant="h4">Payment Successful</Typography>
-        <Typography color="text.secondary">Your enrollment is ready. You can now begin learning.</Typography>
-        <Button variant="contained" size="large" onClick={() => navigateTo('/dashboard')}>Go to Dashboard</Button>
-      </Box>
-    }
-
-    if (paymentState === 'failed') {
-      return <Stack spacing={2.5} sx={{ py: 2 }} aria-live="polite">
-        <Alert severity="error">{paymentError ?? 'Payment Failed'}</Alert>
-        <Button variant="contained" size="large" onClick={() => { setPaymentState('ready'); setPaymentError(null); setTestCheckoutReference(null) }}>Retry Payment</Button>
-      </Stack>
-    }
-
-    if (testCheckoutReference) {
-      return <Stack spacing={3}>
-        <Box sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.default' }}>
-          <Typography variant="h6" sx={{ mb: 1 }}>Test checkout</Typography>
-          <Typography sx={{ mb: 1 }}>{course.title}</Typography>
-          <Typography color="text.secondary">${course.price} · No money will be charged in test mode.</Typography>
-        </Box>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-          <Button fullWidth variant="contained" size="large" onClick={() => void handleTestPayment('paid')} disabled={isCompletingTestPayment}>
-            {isCompletingTestPayment ? 'Processing...' : 'Approve test payment'}
-          </Button>
-          <Button fullWidth variant="outlined" color="error" size="large" onClick={() => void handleTestPayment('failed')} disabled={isCompletingTestPayment}>
-            Decline test payment
-          </Button>
-        </Stack>
-      </Stack>
-    }
-
-    return <Stack spacing={3}>
-      <Box sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.default' }}>
-        <Typography variant="h6" sx={{ mb: 1 }}>Pay securely with Chapa</Typography>
-        <Typography color="text.secondary">Test mode is enabled. Continue to the checkout simulator to approve or decline this payment without being charged.</Typography>
-      </Box>
-      {paymentError && <Alert severity="error">{paymentError}</Alert>}
-      <Button variant="contained" size="large" onClick={() => void handleStartCheckout()} disabled={isStartingCheckout}>
-        {isStartingCheckout ? 'Opening test checkout...' : 'Continue to test checkout'}
+      </>}
+      {accountError && <Alert severity="error">{accountError}</Alert>}
+      <Button type="submit" variant="contained" size="large" disabled={isSubmittingAccount}>
+        {isSubmittingAccount ? 'Saving...' : 'Continue to payment'}
       </Button>
     </Stack>
-  }
+  </Box>
+
+  const renderConfirmation = () => <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 4, textAlign: 'center' }} aria-live="polite">
+    <Typography variant="h4">Payment Pending Verification</Typography>
+    <Typography color="text.secondary">Your payment screenshot for {paymentInfo?.title ?? course.title} has been received and is under review. Check Payment History in your dashboard for updates. Course access will be available after approval.</Typography>
+    <Button variant="contained" size="large" onClick={() => navigateTo('/dashboard')}>Go to Dashboard</Button>
+  </Box>
+
+  const renderPaymentInfo = () => <Stack spacing={2.5}>
+    {paymentInfoError && <Alert severity="error">{paymentInfoError}</Alert>}
+    {!paymentInfo && !paymentInfoError && <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress aria-label="Loading payment information" /></Box>}
+    {paymentInfo && <>
+      <Box sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 2, backgroundColor: 'background.default' }}>
+        <Typography variant="subtitle2" color="text.secondary">Enrollment</Typography>
+        <Typography variant="h6">{paymentInfo.title}</Typography>
+        <Typography variant="h5" sx={{ mt: 1 }}>{paymentInfo.currency} {paymentInfo.amount.toFixed(2)} due</Typography>
+      </Box>
+      {!paymentInfo.configured ? <Alert severity="warning">Business payment details have not been configured yet. Please contact support before sending a payment.</Alert> : <>
+        <Box sx={{ display: 'grid', justifyItems: 'center', gap: 1.5, p: 2, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+          {qrImage ? <Box component="img" src={qrImage} alt={`QR code for ${paymentInfo.provider} payment to ${paymentInfo.accountName}`} sx={{ width: 260, maxWidth: '100%', aspectRatio: '1', bgcolor: 'white', p: 1, borderRadius: 1 }} /> : <CircularProgress aria-label="Generating payment QR code" />}
+          <Typography variant="body2" color="text.secondary">Scan to view the business payment details.</Typography>
+        </Box>
+        <Box sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Pay by {paymentInfo.provider}</Typography>
+          <Typography variant="body2">Account name: {paymentInfo.accountName}</Typography>
+          <Typography variant="body2">Account or phone number: {paymentInfo.accountNumber}</Typography>
+          {paymentInfo.instructions && <Typography variant="body2" sx={{ mt: 1 }}>{paymentInfo.instructions}</Typography>}
+        </Box>
+      </>}
+      <Box component="form" onSubmit={(event) => void handlePaymentSubmit(event)}>
+        <Stack spacing={1.5}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Payment screenshot</Typography>
+          <Button component="label" variant="outlined" disabled={!paymentInfo.configured || isSubmittingPayment}>
+            {proofFile ? 'Choose a different screenshot' : 'Upload screenshot'}
+            <input hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { void handleProofChange(event.target.files?.[0]); event.target.value = '' }} />
+          </Button>
+          <Typography variant="caption" color="text.secondary">JPG, PNG, or WebP · 6 MB maximum</Typography>
+          {proofFile && <Typography variant="body2">Attached: {proofFile.name}</Typography>}
+          {paymentError && <Alert severity="error">{paymentError}</Alert>}
+          <Stack direction="row" spacing={1.5}>
+            <Button fullWidth variant="outlined" onClick={() => setActiveStep(0)} disabled={isSubmittingPayment}>Back</Button>
+            <Button fullWidth type="submit" variant="contained" disabled={!paymentInfo.configured || !qrImage || isSubmittingPayment}>
+              {isSubmittingPayment ? 'Submitting...' : 'Submit for verification'}
+            </Button>
+          </Stack>
+        </Stack>
+      </Box>
+    </>}
+  </Stack>
 
   return <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" aria-labelledby="enrollment-dialog-title">
     <DialogTitle id="enrollment-dialog-title" sx={{ pr: 7 }}>
-      {classId === null ? 'Enroll in this course' : 'Enroll in this batch'}
+      Enroll in {classId === null ? 'this course' : 'this batch'}
       <IconButton aria-label="Close enrollment" onClick={onClose} sx={{ position: 'absolute', top: 12, right: 12 }}>
         <CloseIcon />
       </IconButton>
     </DialogTitle>
     <DialogContent dividers sx={{ p: { xs: 2.5, sm: 4 } }}>
-      <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
-        {steps.map((label, index) => <Step key={label} completed={index === 0 && isAuthenticated}><StepLabel>{label}</StepLabel></Step>)}
-      </Stepper>
-      {activeStep === 0 ? renderAccountStep() : renderPaymentStep()}
+      {!submitted && <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
+        {steps.map((label, index) => <Step key={label} completed={index < activeStep}><StepLabel>{label}</StepLabel></Step>)}
+      </Stepper>}
+      {submitted ? renderConfirmation() : activeStep === 0 ? renderPersonalInfo() : renderPaymentInfo()}
     </DialogContent>
   </Dialog>
 }

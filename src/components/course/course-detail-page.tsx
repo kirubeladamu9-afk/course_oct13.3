@@ -54,11 +54,6 @@ const CourseDetailPage: FC<{ courseId: string }> = ({ courseId }) => {
   const [isLoading, setIsLoading] = useState(true)
   const [isEnrollmentOpen, setIsEnrollmentOpen] = useState(false)
   const isAdmin = getAuthenticatedUser()?.role === 'admin'
-  const paymentReference = new URLSearchParams(window.location.search).get('payment')
-
-  useEffect(() => {
-    if (paymentReference) setIsEnrollmentOpen(true)
-  }, [paymentReference])
 
   useEffect(() => {
     let isCurrent = true
@@ -165,7 +160,7 @@ const CourseDetailPage: FC<{ courseId: string }> = ({ courseId }) => {
         </Grid>
       </Grid>
     </Container>
-    <EnrollmentModal course={course} open={isEnrollmentOpen} paymentReference={paymentReference} onClose={() => setIsEnrollmentOpen(false)} />
+    <EnrollmentModal course={course} open={isEnrollmentOpen} onClose={() => setIsEnrollmentOpen(false)} />
     <Footer />
   </Box>
 }
