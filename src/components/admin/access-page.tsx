@@ -18,6 +18,7 @@ import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
 import TableHead from '@mui/material/TableHead'
+import TablePagination from '@mui/material/TablePagination'
 import TableRow from '@mui/material/TableRow'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
@@ -509,6 +510,10 @@ const GrantsCard: FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [resettingUserId, setResettingUserId] = useState<number | null>(null)
   const [issuedPassword, setIssuedPassword] = useState<OneTimePasswordReset | null>(null)
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(10)
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(grants.length / rowsPerPage) - 1))
+  const visibleGrants = grants.slice(currentPage * rowsPerPage, currentPage * rowsPerPage + rowsPerPage)
 
   const load = () => getAccessGrants().then(setGrants).catch((loadError) => setError(errorText(loadError)))
   useEffect(() => {
@@ -559,7 +564,7 @@ const GrantsCard: FC = () => {
             </TableHead>
             <TableBody>
               {grants.length === 0 && <TableRow><TableCell colSpan={8}>No granted access yet.</TableCell></TableRow>}
-              {grants.map((grant) => (
+              {visibleGrants.map((grant) => (
                 <TableRow key={grant.id}>
                   <TableCell>{grant.studentName}<br /><Typography variant="caption" color="text.secondary">{grant.email}</Typography></TableCell>
                   <TableCell>{grant.item}</TableCell>
@@ -577,6 +582,15 @@ const GrantsCard: FC = () => {
             </TableBody>
           </Table>
         </Box>
+        <TablePagination
+          component="div"
+          count={grants.length}
+          page={currentPage}
+          rowsPerPage={rowsPerPage}
+          rowsPerPageOptions={[10, 25, 50]}
+          onPageChange={(_event, nextPage) => setPage(nextPage)}
+          onRowsPerPageChange={(event) => { setRowsPerPage(Number(event.target.value)); setPage(0) }}
+        />
       </CardContent>
       <Dialog open={issuedPassword !== null} onClose={() => setIssuedPassword(null)} maxWidth="xs" fullWidth>
         <DialogTitle>New one-time password</DialogTitle>
@@ -601,6 +615,10 @@ const SponsorsCard: FC = () => {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<SponsorReport | null>(null)
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(10)
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(sponsors.length / rowsPerPage) - 1))
+  const visibleSponsors = sponsors.slice(currentPage * rowsPerPage, currentPage * rowsPerPage + rowsPerPage)
 
   const load = () => getSponsors().then(setSponsors).catch((loadError) => setError(errorText(loadError)))
   useEffect(() => {
@@ -683,7 +701,7 @@ const SponsorsCard: FC = () => {
             </TableHead>
             <TableBody>
               {sponsors.length === 0 && <TableRow><TableCell colSpan={6}>No sponsors yet.</TableCell></TableRow>}
-              {sponsors.map((sponsor) => (
+              {visibleSponsors.map((sponsor) => (
                 <TableRow key={sponsor.id}>
                   <TableCell>{sponsor.name}</TableCell>
                   <TableCell>{sponsor.contact}</TableCell>
@@ -700,6 +718,15 @@ const SponsorsCard: FC = () => {
             </TableBody>
           </Table>
         </Box>
+        <TablePagination
+          component="div"
+          count={sponsors.length}
+          page={currentPage}
+          rowsPerPage={rowsPerPage}
+          rowsPerPageOptions={[10, 25, 50]}
+          onPageChange={(_event, nextPage) => setPage(nextPage)}
+          onRowsPerPageChange={(event) => { setRowsPerPage(Number(event.target.value)); setPage(0) }}
+        />
       </CardContent>
       <Dialog open={report !== null} onClose={() => setReport(null)} maxWidth="lg" fullWidth>
         <DialogTitle>{report?.sponsor.name} report</DialogTitle>
