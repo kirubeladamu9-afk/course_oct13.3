@@ -633,9 +633,7 @@ export interface ManualPaymentInfo {
   title: string
   amount: number
   currency: string
-  provider: string
-  accountName: string
-  accountNumber: string
+  paymentMethods: Array<{ provider: string; accountNumber: string }>
   instructions: string
   configured: boolean
 }

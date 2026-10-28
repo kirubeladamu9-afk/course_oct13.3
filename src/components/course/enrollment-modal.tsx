@@ -14,7 +14,6 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import CloseIcon from '@mui/icons-material/Close'
 import { type FC, type FormEvent, useEffect, useState } from 'react'
-import QRCode from 'qrcode'
 import { type AdminCourse } from '@/components/admin/admin-data'
 import { getAuthenticatedUser, getManualPaymentInfo, saveAuthenticatedUser, submitManualPayment, type ManualPaymentInfo } from '@/services/api'
 import { navigateTo } from '@/lib/navigation'
@@ -46,7 +45,6 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
   const [confirmSignupPassword, setConfirmSignupPassword] = useState('')
   const [paymentInfo, setPaymentInfo] = useState<ManualPaymentInfo | null>(null)
   const [paymentInfoError, setPaymentInfoError] = useState<string | null>(null)
-  const [qrImage, setQrImage] = useState<string | null>(null)
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [proofData, setProofData] = useState<string | null>(null)
   const [contact, setContact] = useState({ name: '', email: '', phone: '' })
@@ -64,7 +62,6 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
     setPaymentError(null)
     setPaymentInfo(null)
     setPaymentInfoError(null)
-    setQrImage(null)
     setProofFile(null)
     setProofData(null)
     setSignupPassword('')
@@ -75,16 +72,6 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
       .catch((error) => { if (current) setPaymentInfoError(error instanceof Error ? error.message : 'Payment instructions are unavailable.') })
     return () => { current = false }
   }, [classId, course.id, open])
-
-  useEffect(() => {
-    if (!paymentInfo?.configured) return
-    const payload = [paymentInfo.provider, `Account name: ${paymentInfo.accountName}`, `Account number: ${paymentInfo.accountNumber}`, `Amount: ${paymentInfo.currency} ${paymentInfo.amount.toFixed(2)}`].join('\n')
-    let current = true
-    void QRCode.toDataURL(payload, { errorCorrectionLevel: 'M', margin: 2, width: 260 })
-      .then((dataUrl) => { if (current) setQrImage(dataUrl) })
-      .catch(() => { if (current) setPaymentInfoError('We could not generate the payment QR code.') })
-    return () => { current = false }
-  }, [paymentInfo])
 
   const handlePersonalSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -192,18 +179,15 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
         <Typography variant="h6">{paymentInfo.title}</Typography>
         <Typography variant="h5" sx={{ mt: 1 }}>{paymentInfo.currency} {paymentInfo.amount.toFixed(2)} due</Typography>
       </Box>
-      {!paymentInfo.configured ? <Alert severity="warning">Business payment details have not been configured yet. Please contact support before sending a payment.</Alert> : <>
-        <Box sx={{ display: 'grid', justifyItems: 'center', gap: 1.5, p: 2, border: 1, borderColor: 'divider', borderRadius: 2 }}>
-          {qrImage ? <Box component="img" src={qrImage} alt={`QR code for ${paymentInfo.provider} payment to ${paymentInfo.accountName}`} sx={{ width: 260, maxWidth: '100%', aspectRatio: '1', bgcolor: 'white', p: 1, borderRadius: 1 }} /> : <CircularProgress aria-label="Generating payment QR code" />}
-          <Typography variant="body2" color="text.secondary">Scan to view the business payment details.</Typography>
-        </Box>
-        <Box sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 2 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Pay by {paymentInfo.provider}</Typography>
-          <Typography variant="body2">Account name: {paymentInfo.accountName}</Typography>
-          <Typography variant="body2">Account or phone number: {paymentInfo.accountNumber}</Typography>
-          {paymentInfo.instructions && <Typography variant="body2" sx={{ mt: 1 }}>{paymentInfo.instructions}</Typography>}
-        </Box>
-      </>}
+      <Box sx={{ display: 'grid', justifyItems: 'center', gap: 1.5, p: 2, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+        <Box component="img" src="/images/payment-qr.webp" alt="QR code for business payment" sx={{ display: 'block', width: '100%', maxWidth: 320, aspectRatio: '1', objectFit: 'contain', bgcolor: 'white', p: 1, borderRadius: 1 }} />
+        <Typography variant="body2" color="text.secondary">Scan to view the business payment details.</Typography>
+      </Box>
+      <Box sx={{ p: 2.5, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Pay using any of these accounts</Typography>
+        <Stack spacing={0.75}>{paymentInfo.paymentMethods.map((method) => <Typography key={method.provider} variant="body2">{method.provider}: {method.accountNumber}</Typography>)}</Stack>
+        {paymentInfo.instructions && <Typography variant="body2" sx={{ mt: 1 }}>{paymentInfo.instructions}</Typography>}
+      </Box>
       <Box component="form" onSubmit={(event) => void handlePaymentSubmit(event)}>
         <Stack spacing={1.5}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Payment screenshot</Typography>
@@ -216,7 +200,7 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
           {paymentError && <Alert severity="error">{paymentError}</Alert>}
           <Stack direction="row" spacing={1.5}>
             <Button fullWidth variant="outlined" onClick={() => setActiveStep(0)} disabled={isSubmittingPayment}>Back</Button>
-            <Button fullWidth type="submit" variant="contained" disabled={!paymentInfo.configured || !qrImage || isSubmittingPayment}>
+            <Button fullWidth type="submit" variant="contained" disabled={!paymentInfo.configured || isSubmittingPayment}>
               {isSubmittingPayment ? 'Submitting...' : 'Submit for verification'}
             </Button>
           </Stack>

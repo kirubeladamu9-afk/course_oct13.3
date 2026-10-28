@@ -3296,6 +3296,11 @@ app.post('/api/admin/quiz-attempts/:attemptId/retake-approval', requireAdmin, as
 })
 
 const paymentProofMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
+const manualPaymentMethods = [
+  { provider: 'Telebirr', accountNumber: '+251919747309' },
+  { provider: 'CBE', accountNumber: '1000444421227' },
+  { provider: 'Abysinia Bank', accountNumber: '9445827' },
+]
 
 const parsePaymentProof = (fileData, fileName) => {
   if (typeof fileData !== 'string' || typeof fileName !== 'string') return null
@@ -3329,18 +3334,13 @@ app.get('/api/enrollment/payment-info', async (request, response) => {
   if (!item) return response.status(404).json({ message: 'This enrollment is not available.' })
   if (classId !== null && isClassEnrollmentClosed(deserializeJson(item.schedule))) return response.status(409).json({ message: 'This batch has already started. Enrollment is closed.' })
 
-  const provider = process.env.MANUAL_PAYMENT_PROVIDER?.trim() ?? ''
-  const accountName = process.env.MANUAL_PAYMENT_ACCOUNT_NAME?.trim() ?? ''
-  const accountNumber = process.env.MANUAL_PAYMENT_ACCOUNT_NUMBER?.trim() ?? ''
   const paymentItem = { id: item.id, title: item.title, amount: item.amount }
   return response.json({
     ...paymentItem,
     currency: process.env.MANUAL_PAYMENT_CURRENCY ?? process.env.CHAPA_CURRENCY ?? 'ETB',
-    provider,
-    accountName,
-    accountNumber,
+    paymentMethods: manualPaymentMethods,
     instructions: process.env.MANUAL_PAYMENT_INSTRUCTIONS?.trim() ?? '',
-    configured: Boolean(provider && accountName && accountNumber),
+    configured: true,
   })
 })
 
@@ -3367,10 +3367,6 @@ app.post('/api/enrollment/manual-payment', async (request, response) => {
   if (!profile || !profile.phone) return response.status(400).json({ message: 'Enter your name, valid email, and phone number.' })
   if (!authenticated && !isValidCredentials(profile.email, request.body?.password)) return response.status(400).json({ message: 'Enter a valid email and a password between 8 and 128 characters.' })
 
-  const provider = process.env.MANUAL_PAYMENT_PROVIDER?.trim() ?? ''
-  const accountName = process.env.MANUAL_PAYMENT_ACCOUNT_NAME?.trim() ?? ''
-  const accountNumber = process.env.MANUAL_PAYMENT_ACCOUNT_NUMBER?.trim() ?? ''
-  if (!provider || !accountName || !accountNumber) return response.status(503).json({ message: 'Business payment details have not been configured.' })
   const passwordHash = authenticated ? null : await hashPassword(request.body.password)
 
   let result
