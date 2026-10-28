@@ -103,10 +103,6 @@ const AccessPage: FC = () => {
       setSharedError('Choose a sponsor for sponsored access.')
       return null
     }
-    if (reason !== 'Sponsored' && sponsorId) {
-      setSharedError('Sponsors can only be used with the Sponsored reason.')
-      return null
-    }
     setSharedError(null)
     return {
       ...target,
@@ -133,7 +129,7 @@ const AccessPage: FC = () => {
           sponsorId={sponsorId}
           onTargetTypeChange={(value) => { setTargetType(value); setTargetId('') }}
           onTargetIdChange={setTargetId}
-          onReasonChange={setReason}
+          onReasonChange={(value) => { setReason(value); if (value !== 'Sponsored') setSponsorId('') }}
           onNoteChange={setNote}
           onExpiresAtChange={setExpiresAt}
           onSponsorIdChange={setSponsorId}
@@ -207,7 +203,7 @@ const AccessOptionsCard: FC<{
             inputProps={{ max: selectedSponsorEndDate }}
             helperText={selectedSponsorEndDate ? `Cannot be later than the sponsorship end date (${selectedSponsorEndDate}).` : undefined}
           />
-          <FormControl sx={{ minWidth: 200 }}>
+          <FormControl sx={{ minWidth: 200 }} disabled={props.reason !== 'Sponsored'}>
             <InputLabel id="access-sponsor">Sponsor</InputLabel>
             <Select labelId="access-sponsor" label="Sponsor" value={props.sponsorId} onChange={(event) => handleSponsorChange(String(event.target.value))}>
               <MenuItem value="">None</MenuItem>
