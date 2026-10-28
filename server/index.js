@@ -2007,6 +2007,15 @@ const enrollmentAccessCondition = () => sql`
   AND (enrollments.expires_at IS NULL OR enrollments.expires_at > NOW())
   AND NOT (${sponsorEndedCondition()})
   AND (enrollments.source <> 'paid' OR EXISTS (SELECT 1 FROM payments WHERE payments.id = enrollments.payment_id AND payments.status = 'paid'))
+  AND (enrollments.sponsor_id IS NULL OR EXISTS (
+    SELECT 1 FROM sponsor_payments
+    WHERE sponsor_payments.sponsor_id = enrollments.sponsor_id
+      AND sponsor_payments.status = 'paid'
+      AND (
+        (enrollments.class_id IS NOT NULL AND sponsor_payments.class_id = enrollments.class_id)
+        OR (enrollments.class_id IS NULL AND sponsor_payments.course_id = enrollments.course_id)
+      )
+  ))
 `
 
 const targetAccessCondition = (courseId, classId) => courseId !== null
