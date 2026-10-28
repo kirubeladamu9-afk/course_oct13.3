@@ -6849,6 +6849,22 @@ app.post('/api/auth/sign-in', async (request, response) => {
     return response.status(401).json({ message: signInFailureMessage, twoFactorRequired: true })
   }
 
+  const [access] = await sql`
+    SELECT
+      EXISTS (SELECT 1 FROM enrollments WHERE enrollments.user_id = ${user.id} AND ${enrollmentAccessCondition()}) AS "hasAccess",
+      EXISTS (
+        SELECT 1 FROM enrollments
+        WHERE enrollments.user_id = ${user.id}
+          AND enrollments.sponsor_id IS NOT NULL
+          AND enrollments.access_status = 'active'
+          AND (enrollments.expires_at IS NULL OR enrollments.expires_at > NOW())
+          AND NOT (${sponsorEndedCondition()})
+      ) AS "hasSponsoredGrant"
+  `
+  if (access.hasSponsoredGrant && !access.hasAccess) {
+    return response.status(403).json({ message: 'Your access is waiting for your sponsor\'s payment. Contact your administrator.' })
+  }
+
   await sql`UPDATE users SET locked_until = NULL WHERE id = ${user.id}`
   const { password_hash: _passwordHash, locked_until: _lockedUntil, accountLocked: _accountLocked, oneTimePasswordExpiresAt: _oneTimePasswordExpiresAt, ...account } = user
   await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: true, reason: 'success', request })
