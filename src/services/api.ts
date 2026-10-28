@@ -989,6 +989,22 @@ export interface Sponsor {
   endDate: string | null
   seatsUsed: number
   seatsRemaining: number | null
+  isPaid: boolean
+}
+
+export interface SponsorPayment {
+  id: number
+  amountCents: number
+  reference: string
+  status: 'pending' | 'paid'
+  paidAt: string | null
+  createdAt: string
+}
+
+export interface SponsorPaymentInput {
+  amountCents: number
+  reference: string
+  status: 'pending' | 'paid'
 }
 
 export interface SponsorInput {
@@ -1090,6 +1106,22 @@ export const saveSponsor = async (sponsorId: number | null, input: SponsorInput)
 
 export const deleteSponsor = async (sponsorId: number): Promise<void> => {
   const response = await requestApi(`/api/admin/sponsors/${sponsorId}`, jsonRequest('DELETE'))
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const getSponsorPayments = async (sponsorId: number): Promise<SponsorPayment[]> => {
+  const response = await requestApi(`/api/admin/sponsors/${sponsorId}/payments`)
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const recordSponsorPayment = async (sponsorId: number, input: SponsorPaymentInput): Promise<void> => {
+  const response = await requestApi(`/api/admin/sponsors/${sponsorId}/payments`, jsonRequest('POST', input))
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const markSponsorPaymentPaid = async (paymentId: number): Promise<void> => {
+  const response = await requestApi(`/api/admin/sponsor-payments/${paymentId}/mark-paid`, jsonRequest('POST'))
   if (!response.ok) throw new Error(await getErrorMessage(response))
 }
 

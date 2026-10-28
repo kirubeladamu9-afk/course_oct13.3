@@ -31,9 +31,12 @@ import {
   getAccessGrants,
   getAdminClassesWorkspace,
   getAdminCourseOptions,
+  getSponsorPayments,
   getSponsorReport,
   getSponsors,
   grantAccess,
+  markSponsorPaymentPaid,
+  recordSponsorPayment,
   previewAccessImport,
   resetStudentOneTimePassword,
   revokeAccessGrant,
@@ -47,6 +50,7 @@ import {
   type AccessTarget,
   type OneTimePasswordReset,
   type Sponsor,
+  type SponsorPayment,
   type SponsorInput,
   type SponsorReport,
 } from '@/services/api'
@@ -207,7 +211,7 @@ const AccessOptionsCard: FC<{
             <InputLabel id="access-sponsor">Sponsor</InputLabel>
             <Select labelId="access-sponsor" label="Sponsor" value={props.sponsorId} onChange={(event) => handleSponsorChange(String(event.target.value))}>
               <MenuItem value="">None</MenuItem>
-              {sponsors.map((sponsor) => <MenuItem key={sponsor.id} value={String(sponsor.id)}>{sponsor.name}</MenuItem>)}
+              {sponsors.map((sponsor) => <MenuItem key={sponsor.id} value={String(sponsor.id)}>{sponsor.isPaid ? sponsor.name : `${sponsor.name} (no payment recorded)`}</MenuItem>)}
             </Select>
           </FormControl>
           <TextField label="Note (required)" value={props.note} onChange={(event) => props.onNoteChange(event.target.value)} sx={{ flex: 1, minWidth: 240 }} inputProps={{ maxLength: 500 }} />
@@ -638,6 +642,10 @@ const SponsorsCard: FC = () => {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<SponsorReport | null>(null)
+  const [paymentSponsor, setPaymentSponsor] = useState<Sponsor | null>(null)
+  const [payments, setPayments] = useState<SponsorPayment[]>([])
+  const [paymentForm, setPaymentForm] = useState({ amount: '', reference: '', status: 'paid' as 'paid' | 'pending' })
+  const [paymentError, setPaymentError] = useState<string | null>(null)
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const currentPage = Math.min(page, Math.max(0, Math.ceil(sponsors.length / rowsPerPage) - 1))
@@ -700,6 +708,43 @@ const SponsorsCard: FC = () => {
     }
   }
 
+  const loadPayments = async (sponsorId: number) => setPayments(await getSponsorPayments(sponsorId))
+
+  const openPayments = async (sponsor: Sponsor) => {
+    setPaymentSponsor(sponsor)
+    setPaymentError(null)
+    try {
+      await loadPayments(sponsor.id)
+    } catch (loadError) {
+      setPaymentError(errorText(loadError))
+    }
+  }
+
+  const recordPayment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!paymentSponsor) return
+    try {
+      await recordSponsorPayment(paymentSponsor.id, { amountCents: Math.round(Number(paymentForm.amount) * 100), reference: paymentForm.reference.trim(), status: paymentForm.status })
+      setPaymentForm({ amount: '', reference: '', status: 'paid' })
+      setPaymentError(null)
+      await loadPayments(paymentSponsor.id)
+      await load()
+    } catch (saveError) {
+      setPaymentError(errorText(saveError))
+    }
+  }
+
+  const markPaid = async (payment: SponsorPayment) => {
+    if (!paymentSponsor) return
+    try {
+      await markSponsorPaymentPaid(payment.id)
+      await loadPayments(paymentSponsor.id)
+      await load()
+    } catch (markError) {
+      setPaymentError(errorText(markError))
+    }
+  }
+
   return (
     <Card variant="outlined">
       <CardContent>
@@ -734,11 +779,12 @@ const SponsorsCard: FC = () => {
                 <TableCell>Seats used</TableCell>
                 <TableCell>Seats remaining</TableCell>
                 <TableCell>Sponsorship ends</TableCell>
+                <TableCell>Payment</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {sponsors.length === 0 && <TableRow><TableCell colSpan={6}>No sponsors yet.</TableCell></TableRow>}
+              {sponsors.length === 0 && <TableRow><TableCell colSpan={7}>No sponsors yet.</TableCell></TableRow>}
               {visibleSponsors.map((sponsor) => (
                 <TableRow key={sponsor.id}>
                   <TableCell>{sponsor.name}</TableCell>
@@ -746,7 +792,9 @@ const SponsorsCard: FC = () => {
                   <TableCell>{sponsor.seatsUsed}{sponsor.seatLimit === null ? '' : ` / ${sponsor.seatLimit}`}</TableCell>
                   <TableCell>{sponsor.seatsRemaining ?? 'Unlimited'}</TableCell>
                   <TableCell>{sponsor.endDate ?? 'No end date'}</TableCell>
+                  <TableCell>{sponsor.isPaid ? 'Paid' : 'Not recorded'}</TableCell>
                   <TableCell align="right">
+                    <Button size="small" onClick={() => void openPayments(sponsor)}>Payments</Button>
                     <Button size="small" onClick={() => void openReport(sponsor)}>Report</Button>
                     <Button size="small" onClick={() => edit(sponsor)}>Edit</Button>
                     <Button size="small" color="error" onClick={() => void remove(sponsor)}>Delete</Button>
@@ -796,6 +844,54 @@ const SponsorsCard: FC = () => {
         <DialogActions>
           {report && <Button component="a" href={`/api/admin/sponsors/${report.sponsor.id}/report.csv`}>Download CSV</Button>}
           <Button onClick={() => setReport(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={paymentSponsor !== null} onClose={() => setPaymentSponsor(null)} maxWidth="md" fullWidth>
+        <DialogTitle>{paymentSponsor?.name} payments</DialogTitle>
+        <DialogContent>
+          {paymentError && <Alert severity="error" sx={{ mb: 2 }}>{paymentError}</Alert>}
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Amount</TableCell>
+                <TableCell>Reference</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Paid on</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {payments.length === 0 && <TableRow><TableCell colSpan={5}>No payments recorded yet.</TableCell></TableRow>}
+              {payments.map((payment) => (
+                <TableRow key={payment.id}>
+                  <TableCell>${(payment.amountCents / 100).toFixed(2)}</TableCell>
+                  <TableCell>{payment.reference || '-'}</TableCell>
+                  <TableCell>{payment.status === 'paid' ? 'Paid' : 'Pending'}</TableCell>
+                  <TableCell>{payment.paidAt ? new Date(payment.paidAt).toLocaleDateString() : '-'}</TableCell>
+                  <TableCell align="right">
+                    {payment.status === 'pending' && <Button size="small" onClick={() => void markPaid(payment)}>Mark paid</Button>}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <Box component="form" onSubmit={recordPayment} sx={{ mt: 3 }}>
+            <Stack spacing={2} direction={{ xs: 'column', md: 'row' }} useFlexGap sx={{ flexWrap: 'wrap' }}>
+              <TextField label="Amount ($)" type="number" value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} inputProps={{ min: 0.01, step: 0.01 }} required />
+              <TextField label="Reference (optional)" value={paymentForm.reference} onChange={(event) => setPaymentForm({ ...paymentForm, reference: event.target.value })} inputProps={{ maxLength: 200 }} />
+              <FormControl sx={{ minWidth: 160 }}>
+                <InputLabel id="sponsor-payment-status">Status</InputLabel>
+                <Select labelId="sponsor-payment-status" label="Status" value={paymentForm.status} onChange={(event) => setPaymentForm({ ...paymentForm, status: event.target.value as 'paid' | 'pending' })}>
+                  <MenuItem value="paid">Paid</MenuItem>
+                  <MenuItem value="pending">Pending</MenuItem>
+                </Select>
+              </FormControl>
+              <Button type="submit" variant="contained">Record payment</Button>
+            </Stack>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPaymentSponsor(null)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Card>

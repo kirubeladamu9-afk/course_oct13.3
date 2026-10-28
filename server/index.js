@@ -656,6 +656,18 @@ const initializeDatabase = async () => {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `
+  await sql`
+    CREATE TABLE IF NOT EXISTS sponsor_payments (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      sponsor_id BIGINT NOT NULL REFERENCES sponsors(id) ON DELETE RESTRICT,
+      amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+      reference TEXT NOT NULL DEFAULT '' CHECK (char_length(reference) <= 200),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid')),
+      paid_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK ((status = 'paid') = (paid_at IS NOT NULL))
+    )
+  `
   await ensureColumns('enrollments', {
     source: "TEXT NOT NULL DEFAULT 'paid' CHECK (source IN ('paid', 'free_grant', 'sponsored'))",
     access_status: "TEXT NOT NULL DEFAULT 'active' CHECK (access_status IN ('active', 'revoked', 'expired'))",
@@ -2074,13 +2086,15 @@ const grantEnrollmentAccess = async (transaction, { userId, student, courseId, c
   if (sponsorId !== null) {
     const [sponsor] = await transaction`
       SELECT seat_limit, (sponsors.end_date::timestamp AT TIME ZONE 'UTC') AS "endsAt", (end_date IS NOT NULL AND end_date <= (NOW() AT TIME ZONE 'UTC')::date) AS ended,
-             (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed"
+             (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed",
+             (SELECT COUNT(*)::INTEGER FROM sponsor_payments WHERE sponsor_payments.sponsor_id = sponsors.id AND sponsor_payments.status = 'paid') AS "paidCount"
       FROM sponsors
       WHERE id = ${sponsorId}
       FOR UPDATE
     `
     if (!sponsor) throw new EnrollmentRefusal(404, { message: 'Sponsor not found.' })
     if (sponsor.ended) throw new EnrollmentRefusal(409, { message: 'This sponsor agreement has ended.' })
+    if (sponsor.paidCount === 0) throw new EnrollmentRefusal(409, { message: 'Record a paid payment for this sponsor before granting sponsored access.' })
     if (sponsor.seat_limit !== null && sponsor.seatsUsed >= sponsor.seat_limit) throw new EnrollmentRefusal(409, { message: 'This sponsor has no seats left.' })
     if (sponsor.endsAt) {
       if (enrollmentExpiresAt !== null && enrollmentExpiresAt > sponsor.endsAt) throw new EnrollmentRefusal(400, { message: 'Access cannot end after the sponsorship ends.' })
@@ -5049,7 +5063,8 @@ const listSponsors = (sponsorId = null) => sql`
          sponsors.notes,
          sponsors.seat_limit::INTEGER AS "seatLimit",
          to_char(sponsors.end_date, 'YYYY-MM-DD') AS "endDate",
-         (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed"
+         (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed",
+         EXISTS (SELECT 1 FROM sponsor_payments WHERE sponsor_payments.sponsor_id = sponsors.id AND sponsor_payments.status = 'paid') AS "isPaid"
   FROM sponsors
   WHERE ${sponsorId === null ? sql`TRUE` : sql`sponsors.id = ${sponsorId}`}
   ORDER BY sponsors.name, sponsors.id
@@ -5227,9 +5242,61 @@ app.delete('/api/admin/sponsors/:id', requireAdmin, async (request, response) =>
   if (sponsorId === null) return response.status(400).json({ message: 'Invalid sponsor.' })
   const [usage] = await sql`SELECT COUNT(*)::INTEGER AS count FROM enrollments WHERE sponsor_id = ${sponsorId}`
   if (usage.count > 0) return response.status(409).json({ message: 'Sponsors with granted seats cannot be deleted.' })
+  const [paymentUsage] = await sql`SELECT COUNT(*)::INTEGER AS count FROM sponsor_payments WHERE sponsor_id = ${sponsorId}`
+  if (paymentUsage.count > 0) return response.status(409).json({ message: 'Sponsors with payment records cannot be deleted.' })
   const deleted = await sql`DELETE FROM sponsors WHERE id = ${sponsorId} RETURNING id`
   if (deleted.length === 0) return response.status(404).json({ message: 'Sponsor not found.' })
   return response.status(204).end()
+})
+
+const parseSponsorPaymentInput = (body) => {
+  const amountCents = Number(body?.amountCents)
+  const reference = typeof body?.reference === 'string' ? body.reference.trim() : ''
+  const status = body?.status === 'paid' || body?.status === 'pending' ? body.status : null
+  if (!Number.isInteger(amountCents) || amountCents <= 0 || amountCents > 100_000_000 || reference.length > 200 || !status) return null
+  return { amountCents, reference, status }
+}
+
+app.get('/api/admin/sponsors/:id/payments', requireAdmin, async (request, response) => {
+  const sponsorId = parseEnrollmentId(request.params.id)
+  if (sponsorId === null) return response.status(400).json({ message: 'Invalid sponsor.' })
+  const payments = await sql`
+    SELECT id::INTEGER AS id, amount_cents::INTEGER AS "amountCents", reference, status, paid_at AS "paidAt", created_at AS "createdAt"
+    FROM sponsor_payments
+    WHERE sponsor_id = ${sponsorId}
+    ORDER BY created_at DESC, id DESC
+  `
+  return response.json(payments)
+})
+
+app.post('/api/admin/sponsors/:id/payments', requireAdmin, async (request, response) => {
+  const sponsorId = parseEnrollmentId(request.params.id)
+  const payment = parseSponsorPaymentInput(request.body)
+  if (sponsorId === null || !payment) return response.status(400).json({ message: 'Enter a positive amount and a valid status.' })
+  const [created] = await sql`
+    INSERT INTO sponsor_payments (sponsor_id, amount_cents, reference, status, paid_at)
+    SELECT id, ${payment.amountCents}, ${payment.reference}, ${payment.status}, ${payment.status === 'paid' ? new Date() : null}
+    FROM sponsors
+    WHERE id = ${sponsorId}
+    RETURNING id::INTEGER AS id
+  `
+  if (!created) return response.status(404).json({ message: 'Sponsor not found.' })
+  await writeAdminAudit(request, 'sponsor_payment_recorded', null, null, { sponsorId, paymentId: created.id, amountCents: payment.amountCents, status: payment.status })
+  return response.status(201).json({ id: created.id })
+})
+
+app.post('/api/admin/sponsor-payments/:id/mark-paid', requireAdmin, async (request, response) => {
+  const paymentId = parseEnrollmentId(request.params.id)
+  if (paymentId === null) return response.status(400).json({ message: 'Invalid payment.' })
+  const [updated] = await sql`
+    UPDATE sponsor_payments
+    SET status = 'paid', paid_at = NOW()
+    WHERE id = ${paymentId} AND status = 'pending'
+    RETURNING id::INTEGER AS id, sponsor_id::INTEGER AS "sponsorId"
+  `
+  if (!updated) return response.status(404).json({ message: 'Pending payment not found.' })
+  await writeAdminAudit(request, 'sponsor_payment_marked_paid', null, { status: 'pending' }, { status: 'paid', paymentId, sponsorId: updated.sponsorId })
+  return response.json({ id: updated.id })
 })
 
 app.get('/api/admin/sponsors/:id/report', requireAdmin, async (request, response) => {
