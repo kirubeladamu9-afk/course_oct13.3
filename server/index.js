@@ -5119,6 +5119,7 @@ app.get('/api/admin/access-grants', requireAdmin, async (_request, response) => 
            enrollments.class_status AS "classStatus",
            enrollments.grant_reason AS "grantReason",
            sponsors.name AS "sponsorName",
+           to_char(sponsors.end_date, 'YYYY-MM-DD') AS "sponsorEndDate",
            to_char(enrollments.expires_at, 'YYYY-MM-DD') AS "expiresAt",
            enrollments.created_at AS "grantedAt",
            enrollments.revoked_at AS "revokedAt",

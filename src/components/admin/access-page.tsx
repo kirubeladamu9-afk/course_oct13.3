@@ -584,7 +584,10 @@ const GrantsCard: FC = () => {
                   <TableCell>{grant.source === 'sponsored' ? `Sponsored${grant.sponsorName ? ` (${grant.sponsorName})` : ''}` : 'Free grant'}</TableCell>
                   <TableCell>{grant.grantReason}</TableCell>
                   <TableCell>{grant.classStatus ?? 'Course'}</TableCell>
-                  <TableCell>{grant.expiresAt ?? 'No expiry'}</TableCell>
+                  <TableCell>
+                    {grant.expiresAt ?? 'No expiry'}
+                    {grant.sponsorEndDate && <Typography variant="caption" display="block" color="text.secondary">Sponsor agreement ends {grant.sponsorEndDate}. This does not end access.</Typography>}
+                  </TableCell>
                   <TableCell>{grant.accessStatus}</TableCell>
                   <TableCell align="right">
                     {grant.usernameAccount && <Button size="small" disabled={resettingUserId === grant.userId} onClick={() => void issueNewPassword(grant)}>New password</Button>}
@@ -708,7 +711,7 @@ const SponsorsCard: FC = () => {
                 <TableCell>Contact</TableCell>
                 <TableCell>Seats used</TableCell>
                 <TableCell>Seats remaining</TableCell>
-                <TableCell>Ends</TableCell>
+                <TableCell>Agreement ends</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -720,7 +723,7 @@ const SponsorsCard: FC = () => {
                   <TableCell>{sponsor.contact}</TableCell>
                   <TableCell>{sponsor.seatsUsed}{sponsor.seatLimit === null ? '' : ` / ${sponsor.seatLimit}`}</TableCell>
                   <TableCell>{sponsor.seatsRemaining ?? 'Unlimited'}</TableCell>
-                  <TableCell>{sponsor.endDate ?? 'Open'}</TableCell>
+                  <TableCell>{sponsor.endDate ?? 'No end date'}</TableCell>
                   <TableCell align="right">
                     <Button size="small" onClick={() => void openReport(sponsor)}>Report</Button>
                     <Button size="small" onClick={() => edit(sponsor)}>Edit</Button>
