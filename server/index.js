@@ -641,6 +641,47 @@ const initializeDatabase = async () => {
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS payments_manual_pending_course_idx ON payments(user_id, course_id) WHERE payment_method = 'manual' AND verification_status = 'pending' AND course_id IS NOT NULL`
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS payments_manual_pending_class_idx ON payments(user_id, class_id) WHERE payment_method = 'manual' AND verification_status = 'pending' AND class_id IS NOT NULL`
 
+  await ensureColumns('users', { username: 'TEXT' })
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_username_idx ON users(username) WHERE username IS NOT NULL`
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS sponsors (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      name TEXT NOT NULL CHECK (char_length(name) BETWEEN 1 AND 200),
+      contact TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      seat_limit INTEGER CHECK (seat_limit IS NULL OR seat_limit >= 0),
+      end_date DATE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+  await ensureColumns('enrollments', {
+    source: "TEXT NOT NULL DEFAULT 'paid' CHECK (source IN ('paid', 'free_grant', 'sponsored'))",
+    access_status: "TEXT NOT NULL DEFAULT 'active' CHECK (access_status IN ('active', 'revoked', 'expired'))",
+    expires_at: 'TIMESTAMPTZ',
+    sponsor_id: 'BIGINT REFERENCES sponsors(id) ON DELETE RESTRICT',
+    granted_by: 'BIGINT REFERENCES users(id) ON DELETE SET NULL',
+    grant_reason: "TEXT CHECK (grant_reason IN ('Scholarship', 'Staff', 'Promotion', 'Sponsored', 'Other'))",
+    grant_note: 'TEXT',
+    revoked_at: 'TIMESTAMPTZ',
+    revoked_by: 'BIGINT REFERENCES users(id) ON DELETE SET NULL',
+  })
+  await ensureNullable('enrollments', 'payment_id')
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS enrollments_active_grant_course_idx ON enrollments (user_id, course_id) WHERE payment_id IS NULL AND class_id IS NULL AND access_status = 'active'`
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS enrollments_active_grant_class_idx ON enrollments (user_id, class_id) WHERE payment_id IS NULL AND class_id IS NOT NULL AND access_status = 'active'`
+  await sql`CREATE INDEX IF NOT EXISTS enrollments_sponsor_idx ON enrollments (sponsor_id) WHERE sponsor_id IS NOT NULL`
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS access_import_batches (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      admin_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      grant_options JSONB NOT NULL,
+      rows JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+
   await sql`
     CREATE TABLE IF NOT EXISTS course_progress (
       user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1938,6 +1979,128 @@ const verifyChapaTransaction = async (reference) => {
   return { status: getChapaStatus(verification), data: verification?.data ?? {} }
 }
 
+const enrollmentAccessCondition = () => sql`
+  enrollments.access_status = 'active'
+  AND (enrollments.expires_at IS NULL OR enrollments.expires_at > NOW())
+  AND (enrollments.source <> 'paid' OR EXISTS (SELECT 1 FROM payments WHERE payments.id = enrollments.payment_id AND payments.status = 'paid'))
+`
+
+const targetAccessCondition = (courseId, classId) => courseId !== null
+  ? sql`enrollments.course_id = ${courseId} AND enrollments.class_id IS NULL`
+  : sql`enrollments.class_id = ${classId}`
+
+const getEnrollmentTargetIssues = async (transaction, courseId, classId) => {
+  if (courseId !== null) {
+    const [course] = await transaction`SELECT status FROM courses WHERE id = ${courseId} FOR UPDATE`
+    if (!course) return ['missing']
+    return course.status === 'Published' ? [] : ['unpublished']
+  }
+  const [classRecord] = await transaction`SELECT published, status, schedule FROM classes WHERE id = ${classId} FOR UPDATE`
+  if (!classRecord) return ['missing']
+  const issues = []
+  if (!classRecord.published || classRecord.status === 'closed') issues.push('unpublished')
+  if (isClassEnrollmentClosed(deserializeJson(classRecord.schedule))) issues.push('started')
+  return issues
+}
+
+const createEnrollments = async (transaction, { userId, students, courseId, classId, paymentId, source, sponsorId = null, grantedBy = null, grantReason = null, grantNote = null, expiresAt = null }) => {
+  const created = []
+  for (const student of students) {
+    const [savedStudent] = await transaction`
+      INSERT INTO students ${transaction({
+        user_id: userId,
+        full_name: student.fullName,
+        age_or_grade: student.ageOrGrade,
+        relationship: student.relationship,
+        preferred_language: student.preferredLanguage,
+        emergency_phone: student.emergencyPhone,
+        notes: student.notes,
+      })}
+      RETURNING id
+    `
+    const classRecord = classId === null ? null : (await transaction`
+      SELECT classes.id,
+             classes.capacity,
+             classes.status,
+             COALESCE(enrollment_counts.enrolled_count, 0)::INTEGER AS enrolled_count
+      FROM classes
+      LEFT JOIN (
+        SELECT class_id, COUNT(*) FILTER (WHERE class_status = 'enrolled' AND ${enrollmentAccessCondition()}) AS enrolled_count
+        FROM enrollments
+        WHERE class_id = ${classId}
+        GROUP BY class_id
+      ) AS enrollment_counts ON enrollment_counts.class_id = classes.id
+      WHERE classes.id = ${classId}
+      FOR UPDATE OF classes
+    `)[0] ?? null
+    const classStatus = classRecord ? (classRecord.status === 'full' || classRecord.enrolled_count >= classRecord.capacity ? 'waitlisted' : 'enrolled') : null
+    const [enrollment] = await transaction`
+      INSERT INTO enrollments ${transaction({ user_id: userId, student_id: savedStudent.id, course_id: courseId, payment_id: paymentId, class_id: classRecord?.id ?? null, class_status: classStatus, source, sponsor_id: sponsorId, granted_by: grantedBy, grant_reason: grantReason, grant_note: grantNote, expires_at: expiresAt })}
+      ON CONFLICT DO NOTHING
+      RETURNING id::INTEGER AS id
+    `
+    if (classRecord && classStatus === 'enrolled' && classRecord.enrolled_count + 1 >= classRecord.capacity) {
+      await transaction`UPDATE classes SET status = 'full', updated_at = NOW() WHERE id = ${classRecord.id}`
+    }
+    if (courseId !== null) await transaction`UPDATE courses SET students = students + 1 WHERE id = ${courseId}`
+    created.push({ id: enrollment?.id ?? null, classStatus })
+  }
+  return created
+}
+
+class EnrollmentRefusal extends Error {
+  constructor(status, body) {
+    super(body.message ?? 'Access was refused.')
+    this.status = status
+    this.body = body
+  }
+}
+
+const grantEnrollmentAccess = async (transaction, { userId, student, courseId, classId, reason, note, expiresAt, sponsorId, grantedBy, override }) => {
+  const targetCondition = targetAccessCondition(courseId, classId)
+  await transaction`UPDATE enrollments SET access_status = 'expired' WHERE user_id = ${userId} AND ${targetCondition} AND access_status = 'active' AND expires_at <= NOW()`
+  const [existing] = await transaction`SELECT 1 FROM enrollments WHERE user_id = ${userId} AND ${targetCondition} AND ${enrollmentAccessCondition()} LIMIT 1`
+  if (existing) return { status: 'skipped' }
+
+  const issues = await getEnrollmentTargetIssues(transaction, courseId, classId)
+  if (issues.includes('missing')) throw new EnrollmentRefusal(404, { message: 'The selected course or class was not found.' })
+  if (issues.length > 0 && !override) throw new EnrollmentRefusal(409, { message: 'Confirm the warnings to grant access anyway.', warnings: issues })
+
+  if (sponsorId !== null) {
+    const [sponsor] = await transaction`
+      SELECT seat_limit, (end_date IS NOT NULL AND end_date < CURRENT_DATE) AS ended,
+             (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed"
+      FROM sponsors
+      WHERE id = ${sponsorId}
+      FOR UPDATE
+    `
+    if (!sponsor) throw new EnrollmentRefusal(404, { message: 'Sponsor not found.' })
+    if (sponsor.ended) throw new EnrollmentRefusal(409, { message: 'This sponsor agreement has ended.' })
+    if (sponsor.seat_limit !== null && sponsor.seatsUsed >= sponsor.seat_limit) throw new EnrollmentRefusal(409, { message: 'This sponsor has no seats left.' })
+  }
+
+  await transaction`
+    UPDATE payments
+    SET status = 'failed', paid_at = NULL, verification_status = 'declined', review_note = 'Superseded by admin-granted access.', reviewed_by = ${grantedBy}, reviewed_at = NOW()
+    WHERE user_id = ${userId} AND payment_method = 'manual' AND verification_status = 'pending' AND status = 'pending'
+      AND ${courseId !== null ? sql`course_id = ${courseId}` : sql`class_id = ${classId}`}
+  `
+  const [created] = await createEnrollments(transaction, {
+    userId,
+    students: [student],
+    courseId,
+    classId,
+    paymentId: null,
+    source: sponsorId === null ? 'free_grant' : 'sponsored',
+    sponsorId,
+    grantedBy,
+    grantReason: reason,
+    grantNote: note,
+    expiresAt,
+  })
+  return { status: 'granted', enrollmentId: created.id, classStatus: created.classStatus }
+}
+
 const updatePaymentStatus = async (reference, status, verification = {}) => sql.begin(async (transaction) => {
   const [payment] = await transaction`
     SELECT id, user_id AS "userId", course_id AS "courseId", class_id AS "classId", practice_exam_id AS "practiceExamId", bookstore_item_id AS "bookstoreItemId", student_data AS "studentData", payment_method AS "paymentMethod", verification_status AS "verificationStatus", amount::FLOAT AS amount, currency, status
@@ -1949,27 +2112,9 @@ const updatePaymentStatus = async (reference, status, verification = {}) => sql.
   if (payment.paymentMethod === 'manual' && (status !== 'paid' || !verification.manualApproval || payment.verificationStatus !== 'pending')) return payment.status
   if (status === 'paid' && payment.paymentMethod !== 'manual' && !isTestChapa && (Number(verification.amount) !== payment.amount || String(verification.currency).toUpperCase() !== payment.currency.toUpperCase() || verification.merchant_reference !== payment.reference)) return payment.status
   if (status === 'paid' && payment.practiceExamId === null && payment.bookstoreItemId === null) {
-    let enrollmentAvailable = false
-    let unavailableReason = 'The selected course is no longer available for enrollment.'
-    if (payment.courseId !== null) {
-      const [course] = await transaction`
-        SELECT id
-        FROM courses
-        WHERE id = ${payment.courseId} AND status = 'Published'
-        FOR UPDATE
-      `
-      enrollmentAvailable = Boolean(course)
-    } else if (payment.classId !== null) {
-      const [classRecord] = await transaction`
-        SELECT schedule
-        FROM classes
-        WHERE id = ${payment.classId} AND published = true AND status IN ('open', 'full')
-        FOR UPDATE
-      `
-      enrollmentAvailable = Boolean(classRecord) && !isClassEnrollmentClosed(deserializeJson(classRecord.schedule))
-      unavailableReason = 'This class is no longer available for enrollment.'
-    }
-    if (!enrollmentAvailable) {
+    const issues = await getEnrollmentTargetIssues(transaction, payment.courseId, payment.classId)
+    if (issues.length > 0) {
+      const unavailableReason = payment.courseId !== null ? 'The selected course is no longer available for enrollment.' : 'This class is no longer available for enrollment.'
       await transaction`
         UPDATE payments
         SET status = 'failed', paid_at = NULL,
@@ -2010,46 +2155,7 @@ const updatePaymentStatus = async (reference, status, verification = {}) => sql.
   }
 
   const students = typeof payment.studentData === 'string' ? JSON.parse(payment.studentData) : payment.studentData
-  for (const student of students) {
-    const [savedStudent] = await transaction`
-      INSERT INTO students ${transaction({
-        user_id: payment.userId,
-        full_name: student.fullName,
-        age_or_grade: student.ageOrGrade,
-        relationship: student.relationship,
-        preferred_language: student.preferredLanguage,
-        emergency_phone: student.emergencyPhone,
-        notes: student.notes,
-      })}
-      RETURNING id
-    `
-    const classRecord = payment.classId === null ? null : (await transaction`
-      SELECT classes.id,
-             classes.capacity,
-             classes.status,
-             COALESCE(enrollment_counts.enrolled_count, 0)::INTEGER AS enrolled_count
-      FROM classes
-      LEFT JOIN (
-        SELECT class_id, COUNT(*) FILTER (WHERE class_status = 'enrolled') AS enrolled_count
-        FROM enrollments
-        WHERE class_id = ${payment.classId}
-        GROUP BY class_id
-      ) AS enrollment_counts ON enrollment_counts.class_id = classes.id
-      WHERE classes.id = ${payment.classId}
-        AND classes.published = true
-        AND classes.status <> 'closed'
-      FOR UPDATE OF classes
-    `)[0] ?? null
-    const classStatus = classRecord ? (classRecord.status === 'full' || classRecord.enrolled_count >= classRecord.capacity ? 'waitlisted' : 'enrolled') : null
-    await transaction`
-      INSERT INTO enrollments ${transaction({ user_id: payment.userId, student_id: savedStudent.id, course_id: payment.courseId, payment_id: payment.id, class_id: classRecord?.id ?? null, class_status: classStatus })}
-      ON CONFLICT DO NOTHING
-    `
-    if (classRecord && classStatus === 'enrolled' && classRecord.enrolled_count + 1 >= classRecord.capacity) {
-      await transaction`UPDATE classes SET status = 'full', updated_at = NOW() WHERE id = ${classRecord.id}`
-    }
-  }
-  if (payment.courseId !== null) await transaction`UPDATE courses SET students = students + ${students.length} WHERE id = ${payment.courseId}`
+  await createEnrollments(transaction, { userId: payment.userId, students, courseId: payment.courseId, classId: payment.classId, paymentId: payment.id, source: 'paid' })
   return 'paid'
 })
 
@@ -2485,7 +2591,7 @@ app.get('/api/enrollments', requireAuthenticated, async (request, response) => {
            classes.title AS "classTitle",
            tutors.name AS "classTutor",
            classes.schedule AS "classSchedule",
-           classes.meeting_link AS "meetingLink",
+           CASE WHEN enrollments.class_status = 'enrolled' THEN classes.meeting_link END AS "meetingLink",
            classes.status AS "classStatus",
            classes.program_id AS "classProgramId",
            to_char(classes.exam_date, 'YYYY-MM-DD') AS "classExamDate",
@@ -2499,7 +2605,6 @@ app.get('/api/enrollments', requireAuthenticated, async (request, response) => {
            study_plan_summary."studyPlanOrder",
            study_plan_summary."studyPlanGeneratedAt"
     FROM enrollments
-    INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
     LEFT JOIN courses ON courses.id = enrollments.course_id
     INNER JOIN students ON students.id = enrollments.student_id
     LEFT JOIN classes ON classes.id = enrollments.class_id
@@ -2563,6 +2668,7 @@ app.get('/api/enrollments', requireAuthenticated, async (request, response) => {
     ) AS study_plan_summary ON true
     WHERE enrollments.user_id = ${request.userId}
       AND ((enrollments.class_status IS NULL AND enrollments.course_id IS NOT NULL) OR classes.published = true)
+      AND ${enrollmentAccessCondition()}
     ORDER BY lesson_summary."lastActivityAt" DESC NULLS LAST, enrollments.created_at DESC
   `
   response.json(enrollments.map(serializeEnrollment))
@@ -2573,13 +2679,14 @@ const getOwnedEnrollment = async (transaction, userId, enrollmentId) => {
     SELECT enrollments.id,
            enrollments.course_id AS "courseId",
            enrollments.class_id AS "classId",
+           enrollments.class_status AS "classStatus",
            CASE WHEN enrollments.class_id IS NULL THEN courses.modules ELSE classes.modules END AS modules
     FROM enrollments
-    INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
     LEFT JOIN courses ON courses.id = enrollments.course_id
     LEFT JOIN classes ON classes.id = enrollments.class_id
     WHERE enrollments.id = ${enrollmentId}
       AND enrollments.user_id = ${userId}
+      AND ${enrollmentAccessCondition()}
     FOR UPDATE OF enrollments
   `
   return enrollment ?? null
@@ -3051,6 +3158,7 @@ app.post('/api/enrollments/:enrollmentId/live-sessions/:lessonId/join', requireA
     const enrollment = await getOwnedEnrollment(transaction, request.userId, enrollmentId)
     if (!enrollment) return null
     if (enrollment.classId === null) return { error: 'Live session not found.' }
+    if (enrollment.classStatus !== 'enrolled') return { error: 'Live sessions are available once your class seat is confirmed.', status: 403 }
     const lesson = findCourseLesson(enrollment.modules, lessonId)
     if (!lesson || lesson.type !== 'live') return { error: 'Live session not found.' }
     const startsAt = new Date(lesson.scheduledAt).getTime()
@@ -4652,6 +4760,551 @@ app.post('/api/admin/pending-payments/:paymentId/decline', requireAdmin, async (
   return response.json({ id: paymentId, status: 'declined' })
 })
 
+const grantReasons = ['Scholarship', 'Staff', 'Promotion', 'Sponsored', 'Other']
+const maxBulkCsvBytes = 1024 * 1024
+
+const parseGrantTarget = (body) => {
+  const hasCourse = body?.courseId !== undefined && body?.courseId !== null
+  const hasClass = body?.classId !== undefined && body?.classId !== null
+  if (hasCourse === hasClass) return null
+  const id = parseEnrollmentId(String(hasCourse ? body.courseId : body.classId))
+  if (id === null) return null
+  return hasCourse ? { courseId: id, classId: null } : { courseId: null, classId: id }
+}
+
+const parseOptionalText = (value, maxLength) => {
+  if (value === undefined || value === null || value === '') return { value: null }
+  if (typeof value !== 'string' || value.trim().length > maxLength) return null
+  return { value: value.trim() || null }
+}
+
+const parseOptionalExpiry = (value) => {
+  if (value === undefined || value === null || value === '') return { value: null }
+  const date = new Date(String(value))
+  return Number.isFinite(date.getTime()) && date.getTime() > Date.now() ? { value: date } : null
+}
+
+const parseOptionalSponsorId = (value) => {
+  if (value === undefined || value === null || value === '') return { value: null }
+  const id = parseEnrollmentId(String(value))
+  return id === null ? null : { value: id }
+}
+
+const parseGrantOptions = (body) => {
+  const target = parseGrantTarget(body)
+  const reason = grantReasons.includes(body?.reason) ? body.reason : null
+  const note = parseOptionalText(body?.note, 500)
+  const expiry = parseOptionalExpiry(body?.expiresAt)
+  const sponsor = parseOptionalSponsorId(body?.sponsorId)
+  if (!target || !reason || !note || !expiry || !sponsor || (reason === 'Sponsored') !== (sponsor.value !== null)) return null
+  return { ...target, reason, note: note.value, expiresAt: expiry.value, sponsorId: sponsor.value }
+}
+
+const buildStudentProfile = ({ fullName, grade = '', phone = '', relationship = 'Self', notes = '' }) => ({
+  fullName,
+  ageOrGrade: grade || 'Not provided',
+  relationship,
+  preferredLanguage: 'Not provided',
+  emergencyPhone: phone,
+  notes,
+})
+
+const issueSetPasswordLink = async (transaction, userId) => {
+  const rawToken = randomBytes(32).toString('base64url')
+  await transaction`INSERT INTO password_reset_tokens (token_hash, user_id, expires_at) VALUES (${hashToken(rawToken)}, ${userId}, NOW() + INTERVAL '72 hours')`
+  return `/set-password?token=${rawToken}`
+}
+
+const createUsernameAccount = async (transaction, name, phone) => {
+  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'student'
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const username = `${base}${randomBytes(3).toString('hex')}`
+    const temporaryPassword = randomBytes(9).toString('base64url')
+    const [created] = await transaction`
+      INSERT INTO users ${transaction({ name, phone, email: `${username}@no-email.invalid`, username, password_hash: await hashPassword(temporaryPassword), role: 'student', must_reset_password: true })}
+      ON CONFLICT DO NOTHING
+      RETURNING id::INTEGER AS id
+    `
+    if (created) return { userId: created.id, username, temporaryPassword }
+  }
+  throw new Error('Unable to create a unique username.')
+}
+
+const resolveGrantAccount = async (transaction, { userId, email, name, phone }) => {
+  const [user] = userId !== null
+    ? await transaction`SELECT id::INTEGER AS id, name, role FROM users WHERE id = ${userId}`
+    : email !== null
+      ? await transaction`SELECT id::INTEGER AS id, name, role FROM users WHERE email = ${email}`
+      : []
+  if (user) {
+    if (user.role !== 'student') throw new EnrollmentRefusal(400, { message: 'Access can only be granted to student accounts.' })
+    return { userId: user.id, name: user.name }
+  }
+  if (userId !== null) throw new EnrollmentRefusal(404, { message: 'Student account not found.' })
+  if (email !== null) {
+    const [created] = await transaction`
+      INSERT INTO users ${transaction({ name, phone, email, password_hash: await hashPassword(randomBytes(24).toString('base64url')), role: 'student' })}
+      RETURNING id::INTEGER AS id
+    `
+    return { userId: created.id, name, created: { setPasswordPath: await issueSetPasswordLink(transaction, created.id) } }
+  }
+  const account = await createUsernameAccount(transaction, name, phone)
+  return { userId: account.userId, name, created: { username: account.username, temporaryPassword: account.temporaryPassword } }
+}
+
+const parseCsvText = (text) => {
+  const rows = []
+  let row = []
+  let field = ''
+  let quoted = false
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (quoted) {
+      if (char === '"' && text[index + 1] === '"') {
+        field += '"'
+        index += 1
+      } else if (char === '"') {
+        quoted = false
+      } else {
+        field += char
+      }
+    } else if (char === '"') {
+      quoted = true
+    } else if (char === ',') {
+      row.push(field)
+      field = ''
+    } else if (char === '\n' || char === '\r') {
+      if (char === '\r' && text[index + 1] === '\n') index += 1
+      row.push(field)
+      rows.push(row)
+      row = []
+      field = ''
+    } else {
+      field += char
+    }
+  }
+  if (field !== '' || row.length > 0) {
+    row.push(field)
+    rows.push(row)
+  }
+  return rows.filter((cells) => cells.some((cell) => cell.trim() !== ''))
+}
+
+const normalizeCsvHeader = (header) => header.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+
+const parseImportRows = (csv) => {
+  const [headerRow = [], ...dataRows] = parseCsvText(csv)
+  const headers = headerRow.map(normalizeCsvHeader)
+  if (!headers.includes('name') || (!headers.includes('email') && !headers.includes('guardian_email'))) {
+    return { error: 'The CSV needs a name column and an email or guardian_email column.' }
+  }
+  const column = (cells, key) => {
+    const index = headers.indexOf(key)
+    return index === -1 ? '' : String(cells[index] ?? '').trim()
+  }
+  return {
+    rows: dataRows.map((cells, index) => ({
+      row: index + 1,
+      name: column(cells, 'name'),
+      email: column(cells, 'email').toLowerCase(),
+      guardianEmail: column(cells, 'guardian_email').toLowerCase(),
+      phone: column(cells, 'phone'),
+      grade: column(cells, 'grade'),
+    })),
+  }
+}
+
+const getImportRowProblem = (row) => {
+  if (!row.name || row.name.length > 200) return 'Name is required.'
+  if (row.email && !isValidEmail(row.email)) return 'Email address is not valid.'
+  if (!row.email && row.guardianEmail && !isValidEmail(row.guardianEmail)) return 'Guardian email is not valid.'
+  if (row.phone.length > 30) return 'Phone number is too long.'
+  if (row.grade.length > 50) return 'Grade is too long.'
+  return null
+}
+
+const getSponsorSeatsRemaining = async (sponsorId) => {
+  const [sponsor] = await sql`
+    SELECT seat_limit,
+           (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed"
+    FROM sponsors
+    WHERE id = ${sponsorId}
+  `
+  if (!sponsor || sponsor.seat_limit === null) return null
+  return Math.max(0, sponsor.seat_limit - sponsor.seatsUsed)
+}
+
+const classifyImportRows = async (rows, options) => {
+  const emails = [...new Set(rows.map((row) => row.email || row.guardianEmail).filter(Boolean))]
+  const existingUsers = emails.length === 0 ? [] : await sql`SELECT id::INTEGER AS id, email, role FROM users WHERE email IN ${sql(emails)}`
+  const usersByEmail = new Map(existingUsers.map((user) => [user.email, user]))
+  const accessibleUserIds = new Set(existingUsers.length === 0 ? [] : (await sql`
+    SELECT DISTINCT enrollments.user_id::INTEGER AS "userId"
+    FROM enrollments
+    WHERE enrollments.user_id IN ${sql(existingUsers.map((user) => user.id))}
+      AND ${targetAccessCondition(options.courseId, options.classId)}
+      AND ${enrollmentAccessCondition()}
+  `).map((row) => row.userId))
+  let seatsLeft = options.sponsorId === null ? null : await getSponsorSeatsRemaining(options.sponsorId)
+  const seenEmails = new Set()
+
+  return rows.map((row) => {
+    const accountEmail = row.email || row.guardianEmail
+    const problem = getImportRowProblem(row)
+    const existing = accountEmail ? usersByEmail.get(accountEmail) : null
+    let status = 'new'
+    let message = ''
+    if (problem) {
+      status = 'invalid'
+      message = problem
+    } else if (accountEmail && seenEmails.has(accountEmail)) {
+      status = 'duplicate'
+      message = 'This account appears earlier in the file.'
+    } else if (existing && existing.role !== 'student') {
+      status = 'invalid'
+      message = 'This email belongs to a staff account.'
+    } else if (existing) {
+      status = 'existing'
+      message = accessibleUserIds.has(existing.id) ? 'Already has access; will be skipped.' : 'Existing account.'
+    }
+    if (accountEmail && status !== 'invalid') seenEmails.add(accountEmail)
+    const alreadyHasAccess = status === 'existing' && accessibleUserIds.has(existing.id)
+    if ((status === 'new' || status === 'existing') && !alreadyHasAccess && seatsLeft !== null) {
+      if (seatsLeft <= 0) {
+        status = 'overflow'
+        message = 'No sponsor seats left for this row.'
+      } else {
+        seatsLeft -= 1
+      }
+    }
+    return { ...row, status, message }
+  })
+}
+
+const getSponsorReport = async (sponsorId) => {
+  const [sponsor] = await listSponsors(sponsorId)
+  if (!sponsor) return null
+  const students = await sql`
+    SELECT enrollments.id::INTEGER AS "enrollmentId",
+           COALESCE(NULLIF(users.name, ''), students.full_name) AS name,
+           users.email,
+           COALESCE(classes.title, courses.title) AS item,
+           enrollments.class_status AS "classStatus",
+           enrollments.access_status AS "accessStatus",
+           to_char(enrollments.expires_at, 'YYYY-MM-DD') AS "expiresAt",
+           to_char(enrollments.created_at, 'YYYY-MM-DD') AS "grantedAt",
+           CASE WHEN enrollments.class_id IS NULL THEN courses.modules ELSE classes.modules END AS modules,
+           (SELECT COALESCE(jsonb_object_agg(lesson_id::TEXT, jsonb_build_object('completedAt', completed_at)), '{}'::jsonb)
+            FROM student_lesson_progress WHERE student_lesson_progress.enrollment_id = enrollments.id) AS "lessonProgress",
+           (SELECT COUNT(*) FILTER (WHERE status = 'Present')::INTEGER FROM class_attendance WHERE class_attendance.enrollment_id = enrollments.id) AS "attendancePresent"
+    FROM enrollments
+    INNER JOIN users ON users.id = enrollments.user_id
+    INNER JOIN students ON students.id = enrollments.student_id
+    LEFT JOIN courses ON courses.id = enrollments.course_id
+    LEFT JOIN classes ON classes.id = enrollments.class_id
+    WHERE enrollments.sponsor_id = ${sponsorId}
+    ORDER BY name, enrollments.id
+  `
+  const rows = students.map((student) => {
+    const modules = deserializeJson(student.modules)
+    const { completedLessonIds, progressPercentage } = getEnrollmentProgress(modules, deserializeJson(student.lessonProgress) ?? {})
+    return {
+      enrollmentId: student.enrollmentId,
+      name: student.name,
+      email: student.email,
+      item: student.item,
+      seat: student.classStatus ?? 'Course',
+      accessStatus: student.accessStatus,
+      expiresAt: student.expiresAt ?? '',
+      grantedAt: student.grantedAt,
+      progressPercentage,
+      lessonsCompleted: completedLessonIds.length,
+      liveSessionsAttended: student.attendancePresent,
+      liveSessionsTotal: getCourseLessons(modules).filter((lesson) => lesson?.type === 'live').length,
+    }
+  })
+  return { sponsor, rows }
+}
+
+const listSponsors = (sponsorId = null) => sql`
+  SELECT sponsors.id::INTEGER AS id,
+         sponsors.name,
+         sponsors.contact,
+         sponsors.notes,
+         sponsors.seat_limit::INTEGER AS "seatLimit",
+         to_char(sponsors.end_date, 'YYYY-MM-DD') AS "endDate",
+         (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed"
+  FROM sponsors
+  WHERE ${sponsorId === null ? sql`TRUE` : sql`sponsors.id = ${sponsorId}`}
+  ORDER BY sponsors.name, sponsors.id
+`
+
+const withSeatsRemaining = (sponsor) => ({
+  ...sponsor,
+  seatsRemaining: sponsor.seatLimit === null ? null : Math.max(0, sponsor.seatLimit - sponsor.seatsUsed),
+})
+
+const parseSponsorInput = (body) => {
+  const name = typeof body?.name === 'string' ? body.name.trim() : ''
+  const contact = typeof body?.contact === 'string' ? body.contact.trim() : ''
+  const notes = typeof body?.notes === 'string' ? body.notes.trim() : ''
+  const seatLimit = body?.seatLimit === undefined || body?.seatLimit === null || body?.seatLimit === '' ? null : Number(body.seatLimit)
+  const endDate = typeof body?.endDate === 'string' && body.endDate.trim() ? body.endDate.trim() : null
+  if (!name || name.length > 200 || contact.length > 300 || notes.length > 2000) return null
+  if (seatLimit !== null && (!Number.isInteger(seatLimit) || seatLimit < 0)) return null
+  if (endDate !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !Number.isFinite(Date.parse(endDate)))) return null
+  return { name, contact, notes, seatLimit, endDate }
+}
+
+const csvCell = (value) => {
+  let text = value === null || value === undefined ? '' : String(value)
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`
+  return `"${text.replaceAll('"', '""')}"`
+}
+
+app.post('/api/admin/access-grants', requireAdmin, async (request, response) => {
+  const body = request.body ?? {}
+  const options = parseGrantOptions(body)
+  const userId = body.userId === undefined || body.userId === null ? null : parseEnrollmentId(String(body.userId))
+  const email = typeof body.email === 'string' && body.email.trim() ? body.email.trim().toLowerCase() : null
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  const phone = typeof body.phone === 'string' ? body.phone.trim().slice(0, 30) : ''
+  const grade = typeof body.grade === 'string' ? body.grade.trim().slice(0, 50) : ''
+  if (!options) return response.status(400).json({ message: 'Choose a course or class, a reason, and a future expiry if you set one.' })
+  if (body.userId !== undefined && body.userId !== null && userId === null) return response.status(400).json({ message: 'Choose a valid student.' })
+  if (userId === null && ((email !== null && !isValidEmail(email)) || !name || name.length > 200)) {
+    return response.status(400).json({ message: 'Enter the student name and a valid email, or name only for a username account.' })
+  }
+  try {
+    const result = await sql.begin(async (transaction) => {
+      const account = await resolveGrantAccount(transaction, { userId, email, name, phone })
+      const grant = await grantEnrollmentAccess(transaction, {
+        userId: account.userId,
+        student: buildStudentProfile({ fullName: account.name, grade, phone }),
+        courseId: options.courseId,
+        classId: options.classId,
+        reason: options.reason,
+        note: options.note,
+        expiresAt: options.expiresAt,
+        sponsorId: options.sponsorId,
+        grantedBy: request.userId,
+        override: body.override === true,
+      })
+      return { account, grant }
+    })
+    if (result.grant.status === 'skipped') return response.status(200).json({ status: 'skipped', message: 'This student already has access.' })
+    await writeAdminAudit(request, 'access_granted', result.account.userId, null, { enrollmentId: result.grant.enrollmentId, classStatus: result.grant.classStatus, courseId: options.courseId, classId: options.classId, reason: options.reason, sponsorId: options.sponsorId, expiresAt: options.expiresAt, override: body.override === true })
+    return response.status(201).json({ status: 'granted', enrollmentId: result.grant.enrollmentId, classStatus: result.grant.classStatus, ...(result.account.created ?? {}) })
+  } catch (error) {
+    if (error instanceof EnrollmentRefusal) return response.status(error.status).json(error.body)
+    throw error
+  }
+})
+
+app.get('/api/admin/access-grants', requireAdmin, async (_request, response) => {
+  const grants = await sql`
+    SELECT enrollments.id::INTEGER AS id,
+           users.id::INTEGER AS "userId",
+           COALESCE(NULLIF(users.name, ''), users.email) AS "studentName",
+           users.email,
+           COALESCE(classes.title, courses.title) AS item,
+           enrollments.source,
+           enrollments.access_status AS "accessStatus",
+           enrollments.class_status AS "classStatus",
+           enrollments.grant_reason AS "grantReason",
+           sponsors.name AS "sponsorName",
+           to_char(enrollments.expires_at, 'YYYY-MM-DD') AS "expiresAt",
+           enrollments.created_at AS "grantedAt",
+           enrollments.revoked_at AS "revokedAt"
+    FROM enrollments
+    INNER JOIN users ON users.id = enrollments.user_id
+    LEFT JOIN courses ON courses.id = enrollments.course_id
+    LEFT JOIN classes ON classes.id = enrollments.class_id
+    LEFT JOIN sponsors ON sponsors.id = enrollments.sponsor_id
+    WHERE enrollments.source <> 'paid'
+    ORDER BY enrollments.created_at DESC, enrollments.id DESC
+    LIMIT 500
+  `
+  return response.json(grants)
+})
+
+app.post('/api/admin/access-grants/:enrollmentId/revoke', requireAdmin, async (request, response) => {
+  const enrollmentId = parseEnrollmentId(request.params.enrollmentId)
+  if (enrollmentId === null) return response.status(400).json({ message: 'Invalid enrollment.' })
+  const result = await sql.begin(async (transaction) => {
+    const [enrollment] = await transaction`
+      SELECT id, user_id::INTEGER AS "userId", source, access_status AS "accessStatus", class_id::INTEGER AS "classId"
+      FROM enrollments
+      WHERE id = ${enrollmentId}
+      FOR UPDATE
+    `
+    if (!enrollment || enrollment.source === 'paid') return { status: 404, message: 'Granted access not found.' }
+    if (enrollment.accessStatus === 'revoked') return { status: 409, message: 'This access has already been revoked.' }
+    await transaction`UPDATE enrollments SET access_status = 'revoked', revoked_at = NOW(), revoked_by = ${request.userId} WHERE id = ${enrollmentId}`
+    if (enrollment.classId !== null) {
+      await transaction`
+        UPDATE classes
+        SET status = 'open', updated_at = NOW()
+        WHERE id = ${enrollment.classId}
+          AND status = 'full'
+          AND (SELECT COUNT(*) FROM enrollments WHERE enrollments.class_id = classes.id AND enrollments.class_status = 'enrolled' AND ${enrollmentAccessCondition()}) < classes.capacity
+      `
+    }
+    return { status: 200, enrollment }
+  })
+  if (result.status !== 200) return response.status(result.status).json({ message: result.message })
+  await writeAdminAudit(request, 'access_revoked', result.enrollment.userId, { accessStatus: result.enrollment.accessStatus, enrollmentId }, { accessStatus: 'revoked', enrollmentId })
+  return response.json({ id: enrollmentId, accessStatus: 'revoked' })
+})
+
+app.get('/api/admin/sponsors', requireAdmin, async (_request, response) => {
+  const sponsors = await listSponsors()
+  return response.json(sponsors.map(withSeatsRemaining))
+})
+
+app.post('/api/admin/sponsors', requireAdmin, async (request, response) => {
+  const sponsor = parseSponsorInput(request.body)
+  if (!sponsor) return response.status(400).json({ message: 'Enter a sponsor name and valid seat limit or end date.' })
+  const [created] = await sql`
+    INSERT INTO sponsors ${sql({ name: sponsor.name, contact: sponsor.contact, notes: sponsor.notes, seat_limit: sponsor.seatLimit, end_date: sponsor.endDate })}
+    RETURNING id::INTEGER AS id
+  `
+  return response.status(201).json({ id: created.id })
+})
+
+app.put('/api/admin/sponsors/:id', requireAdmin, async (request, response) => {
+  const sponsorId = parseEnrollmentId(request.params.id)
+  const sponsor = parseSponsorInput(request.body)
+  if (sponsorId === null || !sponsor) return response.status(400).json({ message: 'Enter a sponsor name and valid seat limit or end date.' })
+  const [updated] = await sql`
+    UPDATE sponsors
+    SET name = ${sponsor.name}, contact = ${sponsor.contact}, notes = ${sponsor.notes}, seat_limit = ${sponsor.seatLimit}, end_date = ${sponsor.endDate}, updated_at = NOW()
+    WHERE id = ${sponsorId}
+    RETURNING id::INTEGER AS id
+  `
+  if (!updated) return response.status(404).json({ message: 'Sponsor not found.' })
+  return response.json({ id: updated.id })
+})
+
+app.delete('/api/admin/sponsors/:id', requireAdmin, async (request, response) => {
+  const sponsorId = parseEnrollmentId(request.params.id)
+  if (sponsorId === null) return response.status(400).json({ message: 'Invalid sponsor.' })
+  const [usage] = await sql`SELECT COUNT(*)::INTEGER AS count FROM enrollments WHERE sponsor_id = ${sponsorId}`
+  if (usage.count > 0) return response.status(409).json({ message: 'Sponsors with granted seats cannot be deleted.' })
+  const deleted = await sql`DELETE FROM sponsors WHERE id = ${sponsorId} RETURNING id`
+  if (deleted.length === 0) return response.status(404).json({ message: 'Sponsor not found.' })
+  return response.status(204).end()
+})
+
+app.get('/api/admin/sponsors/:id/report', requireAdmin, async (request, response) => {
+  const sponsorId = parseEnrollmentId(request.params.id)
+  const report = sponsorId === null ? null : await getSponsorReport(sponsorId)
+  if (!report) return response.status(404).json({ message: 'Sponsor not found.' })
+  return response.json({ sponsor: withSeatsRemaining(report.sponsor), students: report.rows })
+})
+
+app.get('/api/admin/sponsors/:id/report.csv', requireAdmin, async (request, response) => {
+  const sponsorId = parseEnrollmentId(request.params.id)
+  const report = sponsorId === null ? null : await getSponsorReport(sponsorId)
+  if (!report) return response.status(404).end()
+  const header = ['Student', 'Email', 'Item', 'Seat', 'Access', 'Expires', 'Granted', 'Progress %', 'Lessons completed', 'Live sessions attended', 'Live sessions total']
+  const lines = [header, ...report.rows.map((row) => [row.name, row.email, row.item, row.seat, row.accessStatus, row.expiresAt, row.grantedAt, row.progressPercentage, row.lessonsCompleted, row.liveSessionsAttended, row.liveSessionsTotal])]
+  response.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="sponsor-${sponsorId}-report.csv"`, 'Cache-Control': 'private, no-store' })
+  return response.send(lines.map((cells) => cells.map(csvCell).join(',')).join('\r\n'))
+})
+
+app.post('/api/admin/access-imports', requireAdmin, async (request, response) => {
+  const body = request.body ?? {}
+  const csv = typeof body.csv === 'string' ? body.csv : ''
+  if (!csv.trim()) return response.status(400).json({ message: 'Upload a CSV file.' })
+  if (Buffer.byteLength(csv, 'utf8') > maxBulkCsvBytes) return response.status(413).json({ message: 'The CSV file must be 1 MB or smaller.' })
+  const options = parseGrantOptions(body)
+  if (!options) return response.status(400).json({ message: 'Choose a course or class, a reason, and a future expiry if you set one.' })
+  const parsed = parseImportRows(csv)
+  if (parsed.error) return response.status(400).json({ message: parsed.error })
+  if (parsed.rows.length === 0) return response.status(400).json({ message: 'The CSV has no student rows.' })
+  const targetIssues = await getEnrollmentTargetIssues(sql, options.courseId, options.classId)
+  if (targetIssues.includes('missing')) return response.status(404).json({ message: 'The selected course or class was not found.' })
+  const rows = await classifyImportRows(parsed.rows, options)
+  const [batch] = await sql`
+    INSERT INTO access_import_batches ${sql({ admin_user_id: request.userId, grant_options: sql.json(options), rows: sql.json(rows) })}
+    RETURNING id::INTEGER AS id
+  `
+  const summary = { new: 0, existing: 0, duplicate: 0, invalid: 0, overflow: 0 }
+  for (const row of rows) summary[row.status] += 1
+  return response.status(201).json({
+    batchId: batch.id,
+    summary,
+    targetIssues,
+    rows: rows.map(({ row, name, email, guardianEmail, status, message }) => ({ row, name, email: email || guardianEmail, status, message })),
+  })
+})
+
+app.post('/api/admin/access-imports/:batchId/confirm', requireAdmin, async (request, response) => {
+  const batchId = parseEnrollmentId(request.params.batchId)
+  if (batchId === null) return response.status(400).json({ message: 'Invalid import.' })
+  const [batch] = await sql`SELECT grant_options AS "grantOptions", rows FROM access_import_batches WHERE id = ${batchId} AND admin_user_id = ${request.userId}`
+  if (!batch) return response.status(404).json({ message: 'This import has expired or was already applied.' })
+  const options = deserializeJson(batch.grantOptions)
+  const rows = deserializeJson(batch.rows)
+  const override = request.body?.override === true
+  const issues = await getEnrollmentTargetIssues(sql, options.courseId, options.classId)
+  if (issues.includes('missing')) return response.status(404).json({ message: 'The selected course or class was not found.' })
+  if (issues.length > 0 && !override) return response.status(409).json({ message: 'Confirm the warnings to grant access anyway.', warnings: issues })
+  const [claimed] = await sql`DELETE FROM access_import_batches WHERE id = ${batchId} RETURNING id`
+  if (!claimed) return response.status(409).json({ message: 'This import was already applied.' })
+
+  const results = []
+  for (const row of rows) {
+    if (row.status !== 'new' && row.status !== 'existing') {
+      results.push({ row: row.row, name: row.name, outcome: row.status, message: row.message })
+      continue
+    }
+    try {
+      const outcome = await sql.begin(async (transaction) => {
+        const account = await resolveGrantAccount(transaction, { userId: null, email: row.email || row.guardianEmail || null, name: row.name, phone: row.phone })
+        const grant = await grantEnrollmentAccess(transaction, {
+          userId: account.userId,
+          student: buildStudentProfile({ fullName: row.name, grade: row.grade, phone: row.phone, relationship: row.email ? 'Self' : 'Guardian', notes: row.guardianEmail && row.email ? `Guardian email: ${row.guardianEmail}` : '' }),
+          courseId: options.courseId,
+          classId: options.classId,
+          reason: options.reason,
+          note: options.note,
+          expiresAt: options.expiresAt,
+          sponsorId: options.sponsorId,
+          grantedBy: request.userId,
+          override,
+        })
+        return { account, grant }
+      })
+      if (outcome.grant.status === 'skipped') {
+        results.push({ row: row.row, name: row.name, outcome: 'skipped', message: 'Already has access.' })
+        continue
+      }
+      await writeAdminAudit(request, 'access_import_granted', outcome.account.userId, null, { enrollmentId: outcome.grant.enrollmentId, classStatus: outcome.grant.classStatus, courseId: options.courseId, classId: options.classId, reason: options.reason, sponsorId: options.sponsorId, expiresAt: options.expiresAt })
+      results.push({ row: row.row, name: row.name, outcome: 'granted', classStatus: outcome.grant.classStatus, ...(outcome.account.created ?? {}) })
+    } catch (error) {
+      if (error instanceof EnrollmentRefusal) {
+        results.push({ row: row.row, name: row.name, outcome: 'refused', message: error.body.message })
+      } else {
+        console.error('Access import row failed', error?.code ?? error?.name ?? 'unknown')
+        results.push({ row: row.row, name: row.name, outcome: 'failed', message: 'This row could not be added.' })
+      }
+    }
+  }
+  await writeAdminAudit(request, 'access_import_confirmed', null, null, { batchId, rows: rows.length, granted: results.filter((result) => result.outcome === 'granted').length })
+  const summary = {}
+  for (const result of results) summary[result.outcome] = (summary[result.outcome] ?? 0) + 1
+  return response.json({ summary, results })
+})
+
+app.delete('/api/admin/access-imports/:batchId', requireAdmin, async (request, response) => {
+  const batchId = parseEnrollmentId(request.params.batchId)
+  if (batchId === null) return response.status(400).json({ message: 'Invalid import.' })
+  await sql`DELETE FROM access_import_batches WHERE id = ${batchId} AND admin_user_id = ${request.userId}`
+  return response.status(204).end()
+})
+
 app.get('/api/admin/payments', requireAdmin, async (_request, response) => {
   const payments = await sql`
     SELECT payments.id::INTEGER AS id,
@@ -5977,7 +6630,7 @@ app.post('/api/auth/sign-in', async (request, response) => {
   const [user] = await sql`
     SELECT id, name, email, phone, password_hash, role, status, locked_until, account_locked AS "accountLocked", must_reset_password AS "mustResetPassword", created_at AS "createdAt"
     FROM users
-    WHERE email = ${normalizedEmail}
+    WHERE email = ${normalizedEmail} OR username = ${normalizedEmail}
   `
   const [accountFailures] = await sql`
     SELECT COUNT(*)::INTEGER AS count FROM login_events
@@ -6041,6 +6694,29 @@ app.post('/api/auth/change-password', requireAuthenticated, async (request, resp
   return response.status(204).end()
 })
 
+app.post('/api/auth/set-password', async (request, response) => {
+  const { token, password } = request.body ?? {}
+  if (typeof token !== 'string' || token.length > 200 || typeof password !== 'string' || password.length < 8 || password.length > 128) {
+    return response.status(400).json({ message: 'Enter a password between 8 and 128 characters.' })
+  }
+  const passwordHash = await hashPassword(password)
+  const userId = await sql.begin(async (transaction) => {
+    const [record] = await transaction`
+      SELECT user_id::INTEGER AS "userId"
+      FROM password_reset_tokens
+      WHERE token_hash = ${hashToken(token)} AND used_at IS NULL AND expires_at > NOW()
+      FOR UPDATE
+    `
+    if (!record) return null
+    await transaction`UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = ${record.userId} AND used_at IS NULL`
+    await transaction`UPDATE users SET password_hash = ${passwordHash}, must_reset_password = false WHERE id = ${record.userId}`
+    await transaction`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'password_set' WHERE user_id = ${record.userId} AND ended_at IS NULL`
+    return record.userId
+  })
+  if (!userId) return response.status(400).json({ message: 'This link is invalid or has expired.' })
+  return response.status(204).end()
+})
+
 app.post('/api/auth/sign-out', async (request, response) => {
   const sessionToken = getSessionToken(request)
   if (sessionToken) await sql`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'signed_out' WHERE token = ${hashToken(sessionToken)} AND ended_at IS NULL`
@@ -6062,6 +6738,7 @@ const cleanSecurityRecords = async () => {
     sql`DELETE FROM auth_sessions WHERE (ended_at IS NOT NULL AND ended_at < NOW() - INTERVAL '30 days') OR (ended_at IS NULL AND LEAST(idle_expires_at, absolute_expires_at) < NOW() - INTERVAL '30 days')`,
     sql`DELETE FROM admin_audit_log WHERE created_at < NOW() - INTERVAL '1 year'`,
     sql`DELETE FROM password_reset_tokens WHERE expires_at < NOW() - INTERVAL '30 days' OR used_at < NOW() - INTERVAL '30 days'`,
+    sql`DELETE FROM access_import_batches WHERE created_at < NOW() - INTERVAL '1 day'`,
   ])
 }
 
