@@ -3299,7 +3299,7 @@ const paymentProofMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const manualPaymentMethods = [
   { provider: 'Telebirr', accountNumber: '+251919747309' },
   { provider: 'CBE', accountNumber: '1000444421227' },
-  { provider: 'Abysinia Bank', accountNumber: '9445827' },
+  { provider: 'Abyssinia Bank', accountNumber: '9445827' },
 ]
 
 const parsePaymentProof = (fileData, fileName) => {
