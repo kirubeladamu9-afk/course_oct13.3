@@ -10,6 +10,7 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import FormControl from '@mui/material/FormControl'
 import InputLabel from '@mui/material/InputLabel'
+import ListSubheader from '@mui/material/ListSubheader'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Snackbar from '@mui/material/Snackbar'
@@ -70,19 +71,40 @@ const PageHeading: FC<{ title: string; description: string }> = ({ title, descri
   </Box>
 )
 
-const buildTarget = (type: TargetType, id: string): AccessTarget | null => {
-  const numeric = Number(id)
-  if (!id || !Number.isInteger(numeric) || numeric <= 0) return null
-  return type === 'course' ? { courseId: numeric } : { classId: numeric }
+const targetKey = (type: TargetType, id: number) => `${type}:${id}`
+
+const parseTargetKey = (key: string): { type: TargetType; id: number } | null => {
+  const [rawType, rawId] = key.split(':')
+  const type = rawType === 'course' || rawType === 'class' ? rawType : null
+  const id = Number(rawId)
+  if (!type || !Number.isInteger(id) || id <= 0) return null
+  return { type, id }
+}
+
+const buildTarget = (key: string): AccessTarget | null => {
+  const parsed = parseTargetKey(key)
+  if (!parsed) return null
+  return parsed.type === 'course' ? { courseId: parsed.id } : { classId: parsed.id }
 }
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong.'
 
+const CourseClassSelect: FC<{ id: string; value: string; courses: ItemOption[]; classes: ItemOption[]; onChange: (value: string) => void; required?: boolean }> = ({ id, value, courses, classes, onChange, required }) => (
+  <FormControl sx={{ minWidth: 280, flex: 1 }} required={required}>
+    <InputLabel id={`${id}-label`}>Course or class</InputLabel>
+    <Select labelId={`${id}-label`} label="Course or class" value={value} onChange={(event) => onChange(String(event.target.value))}>
+      <ListSubheader>Courses</ListSubheader>
+      {courses.map((item) => <MenuItem key={`course-${item.id}`} value={targetKey('course', item.id)}>{item.title}</MenuItem>)}
+      <ListSubheader>Classes</ListSubheader>
+      {classes.map((item) => <MenuItem key={`class-${item.id}`} value={targetKey('class', item.id)}>{item.title}</MenuItem>)}
+    </Select>
+  </FormControl>
+)
+
 const AccessPage: FC = () => {
   const [courses, setCourses] = useState<ItemOption[]>([])
   const [classes, setClasses] = useState<ItemOption[]>([])
-  const [targetType, setTargetType] = useState<TargetType>('course')
-  const [targetId, setTargetId] = useState('')
+  const [selectedTarget, setSelectedTarget] = useState('')
   const [reason, setReason] = useState<AccessGrantReason>('Scholarship')
   const [note, setNote] = useState('')
   const [expiresAt, setExpiresAt] = useState('')
@@ -95,7 +117,7 @@ const AccessPage: FC = () => {
   }, [])
 
   const buildOptions = (): AccessGrantOptions | null => {
-    const target = buildTarget(targetType, targetId)
+    const target = buildTarget(selectedTarget)
     if (!target) {
       setSharedError('Choose a course or class.')
       return null
@@ -126,14 +148,12 @@ const AccessPage: FC = () => {
         <AccessOptionsCard
           courses={courses}
           classes={classes}
-          targetType={targetType}
-          targetId={targetId}
+          selectedTarget={selectedTarget}
           reason={reason}
           note={note}
           expiresAt={expiresAt}
           sponsorId={sponsorId}
-          onTargetTypeChange={(value) => { setTargetType(value); setTargetId('') }}
-          onTargetIdChange={setTargetId}
+          onTargetChange={setSelectedTarget}
           onReasonChange={(value) => { setReason(value); if (value !== 'Sponsored') setSponsorId('') }}
           onNoteChange={setNote}
           onExpiresAtChange={setExpiresAt}
@@ -151,14 +171,12 @@ const AccessPage: FC = () => {
 const AccessOptionsCard: FC<{
   courses: ItemOption[]
   classes: ItemOption[]
-  targetType: TargetType
-  targetId: string
+  selectedTarget: string
   reason: AccessGrantReason
   note: string
   expiresAt: string
   sponsorId: string
-  onTargetTypeChange: (value: TargetType) => void
-  onTargetIdChange: (value: string) => void
+  onTargetChange: (value: string) => void
   onReasonChange: (value: AccessGrantReason) => void
   onNoteChange: (value: string) => void
   onExpiresAtChange: (value: string) => void
@@ -168,7 +186,6 @@ const AccessOptionsCard: FC<{
   useEffect(() => {
     getSponsors().then(setSponsors).catch(() => setSponsors([]))
   }, [])
-  const items = props.targetType === 'course' ? props.courses : props.classes
   const selectedSponsorEndDate = sponsors.find((sponsor) => String(sponsor.id) === props.sponsorId)?.endDate ?? undefined
   const handleSponsorChange = (value: string) => {
     props.onSponsorIdChange(value)
@@ -180,19 +197,7 @@ const AccessOptionsCard: FC<{
       <CardContent>
         <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Access details</Typography>
         <Stack spacing={2} direction={{ xs: 'column', md: 'row' }} useFlexGap sx={{ flexWrap: 'wrap' }}>
-          <FormControl sx={{ minWidth: 160 }}>
-            <InputLabel id="access-target-type">Item type</InputLabel>
-            <Select labelId="access-target-type" label="Item type" value={props.targetType} onChange={(event) => props.onTargetTypeChange(event.target.value as TargetType)}>
-              <MenuItem value="course">Course</MenuItem>
-              <MenuItem value="class">Class</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl sx={{ minWidth: 280, flex: 1 }}>
-            <InputLabel id="access-target-item">Course or class</InputLabel>
-            <Select labelId="access-target-item" label="Course or class" value={props.targetId} onChange={(event) => props.onTargetIdChange(String(event.target.value))}>
-              {items.map((item) => <MenuItem key={item.id} value={String(item.id)}>{item.title}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <CourseClassSelect id="access-target" value={props.selectedTarget} courses={props.courses} classes={props.classes} onChange={props.onTargetChange} />
           <FormControl sx={{ minWidth: 200 }}>
             <InputLabel id="access-reason">Reason</InputLabel>
             <Select labelId="access-reason" label="Reason" value={props.reason} onChange={(event) => props.onReasonChange(event.target.value as AccessGrantReason)}>
@@ -640,7 +645,7 @@ const emptySponsorForm = { name: '', contact: '', notes: '', seatLimit: '', endD
 const invoiceFileTypes = ['application/pdf', 'image/png', 'image/jpeg']
 const maxInvoiceFileBytes = 5 * 1024 * 1024
 const invoiceFileError = (file: File) => invoiceFileTypes.includes(file.type) && file.size <= maxInvoiceFileBytes ? null : 'Choose a PDF, PNG, or JPEG invoice of 5 MB or smaller.'
-const emptyPaymentForm = { amount: '', reference: '', targetType: 'course' as 'course' | 'class', itemId: '', invoice: null as File | null }
+const emptyPaymentForm = { amount: '', reference: '', target: '', invoice: null as File | null }
 
 const SponsorsCard: FC<{ courses: ItemOption[]; classes: ItemOption[] }> = ({ courses, classes }) => {
   const [sponsors, setSponsors] = useState<Sponsor[]>([])
@@ -731,16 +736,17 @@ const SponsorsCard: FC<{ courses: ItemOption[]; classes: ItemOption[] }> = ({ co
     if (!paymentSponsor) return
     const form = event.currentTarget
     const invoice = paymentForm.invoice
-    const itemId = Number(paymentForm.itemId)
+    const target = parseTargetKey(paymentForm.target)
     const fileError = invoice ? invoiceFileError(invoice) : null
+    if (!target) return setPaymentError('Choose a course or class.')
     if (fileError) return setPaymentError(fileError)
     let paymentId: number
     try {
       paymentId = await recordSponsorPayment(paymentSponsor.id, {
         amountCents: Math.round(Number(paymentForm.amount) * 100),
         reference: paymentForm.reference.trim(),
-        courseId: paymentForm.targetType === 'course' ? itemId : null,
-        classId: paymentForm.targetType === 'class' ? itemId : null
+        courseId: target.type === 'course' ? target.id : null,
+        classId: target.type === 'class' ? target.id : null
       })
     } catch (saveError) {
       return setPaymentError(errorText(saveError))
@@ -927,26 +933,14 @@ const SponsorsCard: FC<{ courses: ItemOption[]; classes: ItemOption[] }> = ({ co
           </Table>
           <Box component="form" onSubmit={recordPayment} sx={{ mt: 3 }}>
             <Stack spacing={2} direction={{ xs: 'column', md: 'row' }} useFlexGap sx={{ flexWrap: 'wrap' }}>
-              <FormControl sx={{ minWidth: 140 }}>
-                <InputLabel id="sponsor-payment-target-type">Item type</InputLabel>
-                <Select labelId="sponsor-payment-target-type" label="Item type" value={paymentForm.targetType} onChange={(event) => setPaymentForm({ ...paymentForm, targetType: event.target.value as 'course' | 'class', itemId: '' })}>
-                  <MenuItem value="course">Course</MenuItem>
-                  <MenuItem value="class">Class</MenuItem>
-                </Select>
-              </FormControl>
-              <FormControl sx={{ minWidth: 220 }} required>
-                <InputLabel id="sponsor-payment-item">Course or class</InputLabel>
-                <Select labelId="sponsor-payment-item" label="Course or class" value={paymentForm.itemId} onChange={(event) => setPaymentForm({ ...paymentForm, itemId: String(event.target.value) })}>
-                  {(paymentForm.targetType === 'course' ? courses : classes).map((item) => <MenuItem key={item.id} value={String(item.id)}>{item.title}</MenuItem>)}
-                </Select>
-              </FormControl>
+              <CourseClassSelect id="sponsor-payment-target" required value={paymentForm.target} courses={courses} classes={classes} onChange={(value) => setPaymentForm({ ...paymentForm, target: value })} />
               <TextField label="Amount ($)" type="number" value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} inputProps={{ min: 0.01, step: 0.01 }} required />
               <TextField label="Reference (optional)" value={paymentForm.reference} onChange={(event) => setPaymentForm({ ...paymentForm, reference: event.target.value })} inputProps={{ maxLength: 200 }} />
               <Button component="label" variant="outlined">
                 {paymentForm.invoice ? paymentForm.invoice.name : 'Choose paid invoice (optional)'}
                 <input hidden type="file" accept="application/pdf,image/png,image/jpeg" onChange={(event) => setPaymentForm({ ...paymentForm, invoice: event.target.files?.[0] ?? null })} />
               </Button>
-              <Button type="submit" variant="contained" disabled={!paymentForm.itemId}>Record payment</Button>
+              <Button type="submit" variant="contained" disabled={!paymentForm.target}>Record payment</Button>
             </Stack>
           </Box>
         </DialogContent>
