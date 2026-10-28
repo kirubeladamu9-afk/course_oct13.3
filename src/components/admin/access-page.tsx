@@ -37,6 +37,7 @@ import {
   grantAccess,
   markSponsorPaymentPaid,
   recordSponsorPayment,
+  uploadSponsorPaymentInvoice,
   previewAccessImport,
   resetStudentOneTimePassword,
   revokeAccessGrant,
@@ -141,7 +142,7 @@ const AccessPage: FC = () => {
         <SingleGrantCard buildOptions={buildOptions} />
         <BulkImportCard buildOptions={buildOptions} />
         <GrantsCard />
-        <SponsorsCard />
+        <SponsorsCard courses={courses} classes={classes} />
       </Stack>
     </Box>
   )
@@ -211,7 +212,7 @@ const AccessOptionsCard: FC<{
             <InputLabel id="access-sponsor">Sponsor</InputLabel>
             <Select labelId="access-sponsor" label="Sponsor" value={props.sponsorId} onChange={(event) => handleSponsorChange(String(event.target.value))}>
               <MenuItem value="">None</MenuItem>
-              {sponsors.map((sponsor) => <MenuItem key={sponsor.id} value={String(sponsor.id)}>{sponsor.isPaid ? sponsor.name : `${sponsor.name} (no payment recorded)`}</MenuItem>)}
+              {sponsors.map((sponsor) => <MenuItem key={sponsor.id} value={String(sponsor.id)}>{sponsor.name}</MenuItem>)}
             </Select>
           </FormControl>
           <TextField label="Note (required)" value={props.note} onChange={(event) => props.onNoteChange(event.target.value)} sx={{ flex: 1, minWidth: 240 }} inputProps={{ maxLength: 500 }} />
@@ -636,7 +637,12 @@ const GrantsCard: FC = () => {
 
 const emptySponsorForm = { name: '', contact: '', notes: '', seatLimit: '', endDate: '' }
 
-const SponsorsCard: FC = () => {
+const invoiceFileTypes = ['application/pdf', 'image/png', 'image/jpeg']
+const maxInvoiceFileBytes = 5 * 1024 * 1024
+const invoiceFileError = (file: File) => invoiceFileTypes.includes(file.type) && file.size <= maxInvoiceFileBytes ? null : 'Choose a PDF, PNG, or JPEG invoice of 5 MB or smaller.'
+const emptyPaymentForm = { amount: '', reference: '', targetType: 'course' as 'course' | 'class', itemId: '', invoice: null as File | null }
+
+const SponsorsCard: FC<{ courses: ItemOption[]; classes: ItemOption[] }> = ({ courses, classes }) => {
   const [sponsors, setSponsors] = useState<Sponsor[]>([])
   const [form, setForm] = useState(emptySponsorForm)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -644,7 +650,7 @@ const SponsorsCard: FC = () => {
   const [report, setReport] = useState<SponsorReport | null>(null)
   const [paymentSponsor, setPaymentSponsor] = useState<Sponsor | null>(null)
   const [payments, setPayments] = useState<SponsorPayment[]>([])
-  const [paymentForm, setPaymentForm] = useState({ amount: '', reference: '', status: 'paid' as 'paid' | 'pending' })
+  const [paymentForm, setPaymentForm] = useState(emptyPaymentForm)
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
@@ -723,14 +729,44 @@ const SponsorsCard: FC = () => {
   const recordPayment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!paymentSponsor) return
+    const form = event.currentTarget
+    const invoice = paymentForm.invoice
+    const itemId = Number(paymentForm.itemId)
+    const fileError = invoice ? invoiceFileError(invoice) : null
+    if (fileError) return setPaymentError(fileError)
+    let paymentId: number
     try {
-      await recordSponsorPayment(paymentSponsor.id, { amountCents: Math.round(Number(paymentForm.amount) * 100), reference: paymentForm.reference.trim(), status: paymentForm.status })
-      setPaymentForm({ amount: '', reference: '', status: 'paid' })
+      paymentId = await recordSponsorPayment(paymentSponsor.id, {
+        amountCents: Math.round(Number(paymentForm.amount) * 100),
+        reference: paymentForm.reference.trim(),
+        courseId: paymentForm.targetType === 'course' ? itemId : null,
+        classId: paymentForm.targetType === 'class' ? itemId : null
+      })
+    } catch (saveError) {
+      return setPaymentError(errorText(saveError))
+    }
+    setPaymentForm(emptyPaymentForm)
+    form.reset()
+    setPaymentError(null)
+    try {
+      if (invoice) await uploadSponsorPaymentInvoice(paymentId, invoice)
+    } catch (uploadError) {
+      setPaymentError(`Payment recorded, but the invoice was not saved: ${errorText(uploadError)}`)
+    }
+    await loadPayments(paymentSponsor.id)
+    await load()
+  }
+
+  const attachInvoice = async (payment: SponsorPayment, file: File) => {
+    if (!paymentSponsor) return
+    const fileError = invoiceFileError(file)
+    if (fileError) return setPaymentError(fileError)
+    try {
+      await uploadSponsorPaymentInvoice(payment.id, file)
       setPaymentError(null)
       await loadPayments(paymentSponsor.id)
-      await load()
-    } catch (saveError) {
-      setPaymentError(errorText(saveError))
+    } catch (uploadError) {
+      setPaymentError(errorText(uploadError))
     }
   }
 
@@ -779,12 +815,11 @@ const SponsorsCard: FC = () => {
                 <TableCell>Seats used</TableCell>
                 <TableCell>Seats remaining</TableCell>
                 <TableCell>Sponsorship ends</TableCell>
-                <TableCell>Payment</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {sponsors.length === 0 && <TableRow><TableCell colSpan={7}>No sponsors yet.</TableCell></TableRow>}
+              {sponsors.length === 0 && <TableRow><TableCell colSpan={6}>No sponsors yet.</TableCell></TableRow>}
               {visibleSponsors.map((sponsor) => (
                 <TableRow key={sponsor.id}>
                   <TableCell>{sponsor.name}</TableCell>
@@ -792,7 +827,6 @@ const SponsorsCard: FC = () => {
                   <TableCell>{sponsor.seatsUsed}{sponsor.seatLimit === null ? '' : ` / ${sponsor.seatLimit}`}</TableCell>
                   <TableCell>{sponsor.seatsRemaining ?? 'Unlimited'}</TableCell>
                   <TableCell>{sponsor.endDate ?? 'No end date'}</TableCell>
-                  <TableCell>{sponsor.isPaid ? 'Paid' : 'Not recorded'}</TableCell>
                   <TableCell align="right">
                     <Button size="small" onClick={() => void openPayments(sponsor)}>Payments</Button>
                     <Button size="small" onClick={() => void openReport(sponsor)}>Report</Button>
@@ -853,23 +887,39 @@ const SponsorsCard: FC = () => {
           <Table size="small">
             <TableHead>
               <TableRow>
+                <TableCell>Item</TableCell>
                 <TableCell>Amount</TableCell>
                 <TableCell>Reference</TableCell>
+                <TableCell>Invoice</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Paid on</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {payments.length === 0 && <TableRow><TableCell colSpan={5}>No payments recorded yet.</TableCell></TableRow>}
+              {payments.length === 0 && <TableRow><TableCell colSpan={7}>No payments recorded yet.</TableCell></TableRow>}
               {payments.map((payment) => (
                 <TableRow key={payment.id}>
+                  <TableCell>{payment.item ?? 'Not linked'}</TableCell>
                   <TableCell>${(payment.amountCents / 100).toFixed(2)}</TableCell>
                   <TableCell>{payment.reference || '-'}</TableCell>
+                  <TableCell>{payment.hasInvoice ? <Button size="small" component="a" href={`/api/admin/sponsor-payments/${payment.id}/invoice`}>{payment.invoiceName}</Button> : 'None'}</TableCell>
                   <TableCell>{payment.status === 'paid' ? 'Paid' : 'Pending'}</TableCell>
                   <TableCell>{payment.paidAt ? new Date(payment.paidAt).toLocaleDateString() : '-'}</TableCell>
                   <TableCell align="right">
-                    {payment.status === 'pending' && <Button size="small" onClick={() => void markPaid(payment)}>Mark paid</Button>}
+                    {payment.status === 'pending' && (
+                      <>
+                        <Button size="small" component="label">
+                          {payment.hasInvoice ? 'Replace invoice' : 'Attach invoice'}
+                          <input hidden type="file" accept="application/pdf,image/png,image/jpeg" onChange={(event) => {
+                            const file = event.target.files?.[0]
+                            event.target.value = ''
+                            if (file) void attachInvoice(payment, file)
+                          }} />
+                        </Button>
+                        <Button size="small" disabled={!payment.hasInvoice} onClick={() => void markPaid(payment)}>Mark paid</Button>
+                      </>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -877,16 +927,26 @@ const SponsorsCard: FC = () => {
           </Table>
           <Box component="form" onSubmit={recordPayment} sx={{ mt: 3 }}>
             <Stack spacing={2} direction={{ xs: 'column', md: 'row' }} useFlexGap sx={{ flexWrap: 'wrap' }}>
-              <TextField label="Amount ($)" type="number" value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} inputProps={{ min: 0.01, step: 0.01 }} required />
-              <TextField label="Reference (optional)" value={paymentForm.reference} onChange={(event) => setPaymentForm({ ...paymentForm, reference: event.target.value })} inputProps={{ maxLength: 200 }} />
-              <FormControl sx={{ minWidth: 160 }}>
-                <InputLabel id="sponsor-payment-status">Status</InputLabel>
-                <Select labelId="sponsor-payment-status" label="Status" value={paymentForm.status} onChange={(event) => setPaymentForm({ ...paymentForm, status: event.target.value as 'paid' | 'pending' })}>
-                  <MenuItem value="paid">Paid</MenuItem>
-                  <MenuItem value="pending">Pending</MenuItem>
+              <FormControl sx={{ minWidth: 140 }}>
+                <InputLabel id="sponsor-payment-target-type">Item type</InputLabel>
+                <Select labelId="sponsor-payment-target-type" label="Item type" value={paymentForm.targetType} onChange={(event) => setPaymentForm({ ...paymentForm, targetType: event.target.value as 'course' | 'class', itemId: '' })}>
+                  <MenuItem value="course">Course</MenuItem>
+                  <MenuItem value="class">Class</MenuItem>
                 </Select>
               </FormControl>
-              <Button type="submit" variant="contained">Record payment</Button>
+              <FormControl sx={{ minWidth: 220 }} required>
+                <InputLabel id="sponsor-payment-item">Course or class</InputLabel>
+                <Select labelId="sponsor-payment-item" label="Course or class" value={paymentForm.itemId} onChange={(event) => setPaymentForm({ ...paymentForm, itemId: String(event.target.value) })}>
+                  {(paymentForm.targetType === 'course' ? courses : classes).map((item) => <MenuItem key={item.id} value={String(item.id)}>{item.title}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <TextField label="Amount ($)" type="number" value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} inputProps={{ min: 0.01, step: 0.01 }} required />
+              <TextField label="Reference (optional)" value={paymentForm.reference} onChange={(event) => setPaymentForm({ ...paymentForm, reference: event.target.value })} inputProps={{ maxLength: 200 }} />
+              <Button component="label" variant="outlined">
+                {paymentForm.invoice ? paymentForm.invoice.name : 'Choose paid invoice (optional)'}
+                <input hidden type="file" accept="application/pdf,image/png,image/jpeg" onChange={(event) => setPaymentForm({ ...paymentForm, invoice: event.target.files?.[0] ?? null })} />
+              </Button>
+              <Button type="submit" variant="contained" disabled={!paymentForm.itemId}>Record payment</Button>
             </Stack>
           </Box>
         </DialogContent>

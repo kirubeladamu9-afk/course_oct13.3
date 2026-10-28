@@ -668,6 +668,13 @@ const initializeDatabase = async () => {
       CHECK ((status = 'paid') = (paid_at IS NOT NULL))
     )
   `
+  await ensureColumns('sponsor_payments', {
+    course_id: 'BIGINT REFERENCES courses(id) ON DELETE RESTRICT',
+    class_id: 'BIGINT REFERENCES classes(id) ON DELETE RESTRICT',
+    invoice_name: 'TEXT',
+    invoice_type: 'TEXT',
+    invoice_data: 'BYTEA'
+  })
   await ensureColumns('enrollments', {
     source: "TEXT NOT NULL DEFAULT 'paid' CHECK (source IN ('paid', 'free_grant', 'sponsored'))",
     access_status: "TEXT NOT NULL DEFAULT 'active' CHECK (access_status IN ('active', 'revoked', 'expired'))",
@@ -2006,6 +2013,10 @@ const targetAccessCondition = (courseId, classId) => courseId !== null
   ? sql`enrollments.course_id = ${courseId} AND enrollments.class_id IS NULL`
   : sql`enrollments.class_id = ${classId}`
 
+const paymentTargetCondition = (courseId, classId) => courseId !== null
+  ? sql`sponsor_payments.course_id = ${courseId}`
+  : sql`sponsor_payments.class_id = ${classId}`
+
 const getEnrollmentTargetIssues = async (transaction, courseId, classId) => {
   if (courseId !== null) {
     const [course] = await transaction`SELECT status FROM courses WHERE id = ${courseId} FOR UPDATE`
@@ -2087,14 +2098,14 @@ const grantEnrollmentAccess = async (transaction, { userId, student, courseId, c
     const [sponsor] = await transaction`
       SELECT seat_limit, (sponsors.end_date::timestamp AT TIME ZONE 'UTC') AS "endsAt", (end_date IS NOT NULL AND end_date <= (NOW() AT TIME ZONE 'UTC')::date) AS ended,
              (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed",
-             (SELECT COUNT(*)::INTEGER FROM sponsor_payments WHERE sponsor_payments.sponsor_id = sponsors.id AND sponsor_payments.status = 'paid') AS "paidCount"
+             (SELECT COUNT(*)::INTEGER FROM sponsor_payments WHERE sponsor_payments.sponsor_id = sponsors.id AND sponsor_payments.status = 'paid' AND ${paymentTargetCondition(courseId, classId)}) AS "paidCount"
       FROM sponsors
       WHERE id = ${sponsorId}
       FOR UPDATE
     `
     if (!sponsor) throw new EnrollmentRefusal(404, { message: 'Sponsor not found.' })
     if (sponsor.ended) throw new EnrollmentRefusal(409, { message: 'This sponsor agreement has ended.' })
-    if (sponsor.paidCount === 0) throw new EnrollmentRefusal(409, { message: 'Record a paid payment for this sponsor before granting sponsored access.' })
+    if (sponsor.paidCount === 0) throw new EnrollmentRefusal(409, { message: 'Record a paid payment with an invoice for this course or class before granting sponsored access.' })
     if (sponsor.seat_limit !== null && sponsor.seatsUsed >= sponsor.seat_limit) throw new EnrollmentRefusal(409, { message: 'This sponsor has no seats left.' })
     if (sponsor.endsAt) {
       if (enrollmentExpiresAt !== null && enrollmentExpiresAt > sponsor.endsAt) throw new EnrollmentRefusal(400, { message: 'Access cannot end after the sponsorship ends.' })
@@ -5063,8 +5074,7 @@ const listSponsors = (sponsorId = null) => sql`
          sponsors.notes,
          sponsors.seat_limit::INTEGER AS "seatLimit",
          to_char(sponsors.end_date, 'YYYY-MM-DD') AS "endDate",
-         (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed",
-         EXISTS (SELECT 1 FROM sponsor_payments WHERE sponsor_payments.sponsor_id = sponsors.id AND sponsor_payments.status = 'paid') AS "isPaid"
+         (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed"
   FROM sponsors
   WHERE ${sponsorId === null ? sql`TRUE` : sql`sponsors.id = ${sponsorId}`}
   ORDER BY sponsors.name, sponsors.id
@@ -5249,22 +5259,51 @@ app.delete('/api/admin/sponsors/:id', requireAdmin, async (request, response) =>
   return response.status(204).end()
 })
 
+const maxInvoiceBytes = 5 * 1024 * 1024
+const invoiceSignatures = {
+  'application/pdf': [0x25, 0x50, 0x44, 0x46],
+  'image/png': [0x89, 0x50, 0x4e, 0x47],
+  'image/jpeg': [0xff, 0xd8, 0xff]
+}
+
 const parseSponsorPaymentInput = (body) => {
   const amountCents = Number(body?.amountCents)
   const reference = typeof body?.reference === 'string' ? body.reference.trim() : ''
-  const status = body?.status === 'paid' || body?.status === 'pending' ? body.status : null
-  if (!Number.isInteger(amountCents) || amountCents <= 0 || amountCents > 100_000_000 || reference.length > 200 || !status) return null
-  return { amountCents, reference, status }
+  const target = parseGrantTarget(body)
+  if (!Number.isInteger(amountCents) || amountCents <= 0 || amountCents > 100_000_000 || reference.length > 200 || !target) return null
+  return { amountCents, reference, ...target }
+}
+
+const sanitizeInvoiceName = (value) => {
+  const name = typeof value === 'string' ? value.trim().replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 120) : ''
+  return name || 'invoice'
+}
+
+const isValidInvoice = (type, data) => {
+  const signature = invoiceSignatures[type]
+  return Boolean(signature) && signature.every((byte, index) => data[index] === byte)
 }
 
 app.get('/api/admin/sponsors/:id/payments', requireAdmin, async (request, response) => {
   const sponsorId = parseEnrollmentId(request.params.id)
   if (sponsorId === null) return response.status(400).json({ message: 'Invalid sponsor.' })
   const payments = await sql`
-    SELECT id::INTEGER AS id, amount_cents::INTEGER AS "amountCents", reference, status, paid_at AS "paidAt", created_at AS "createdAt"
+    SELECT sponsor_payments.id::INTEGER AS id,
+           sponsor_payments.amount_cents::INTEGER AS "amountCents",
+           sponsor_payments.reference,
+           sponsor_payments.status,
+           sponsor_payments.paid_at AS "paidAt",
+           sponsor_payments.created_at AS "createdAt",
+           sponsor_payments.course_id::INTEGER AS "courseId",
+           sponsor_payments.class_id::INTEGER AS "classId",
+           COALESCE(courses.title, classes.title) AS item,
+           sponsor_payments.invoice_name AS "invoiceName",
+           sponsor_payments.invoice_data IS NOT NULL AS "hasInvoice"
     FROM sponsor_payments
-    WHERE sponsor_id = ${sponsorId}
-    ORDER BY created_at DESC, id DESC
+    LEFT JOIN courses ON courses.id = sponsor_payments.course_id
+    LEFT JOIN classes ON classes.id = sponsor_payments.class_id
+    WHERE sponsor_payments.sponsor_id = ${sponsorId}
+    ORDER BY sponsor_payments.created_at DESC, sponsor_payments.id DESC
   `
   return response.json(payments)
 })
@@ -5272,17 +5311,53 @@ app.get('/api/admin/sponsors/:id/payments', requireAdmin, async (request, respon
 app.post('/api/admin/sponsors/:id/payments', requireAdmin, async (request, response) => {
   const sponsorId = parseEnrollmentId(request.params.id)
   const payment = parseSponsorPaymentInput(request.body)
-  if (sponsorId === null || !payment) return response.status(400).json({ message: 'Enter a positive amount and a valid status.' })
+  if (sponsorId === null || !payment) return response.status(400).json({ message: 'Enter a positive amount and choose one course or class.' })
+  const targetIssues = await getEnrollmentTargetIssues(sql, payment.courseId, payment.classId)
+  if (targetIssues.includes('missing')) return response.status(404).json({ message: 'The selected course or class was not found.' })
   const [created] = await sql`
-    INSERT INTO sponsor_payments (sponsor_id, amount_cents, reference, status, paid_at)
-    SELECT id, ${payment.amountCents}, ${payment.reference}, ${payment.status}, ${payment.status === 'paid' ? new Date() : null}
+    INSERT INTO sponsor_payments (sponsor_id, amount_cents, reference, status, course_id, class_id)
+    SELECT id, ${payment.amountCents}, ${payment.reference}, 'pending', ${payment.courseId}, ${payment.classId}
     FROM sponsors
     WHERE id = ${sponsorId}
     RETURNING id::INTEGER AS id
   `
   if (!created) return response.status(404).json({ message: 'Sponsor not found.' })
-  await writeAdminAudit(request, 'sponsor_payment_recorded', null, null, { sponsorId, paymentId: created.id, amountCents: payment.amountCents, status: payment.status })
+  await writeAdminAudit(request, 'sponsor_payment_recorded', null, null, { sponsorId, paymentId: created.id, amountCents: payment.amountCents, courseId: payment.courseId, classId: payment.classId })
   return response.status(201).json({ id: created.id })
+})
+
+app.post('/api/admin/sponsor-payments/:id/invoice', requireAdmin, express.raw({ type: Object.keys(invoiceSignatures), limit: maxInvoiceBytes }), async (request, response) => {
+  const paymentId = parseEnrollmentId(request.params.id)
+  const data = request.body
+  const type = request.get('content-type')?.split(';')[0].trim()
+  if (paymentId === null || !Buffer.isBuffer(data) || !isValidInvoice(type, data)) return response.status(400).json({ message: 'Upload a PDF, PNG, or JPEG invoice of 5 MB or smaller.' })
+  const name = sanitizeInvoiceName(request.query.name)
+  const [updated] = await sql`
+    UPDATE sponsor_payments
+    SET invoice_name = ${name}, invoice_type = ${type}, invoice_data = ${data}
+    WHERE id = ${paymentId} AND status = 'pending'
+    RETURNING id::INTEGER AS id
+  `
+  if (!updated) return response.status(404).json({ message: 'Pending payment not found.' })
+  await writeAdminAudit(request, 'sponsor_payment_invoice_attached', null, null, { paymentId, invoiceName: name, invoiceBytes: data.length })
+  return response.json({ id: updated.id })
+})
+
+app.get('/api/admin/sponsor-payments/:id/invoice', requireAdmin, async (request, response) => {
+  const paymentId = parseEnrollmentId(request.params.id)
+  const [invoice] = paymentId === null ? [] : await sql`
+    SELECT invoice_name AS "invoiceName", invoice_type AS "invoiceType", invoice_data AS "invoiceData"
+    FROM sponsor_payments
+    WHERE id = ${paymentId} AND invoice_data IS NOT NULL
+  `
+  if (!invoice) return response.status(404).json({ message: 'Invoice not found.' })
+  response.set({
+    'Content-Type': invoice.invoiceType,
+    'Content-Disposition': `attachment; filename="${invoice.invoiceName}"`,
+    'X-Content-Type-Options': 'nosniff',
+    'Cache-Control': 'private, no-store'
+  })
+  return response.send(invoice.invoiceData)
 })
 
 app.post('/api/admin/sponsor-payments/:id/mark-paid', requireAdmin, async (request, response) => {
@@ -5291,10 +5366,10 @@ app.post('/api/admin/sponsor-payments/:id/mark-paid', requireAdmin, async (reque
   const [updated] = await sql`
     UPDATE sponsor_payments
     SET status = 'paid', paid_at = NOW()
-    WHERE id = ${paymentId} AND status = 'pending'
+    WHERE id = ${paymentId} AND status = 'pending' AND invoice_data IS NOT NULL
     RETURNING id::INTEGER AS id, sponsor_id::INTEGER AS "sponsorId"
   `
-  if (!updated) return response.status(404).json({ message: 'Pending payment not found.' })
+  if (!updated) return response.status(409).json({ message: 'Attach the paid invoice to this pending payment before marking it paid.' })
   await writeAdminAudit(request, 'sponsor_payment_marked_paid', null, { status: 'pending' }, { status: 'paid', paymentId, sponsorId: updated.sponsorId })
   return response.json({ id: updated.id })
 })

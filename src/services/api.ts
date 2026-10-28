@@ -989,7 +989,6 @@ export interface Sponsor {
   endDate: string | null
   seatsUsed: number
   seatsRemaining: number | null
-  isPaid: boolean
 }
 
 export interface SponsorPayment {
@@ -999,12 +998,18 @@ export interface SponsorPayment {
   status: 'pending' | 'paid'
   paidAt: string | null
   createdAt: string
+  courseId: number | null
+  classId: number | null
+  item: string | null
+  invoiceName: string | null
+  hasInvoice: boolean
 }
 
 export interface SponsorPaymentInput {
   amountCents: number
   reference: string
-  status: 'pending' | 'paid'
+  courseId: number | null
+  classId: number | null
 }
 
 export interface SponsorInput {
@@ -1115,8 +1120,19 @@ export const getSponsorPayments = async (sponsorId: number): Promise<SponsorPaym
   return response.json()
 }
 
-export const recordSponsorPayment = async (sponsorId: number, input: SponsorPaymentInput): Promise<void> => {
+export const recordSponsorPayment = async (sponsorId: number, input: SponsorPaymentInput): Promise<number> => {
   const response = await requestApi(`/api/admin/sponsors/${sponsorId}/payments`, jsonRequest('POST', input))
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  const created: { id: number } = await response.json()
+  return created.id
+}
+
+export const uploadSponsorPaymentInvoice = async (paymentId: number, file: File): Promise<void> => {
+  const response = await requestApi(`/api/admin/sponsor-payments/${paymentId}/invoice?name=${encodeURIComponent(file.name)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type },
+    body: file
+  })
   if (!response.ok) throw new Error(await getErrorMessage(response))
 }
 
