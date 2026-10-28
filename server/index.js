@@ -2077,7 +2077,8 @@ const grantEnrollmentAccess = async (transaction, { userId, student, courseId, c
     if (!sponsor) throw new EnrollmentRefusal(404, { message: 'Sponsor not found.' })
     if (sponsor.ended) throw new EnrollmentRefusal(409, { message: 'This sponsor agreement has ended.' })
     if (sponsor.seat_limit !== null && sponsor.seatsUsed >= sponsor.seat_limit) throw new EnrollmentRefusal(409, { message: 'This sponsor has no seats left.' })
-    if (sponsor.endDate && (enrollmentExpiresAt === null || sponsor.endDate < enrollmentExpiresAt)) enrollmentExpiresAt = sponsor.endDate
+    const sponsorEndsAt = sponsor.endDate ? new Date(sponsor.endDate) : null
+    if (sponsorEndsAt && (enrollmentExpiresAt === null || sponsorEndsAt < enrollmentExpiresAt)) enrollmentExpiresAt = sponsorEndsAt
   }
 
   await transaction`
