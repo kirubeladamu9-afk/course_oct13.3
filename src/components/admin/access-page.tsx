@@ -650,7 +650,7 @@ const GrantsCard: FC = () => {
   )
 }
 
-const emptySponsorForm = { name: '', contact: '', notes: '', seatLimit: '', endDate: '' }
+const emptySponsorForm = { name: '', contact: '', notes: '', endDate: '' }
 
 const invoiceFileTypes = ['application/pdf', 'image/png', 'image/jpeg']
 const maxInvoiceFileBytes = 5 * 1024 * 1024
@@ -685,7 +685,7 @@ const SponsorsCard: FC<{ courses: ItemOption[]; classes: ItemOption[] }> = ({ co
 
   const edit = (sponsor: Sponsor) => {
     setEditingId(sponsor.id)
-    setForm({ name: sponsor.name, contact: sponsor.contact, notes: sponsor.notes, seatLimit: sponsor.seatLimit === null ? '' : String(sponsor.seatLimit), endDate: sponsor.endDate ?? '' })
+    setForm({ name: sponsor.name, contact: sponsor.contact, notes: sponsor.notes, endDate: sponsor.endDate ?? '' })
   }
 
   const reset = () => {
@@ -699,7 +699,6 @@ const SponsorsCard: FC<{ courses: ItemOption[]; classes: ItemOption[] }> = ({ co
       name: form.name.trim(),
       contact: form.contact.trim(),
       notes: form.notes.trim(),
-      seatLimit: form.seatLimit === '' ? null : Number(form.seatLimit),
       endDate: form.endDate || null,
     }
     try {
@@ -806,7 +805,6 @@ const SponsorsCard: FC<{ courses: ItemOption[]; classes: ItemOption[] }> = ({ co
           <Stack spacing={2} direction={{ xs: 'column', md: 'row' }} useFlexGap sx={{ flexWrap: 'wrap', mb: 3 }}>
             <TextField label="Name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
             <TextField label="Contact" value={form.contact} onChange={(event) => setForm({ ...form, contact: event.target.value })} />
-            <TextField label="Seat limit (optional)" type="number" value={form.seatLimit} onChange={(event) => setForm({ ...form, seatLimit: event.target.value })} inputProps={{ min: 0, step: 1 }} />
             <TextField label="Sponsorship ends (optional)" type="date" value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} InputLabelProps={{ shrink: true }} helperText="Students lose access on this date unless extended." />
             <TextField label="Notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} sx={{ flex: 1, minWidth: 200 }} />
             <Button type="submit" variant="contained">{editingId === null ? 'Add sponsor' : 'Save sponsor'}</Button>
@@ -829,7 +827,6 @@ const SponsorsCard: FC<{ courses: ItemOption[]; classes: ItemOption[] }> = ({ co
                 <TableCell>Name</TableCell>
                 <TableCell>Contact</TableCell>
                 <TableCell>Seats used</TableCell>
-                <TableCell>Seats remaining</TableCell>
                 <TableCell>Sponsorship ends</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
@@ -840,8 +837,7 @@ const SponsorsCard: FC<{ courses: ItemOption[]; classes: ItemOption[] }> = ({ co
                 <TableRow key={sponsor.id}>
                   <TableCell>{sponsor.name}</TableCell>
                   <TableCell>{sponsor.contact}</TableCell>
-                  <TableCell>{sponsor.seatsUsed}{sponsor.seatLimit === null ? '' : ` / ${sponsor.seatLimit}`}</TableCell>
-                  <TableCell>{sponsor.seatsRemaining ?? 'Unlimited'}</TableCell>
+                  <TableCell>{sponsor.seatsUsed}</TableCell>
                   <TableCell>{sponsor.endDate ?? 'No end date'}</TableCell>
                   <TableCell align="right">
                     <Button size="small" onClick={() => void openPayments(sponsor)}>Payments</Button>

@@ -985,10 +985,8 @@ export interface Sponsor {
   name: string
   contact: string
   notes: string
-  seatLimit: number | null
   endDate: string | null
   seatsUsed: number
-  seatsRemaining: number | null
 }
 
 export interface SponsorPayment {
@@ -1016,7 +1014,6 @@ export interface SponsorInput {
   name: string
   contact: string
   notes: string
-  seatLimit: number | null
   endDate: string | null
 }
 

@@ -2105,8 +2105,7 @@ const grantEnrollmentAccess = async (transaction, { userId, student, courseId, c
   let enrollmentExpiresAt = expiresAt
   if (sponsorId !== null) {
     const [sponsor] = await transaction`
-      SELECT seat_limit, (sponsors.end_date::timestamp AT TIME ZONE 'UTC') AS "endsAt", (end_date IS NOT NULL AND end_date <= (NOW() AT TIME ZONE 'UTC')::date) AS ended,
-             (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed",
+      SELECT (sponsors.end_date::timestamp AT TIME ZONE 'UTC') AS "endsAt", (end_date IS NOT NULL AND end_date <= (NOW() AT TIME ZONE 'UTC')::date) AS ended,
              (SELECT COUNT(*)::INTEGER FROM sponsor_payments WHERE sponsor_payments.sponsor_id = sponsors.id AND sponsor_payments.status = 'paid' AND ${paymentTargetCondition(courseId, classId)}) AS "paidCount"
       FROM sponsors
       WHERE id = ${sponsorId}
@@ -2115,7 +2114,13 @@ const grantEnrollmentAccess = async (transaction, { userId, student, courseId, c
     if (!sponsor) throw new EnrollmentRefusal(404, { message: 'Sponsor not found.' })
     if (sponsor.ended) throw new EnrollmentRefusal(409, { message: 'This sponsor agreement has ended.' })
     if (sponsor.paidCount === 0) throw new EnrollmentRefusal(409, { message: 'Record a paid payment with an invoice for this course or class before granting sponsored access.' })
-    if (sponsor.seat_limit !== null && sponsor.seatsUsed >= sponsor.seat_limit) throw new EnrollmentRefusal(409, { message: 'This sponsor has no seats left.' })
+    if (classId !== null) {
+      const [classSeats] = await transaction`
+        SELECT capacity, (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.class_id = classes.id AND enrollments.class_status = 'enrolled' AND ${enrollmentAccessCondition()}) AS "enrolledCount"
+        FROM classes WHERE id = ${classId}
+      `
+      if (classSeats && classSeats.enrolledCount >= classSeats.capacity) throw new EnrollmentRefusal(409, { message: 'This class has no seats left.' })
+    }
     if (sponsor.endsAt) {
       if (enrollmentExpiresAt !== null && enrollmentExpiresAt > sponsor.endsAt) throw new EnrollmentRefusal(400, { message: 'Access cannot end after the sponsorship ends.' })
       if (enrollmentExpiresAt === null || enrollmentExpiresAt.getTime() === sponsor.endsAt.getTime()) enrollmentExpiresAt = null
@@ -4973,15 +4978,13 @@ const getImportRowProblem = (row) => {
   return null
 }
 
-const getSponsorSeatsRemaining = async (sponsorId) => {
-  const [sponsor] = await sql`
-    SELECT seat_limit,
-           (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed"
-    FROM sponsors
-    WHERE id = ${sponsorId}
+const getClassSeatsRemaining = async (classId) => {
+  const [classSeats] = await sql`
+    SELECT capacity, (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.class_id = classes.id AND enrollments.class_status = 'enrolled' AND ${enrollmentAccessCondition()}) AS "enrolledCount"
+    FROM classes WHERE id = ${classId}
   `
-  if (!sponsor || sponsor.seat_limit === null) return null
-  return Math.max(0, sponsor.seat_limit - sponsor.seatsUsed)
+  if (!classSeats) return 0
+  return Math.max(0, classSeats.capacity - classSeats.enrolledCount)
 }
 
 const classifyImportRows = async (rows, options) => {
@@ -4995,7 +4998,7 @@ const classifyImportRows = async (rows, options) => {
       AND ${targetAccessCondition(options.courseId, options.classId)}
       AND ${enrollmentAccessCondition()}
   `).map((row) => row.userId))
-  let seatsLeft = options.sponsorId === null ? null : await getSponsorSeatsRemaining(options.sponsorId)
+  let seatsLeft = options.sponsorId === null || options.classId === null ? null : await getClassSeatsRemaining(options.classId)
   const seenEmails = new Set()
 
   return rows.map((row) => {
@@ -5081,7 +5084,6 @@ const listSponsors = (sponsorId = null) => sql`
          sponsors.name,
          sponsors.contact,
          sponsors.notes,
-         sponsors.seat_limit::INTEGER AS "seatLimit",
          to_char(sponsors.end_date, 'YYYY-MM-DD') AS "endDate",
          (SELECT COUNT(*)::INTEGER FROM enrollments WHERE enrollments.sponsor_id = sponsors.id AND ${enrollmentAccessCondition()}) AS "seatsUsed"
   FROM sponsors
@@ -5089,21 +5091,15 @@ const listSponsors = (sponsorId = null) => sql`
   ORDER BY sponsors.name, sponsors.id
 `
 
-const withSeatsRemaining = (sponsor) => ({
-  ...sponsor,
-  seatsRemaining: sponsor.seatLimit === null ? null : Math.max(0, sponsor.seatLimit - sponsor.seatsUsed),
-})
 
 const parseSponsorInput = (body) => {
   const name = typeof body?.name === 'string' ? body.name.trim() : ''
   const contact = typeof body?.contact === 'string' ? body.contact.trim() : ''
   const notes = typeof body?.notes === 'string' ? body.notes.trim() : ''
-  const seatLimit = body?.seatLimit === undefined || body?.seatLimit === null || body?.seatLimit === '' ? null : Number(body.seatLimit)
   const endDate = typeof body?.endDate === 'string' && body.endDate.trim() ? body.endDate.trim() : null
   if (!name || name.length > 200 || contact.length > 300 || notes.length > 2000) return null
-  if (seatLimit !== null && (!Number.isInteger(seatLimit) || seatLimit < 0)) return null
   if (endDate !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !Number.isFinite(Date.parse(endDate)))) return null
-  return { name, contact, notes, seatLimit, endDate }
+  return { name, contact, notes, endDate }
 }
 
 const csvCell = (value) => {
@@ -5229,14 +5225,14 @@ app.post('/api/admin/access-students/:userId/one-time-password', requireAdmin, a
 
 app.get('/api/admin/sponsors', requireAdmin, async (_request, response) => {
   const sponsors = await listSponsors()
-  return response.json(sponsors.map(withSeatsRemaining))
+  return response.json(sponsors)
 })
 
 app.post('/api/admin/sponsors', requireAdmin, async (request, response) => {
   const sponsor = parseSponsorInput(request.body)
   if (!sponsor) return response.status(400).json({ message: 'Enter a sponsor name and valid seat limit or end date.' })
   const [created] = await sql`
-    INSERT INTO sponsors ${sql({ name: sponsor.name, contact: sponsor.contact, notes: sponsor.notes, seat_limit: sponsor.seatLimit, end_date: sponsor.endDate })}
+    INSERT INTO sponsors ${sql({ name: sponsor.name, contact: sponsor.contact, notes: sponsor.notes, end_date: sponsor.endDate })}
     RETURNING id::INTEGER AS id
   `
   return response.status(201).json({ id: created.id })
@@ -5248,7 +5244,7 @@ app.put('/api/admin/sponsors/:id', requireAdmin, async (request, response) => {
   if (sponsorId === null || !sponsor) return response.status(400).json({ message: 'Enter a sponsor name and valid seat limit or end date.' })
   const [updated] = await sql`
     UPDATE sponsors
-    SET name = ${sponsor.name}, contact = ${sponsor.contact}, notes = ${sponsor.notes}, seat_limit = ${sponsor.seatLimit}, end_date = ${sponsor.endDate}, updated_at = NOW()
+    SET name = ${sponsor.name}, contact = ${sponsor.contact}, notes = ${sponsor.notes}, end_date = ${sponsor.endDate}, updated_at = NOW()
     WHERE id = ${sponsorId}
     RETURNING id::INTEGER AS id
   `
@@ -5391,7 +5387,7 @@ app.get('/api/admin/sponsors/:id/report', requireAdmin, async (request, response
   const sponsorId = parseEnrollmentId(request.params.id)
   const report = sponsorId === null ? null : await getSponsorReport(sponsorId)
   if (!report) return response.status(404).json({ message: 'Sponsor not found.' })
-  return response.json({ sponsor: withSeatsRemaining(report.sponsor), students: report.rows })
+  return response.json({ sponsor: report.sponsor, students: report.rows })
 })
 
 app.get('/api/admin/sponsors/:id/report.csv', requireAdmin, async (request, response) => {
