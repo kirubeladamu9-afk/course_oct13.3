@@ -1948,18 +1948,34 @@ const updatePaymentStatus = async (reference, status, verification = {}) => sql.
   if (!payment || payment.status === status || payment.status === 'paid') return payment?.status ?? null
   if (payment.paymentMethod === 'manual' && (status !== 'paid' || !verification.manualApproval || payment.verificationStatus !== 'pending')) return payment.status
   if (status === 'paid' && payment.paymentMethod !== 'manual' && !isTestChapa && (Number(verification.amount) !== payment.amount || String(verification.currency).toUpperCase() !== payment.currency.toUpperCase() || verification.merchant_reference !== payment.reference)) return payment.status
-  if (status === 'paid' && payment.classId !== null) {
-    const [classRecord] = await transaction`
-      SELECT schedule
-      FROM classes
-      WHERE id = ${payment.classId}
-    `
-    if (!classRecord || isClassEnrollmentClosed(deserializeJson(classRecord.schedule))) {
+  if (status === 'paid' && payment.practiceExamId === null && payment.bookstoreItemId === null) {
+    let enrollmentAvailable = false
+    let unavailableReason = 'The selected course is no longer available for enrollment.'
+    if (payment.courseId !== null) {
+      const [course] = await transaction`
+        SELECT id
+        FROM courses
+        WHERE id = ${payment.courseId} AND status = 'Published'
+        FOR UPDATE
+      `
+      enrollmentAvailable = Boolean(course)
+    } else if (payment.classId !== null) {
+      const [classRecord] = await transaction`
+        SELECT schedule
+        FROM classes
+        WHERE id = ${payment.classId} AND published = true AND status IN ('open', 'full')
+        FOR UPDATE
+      `
+      enrollmentAvailable = Boolean(classRecord) && !isClassEnrollmentClosed(deserializeJson(classRecord.schedule))
+      unavailableReason = 'This class is no longer available for enrollment.'
+    }
+    if (!enrollmentAvailable) {
       await transaction`
         UPDATE payments
         SET status = 'failed', paid_at = NULL,
             verification_status = CASE WHEN payment_method = 'manual' THEN 'declined' ELSE verification_status END,
-            review_note = CASE WHEN payment_method = 'manual' THEN 'This class has closed and can no longer accept enrollments.' ELSE review_note END,
+            review_note = CASE WHEN payment_method = 'manual' THEN ${unavailableReason} ELSE review_note END,
+            reviewed_by = CASE WHEN payment_method = 'manual' THEN ${verification.adminUserId ?? null} ELSE reviewed_by END,
             reviewed_at = CASE WHEN payment_method = 'manual' THEN NOW() ELSE reviewed_at END
         WHERE id = ${payment.id}
       `
@@ -3306,17 +3322,19 @@ app.get('/api/enrollment/payment-info', async (request, response) => {
     FROM courses
     WHERE id = ${courseId} AND status = 'Published'
   ` : await sql`
-    SELECT id::INTEGER AS id, title, price::FLOAT AS amount
+    SELECT id::INTEGER AS id, title, price::FLOAT AS amount, schedule
     FROM classes
     WHERE id = ${classId} AND published = true AND status IN ('open', 'full')
   `
   if (!item) return response.status(404).json({ message: 'This enrollment is not available.' })
+  if (classId !== null && isClassEnrollmentClosed(deserializeJson(item.schedule))) return response.status(409).json({ message: 'This batch has already started. Enrollment is closed.' })
 
   const provider = process.env.MANUAL_PAYMENT_PROVIDER?.trim() ?? ''
   const accountName = process.env.MANUAL_PAYMENT_ACCOUNT_NAME?.trim() ?? ''
   const accountNumber = process.env.MANUAL_PAYMENT_ACCOUNT_NUMBER?.trim() ?? ''
+  const paymentItem = { id: item.id, title: item.title, amount: item.amount }
   return response.json({
-    ...item,
+    ...paymentItem,
     currency: process.env.MANUAL_PAYMENT_CURRENCY ?? process.env.CHAPA_CURRENCY ?? 'ETB',
     provider,
     accountName,
@@ -3326,75 +3344,123 @@ app.get('/api/enrollment/payment-info', async (request, response) => {
   })
 })
 
-app.post('/api/enrollment/manual-payment', requireAuthenticated, async (request, response) => {
+app.post('/api/enrollment/manual-payment', async (request, response) => {
+  const origin = request.get('origin')
+  if (origin) {
+    try {
+      if (new URL(origin).host !== request.get('host')) return response.status(403).json({ message: 'Request origin is not allowed.' })
+    } catch {
+      return response.status(403).json({ message: 'Request origin is not allowed.' })
+    }
+  }
+  if (request.get('sec-fetch-site') === 'cross-site') return response.status(403).json({ message: 'Request origin is not allowed.' })
+
+  const authenticated = await loadAuthenticatedUser(request, response)
+  if (authenticated && request.mustResetPassword) return response.status(403).json({ message: 'A password change is required before using this account.' })
+
   const courseId = parseCourseId(String(request.body?.courseId ?? ''))
   const classId = parseCourseId(String(request.body?.classId ?? ''))
   if ((courseId === null) === (classId === null)) return response.status(400).json({ message: 'Choose a course or class.' })
   const proof = parsePaymentProof(request.body?.proofData, request.body?.proofFileName)
   if (!proof) return response.status(400).json({ message: 'Upload a JPG, PNG, or WebP payment screenshot up to 6 MB.' })
+  const profile = isValidUserProfile(request.body)
+  if (!profile || !profile.phone) return response.status(400).json({ message: 'Enter your name, valid email, and phone number.' })
+  if (!authenticated && !isValidCredentials(profile.email, request.body?.password)) return response.status(400).json({ message: 'Enter a valid email and a password between 8 and 128 characters.' })
 
-  const [user] = await sql`SELECT name, email, phone FROM users WHERE id = ${request.userId} AND status = 'Active'`
-  if (!user) return response.status(404).json({ message: 'Student account not found.' })
-  if (!user.name.trim() || !user.email.trim() || !user.phone.trim()) return response.status(400).json({ message: 'Complete your name, email, and phone number before submitting payment.' })
+  const provider = process.env.MANUAL_PAYMENT_PROVIDER?.trim() ?? ''
+  const accountName = process.env.MANUAL_PAYMENT_ACCOUNT_NAME?.trim() ?? ''
+  const accountNumber = process.env.MANUAL_PAYMENT_ACCOUNT_NUMBER?.trim() ?? ''
+  if (!provider || !accountName || !accountNumber) return response.status(503).json({ message: 'Business payment details have not been configured.' })
+  const passwordHash = authenticated ? null : await hashPassword(request.body.password)
 
-  const result = await sql.begin(async (transaction) => {
-    const [item] = classId === null ? await transaction`
-      SELECT id, title, price::FLOAT AS amount
-      FROM courses
-      WHERE id = ${courseId} AND status = 'Published'
-      FOR SHARE
-    ` : await transaction`
-      SELECT id, title, price::FLOAT AS amount, schedule
-      FROM classes
-      WHERE id = ${classId} AND published = true AND status IN ('open', 'full')
-      FOR SHARE
-    `
-    if (!item) return { error: 'This enrollment is not available.', status: 404 }
-    if (classId !== null && isClassEnrollmentClosed(deserializeJson(item.schedule))) return { error: 'This batch has already started. Enrollment is closed.', status: 409 }
+  let result
+  try {
+    result = await sql.begin(async (transaction) => {
+      const [item] = classId === null ? await transaction`
+        SELECT id, title, price::FLOAT AS amount
+        FROM courses
+        WHERE id = ${courseId} AND status = 'Published'
+        FOR SHARE
+      ` : await transaction`
+        SELECT id, title, price::FLOAT AS amount, schedule
+        FROM classes
+        WHERE id = ${classId} AND published = true AND status IN ('open', 'full')
+        FOR SHARE
+      `
+      if (!item) return { error: 'This enrollment is not available.', status: 404 }
+      if (classId !== null && isClassEnrollmentClosed(deserializeJson(item.schedule))) return { error: 'This batch has already started. Enrollment is closed.', status: 409 }
 
-    const [activeEnrollment] = await transaction`
-      SELECT enrollments.id
-      FROM enrollments
-      INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
-      WHERE enrollments.user_id = ${request.userId}
-        AND (payments.course_id = ${courseId} OR payments.class_id = ${classId})
-      LIMIT 1
-    `
-    if (activeEnrollment) return { error: 'You already have active access to this item.', status: 409 }
+      if (authenticated) {
+        const [activeEnrollment] = await transaction`
+          SELECT enrollments.id
+          FROM enrollments
+          INNER JOIN payments ON payments.id = enrollments.payment_id AND payments.status = 'paid'
+          WHERE enrollments.user_id = ${request.userId}
+            AND (payments.course_id = ${courseId} OR payments.class_id = ${classId})
+          LIMIT 1
+        `
+        if (activeEnrollment) return { error: 'You already have active access to this item.', status: 409 }
 
-    const [pendingPayment] = await transaction`
-      SELECT id FROM payments
-      WHERE user_id = ${request.userId} AND payment_method = 'manual' AND verification_status = 'pending'
-        AND (course_id = ${courseId} OR class_id = ${classId})
-      LIMIT 1
-    `
-    if (pendingPayment) return { error: 'A payment for this item is already awaiting verification.', status: 409 }
+        const [pendingPayment] = await transaction`
+          SELECT id FROM payments
+          WHERE user_id = ${request.userId} AND payment_method = 'manual' AND verification_status = 'pending'
+            AND (course_id = ${courseId} OR class_id = ${classId})
+          LIMIT 1
+        `
+        if (pendingPayment) return { error: 'A payment for this item is already awaiting verification.', status: 409 }
+      }
 
-    const reference = `manual-${classId === null ? 'course' : 'class'}-${item.id}-${randomBytes(12).toString('hex')}`
-    const students = [{ fullName: user.name, ageOrGrade: 'Not provided', relationship: 'Self', preferredLanguage: 'Not provided', emergencyPhone: user.phone, notes: '' }]
-    const [payment] = await transaction`
-      INSERT INTO payments ${transaction({
-        reference,
-        user_id: request.userId,
-        course_id: classId === null ? item.id : null,
-        class_id: classId,
-        student_data: JSON.stringify(students),
-        contact_data: JSON.stringify({ name: user.name, email: user.email, phone: user.phone }),
-        amount: item.amount,
-        currency: process.env.MANUAL_PAYMENT_CURRENCY ?? process.env.CHAPA_CURRENCY ?? 'ETB',
-        payment_method: 'manual',
-        verification_status: 'pending',
-        proof_image: proof.content,
-        proof_mime_type: proof.mimeType,
-        proof_file_name: proof.fileName,
-      })}
-      RETURNING id::INTEGER AS id
-    `
-    return { id: payment.id, item: item.title }
-  })
+      const [user] = authenticated ? await transaction`
+        UPDATE users
+        SET name = ${profile.name}, email = ${profile.email}, phone = ${profile.phone}
+        WHERE id = ${request.userId} AND status = 'Active'
+        RETURNING id, name, email, phone, role, to_char(created_at, 'FMMonth DD, YYYY') AS "createdAt"
+      ` : await transaction`
+        INSERT INTO users ${transaction({ name: profile.name, email: profile.email, phone: profile.phone, password_hash: passwordHash })}
+        RETURNING id, name, email, phone, role, to_char(created_at, 'FMMonth DD, YYYY') AS "createdAt"
+      `
+      if (!user) return { error: 'Student account not found.', status: 404 }
+
+      const reference = `manual-${classId === null ? 'course' : 'class'}-${item.id}-${randomBytes(12).toString('hex')}`
+      const students = [{ fullName: user.name, ageOrGrade: 'Not provided', relationship: 'Self', preferredLanguage: 'Not provided', emergencyPhone: user.phone, notes: '' }]
+      const [payment] = await transaction`
+        INSERT INTO payments ${transaction({
+          reference,
+          user_id: user.id,
+          course_id: classId === null ? item.id : null,
+          class_id: classId,
+          student_data: JSON.stringify(students),
+          contact_data: JSON.stringify({ name: user.name, email: user.email, phone: user.phone }),
+          amount: item.amount,
+          currency: process.env.MANUAL_PAYMENT_CURRENCY ?? process.env.CHAPA_CURRENCY ?? 'ETB',
+          payment_method: 'manual',
+          verification_status: 'pending',
+          proof_image: proof.content,
+          proof_mime_type: proof.mimeType,
+          proof_file_name: proof.fileName,
+        })}
+        RETURNING id::INTEGER AS id
+      `
+      return { id: payment.id, item: item.title, user, createdAccount: !authenticated }
+    })
+  } catch (error) {
+    if (error.code === '23505') {
+      const message = String(error.constraint ?? '').includes('payments_manual_pending')
+        ? 'A payment for this item is already awaiting verification.'
+        : 'An account with this email already exists.'
+      return response.status(409).json({ message })
+    }
+    throw error
+  }
 
   if (result.error) return response.status(result.status).json({ message: result.error })
-  return response.status(201).json({ ...result, status: 'pending_verification' })
+  if (result.createdAccount) {
+    request.securityDeviceId = getDeviceId(request)
+    await recordAuthenticationAttempt({ user: result.user, email: result.user.email, succeeded: true, reason: 'sign_up', request })
+    const session = await createAuthSession(result.user.id, result.user.role, request)
+    setSecurityCookies(response, session.rawToken, session.deviceId, result.user.role)
+  }
+  return response.status(201).json({ id: result.id, item: result.item, user: result.user, status: 'pending_verification' })
 })
 
 app.post('/api/payments/chapa', async (request, response) => {

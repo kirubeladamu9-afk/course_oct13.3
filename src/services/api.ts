@@ -1258,14 +1258,14 @@ export const getManualPaymentInfo = async (courseId: number, classId?: number | 
   return response.json()
 }
 
-export const submitManualPayment = async (courseId: number, classId: number | null, proofData: string, proofFileName: string) => {
+export const submitManualPayment = async (courseId: number, classId: number | null, proofData: string, proofFileName: string, contact: { name: string; email: string; phone: string }, password: string) => {
   const response = await requestApi('/api/enrollment/manual-payment', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...(classId === null ? { courseId } : { classId }), proofData, proofFileName }),
+    body: JSON.stringify({ ...(classId === null ? { courseId } : { classId }), proofData, proofFileName, ...contact, password }),
   })
   if (!response.ok) throw new Error(await getErrorMessage(response))
-  return response.json() as Promise<{ id: number; item: string; status: 'pending_verification' }>
+  return response.json() as Promise<{ id: number; item: string; status: 'pending_verification'; user: AuthUser }>
 }
 
 export const createChapaCheckout = async (courseId: AdminCourse['id'], practiceExamId?: number): Promise<ChapaCheckout> => {

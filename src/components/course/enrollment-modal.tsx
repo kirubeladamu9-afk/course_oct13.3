@@ -16,7 +16,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import { type FC, type FormEvent, useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { type AdminCourse } from '@/components/admin/admin-data'
-import { getAuthenticatedUser, getManualPaymentInfo, saveAuthenticatedUser, submitCredentials, submitManualPayment, updateAuthenticatedProfile, type ManualPaymentInfo } from '@/services/api'
+import { getAuthenticatedUser, getManualPaymentInfo, saveAuthenticatedUser, submitManualPayment, type ManualPaymentInfo } from '@/services/api'
 import { navigateTo } from '@/lib/navigation'
 
 interface EnrollmentModalProps {
@@ -41,8 +41,9 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
   const [activeStep, setActiveStep] = useState(0)
   const [accountError, setAccountError] = useState<string | null>(null)
   const [paymentError, setPaymentError] = useState<string | null>(null)
-  const [isSubmittingAccount, setIsSubmittingAccount] = useState(false)
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
+  const [signupPassword, setSignupPassword] = useState('')
+  const [confirmSignupPassword, setConfirmSignupPassword] = useState('')
   const [paymentInfo, setPaymentInfo] = useState<ManualPaymentInfo | null>(null)
   const [paymentInfoError, setPaymentInfoError] = useState<string | null>(null)
   const [qrImage, setQrImage] = useState<string | null>(null)
@@ -66,6 +67,8 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
     setQrImage(null)
     setProofFile(null)
     setProofData(null)
+    setSignupPassword('')
+    setConfirmSignupPassword('')
     setSubmitted(false)
     getManualPaymentInfo(course.id, classId)
       .then((info) => { if (current) setPaymentInfo(info) })
@@ -101,23 +104,12 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
     }
 
     setAccountError(null)
-    setIsSubmittingAccount(true)
-    try {
-      if (isAuthenticated) {
-        const user = await updateAuthenticatedProfile({ name, email, phone })
-        saveAuthenticatedUser(user)
-      } else {
-        const { user } = await submitCredentials('sign-up', email, password, { name, phone })
-        saveAuthenticatedUser(user)
-        setIsAuthenticated(true)
-      }
-      setContact({ name, email, phone })
-      setActiveStep(1)
-    } catch (error) {
-      setAccountError(error instanceof Error ? error.message : 'We could not save your personal information.')
-    } finally {
-      setIsSubmittingAccount(false)
+    setContact({ name, email, phone })
+    if (!isAuthenticated) {
+      setSignupPassword(password)
+      setConfirmSignupPassword(String(formData.get('confirmPassword') ?? ''))
     }
+    setActiveStep(1)
   }
 
   const handleProofChange = async (file: File | undefined) => {
@@ -156,7 +148,9 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
     setPaymentError(null)
     setIsSubmittingPayment(true)
     try {
-      await submitManualPayment(course.id, classId, proofData, proofFile.name)
+      const result = await submitManualPayment(course.id, classId, proofData, proofFile.name, contact, signupPassword)
+      saveAuthenticatedUser(result.user)
+      setIsAuthenticated(true)
       setSubmitted(true)
       onSubmitted?.()
     } catch (error) {
@@ -172,12 +166,13 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
       <TextField required fullWidth label="Email" name="email" type="email" autoComplete="email" value={contact.email} onChange={(event) => setContact({ ...contact, email: event.target.value })} />
       <TextField required fullWidth label="Phone" name="phone" type="tel" autoComplete="tel" value={contact.phone} onChange={(event) => setContact({ ...contact, phone: event.target.value })} />
       {!isAuthenticated && <>
-        <TextField required fullWidth label="Password" name="password" type="password" autoComplete="new-password" inputProps={{ minLength: 8 }} />
-        <TextField required fullWidth label="Confirm Password" name="confirmPassword" type="password" autoComplete="new-password" inputProps={{ minLength: 8 }} />
+        <TextField required fullWidth label="Password" name="password" type="password" autoComplete="new-password" inputProps={{ minLength: 8 }} value={signupPassword} onChange={(event) => setSignupPassword(event.target.value)} />
+        <TextField required fullWidth label="Confirm Password" name="confirmPassword" type="password" autoComplete="new-password" inputProps={{ minLength: 8 }} value={confirmSignupPassword} onChange={(event) => setConfirmSignupPassword(event.target.value)} />
+        <Typography variant="caption" color="text.secondary">Your account will be created after you submit your payment proof.</Typography>
       </>}
       {accountError && <Alert severity="error">{accountError}</Alert>}
-      <Button type="submit" variant="contained" size="large" disabled={isSubmittingAccount}>
-        {isSubmittingAccount ? 'Saving...' : 'Continue to payment'}
+      <Button type="submit" variant="contained" size="large">
+        Continue to payment
       </Button>
     </Stack>
   </Box>
