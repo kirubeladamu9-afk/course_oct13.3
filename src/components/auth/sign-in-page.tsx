@@ -126,7 +126,7 @@ const SignInPage: FC<SignInPageProps> = ({ mode }) => {
                 <Typography component="h1" variant="h2" sx={{ mb: 0.75, fontSize: { xs: '2rem', md: '3rem' }, letterSpacing: '-0.05em' }}>{isSignUp ? 'Sign Up' : 'Sign In'}</Typography>
                 <Typography color="text.secondary" sx={{ mb: { xs: 1.5, md: 2.5 } }}>{isSignUp ? 'Create your Coursesharp account.' : 'Welcome back to Coursesharp.'}</Typography>
                 <Box sx={{ display: 'grid', gap: { xs: 1.25, md: 1.5 } }}>
-                  <TextField required fullWidth label="Email" name="email" type="email" autoComplete="email" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 999 } }} />
+                  <TextField required fullWidth label={isSignUp ? 'Email' : 'Email or username'} name="email" type={isSignUp ? 'email' : 'text'} autoComplete={isSignUp ? 'email' : 'username'} variant="outlined" sx={{ '& .MuiOutlinedInput-root': { borderRadius: 999 } }} />
                   <TextField
                     required
                     fullWidth

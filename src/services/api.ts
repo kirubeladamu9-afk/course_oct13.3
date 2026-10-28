@@ -953,7 +953,14 @@ export interface AccessGrantResult {
   classStatus?: 'enrolled' | 'waitlisted'
   username?: string
   temporaryPassword?: string
+  oneTimePasswordExpiresAt?: string
   setPasswordPath?: string
+}
+
+export interface OneTimePasswordReset {
+  username: string
+  temporaryPassword: string
+  oneTimePasswordExpiresAt: string
 }
 
 export interface AccessGrantRecord {
@@ -970,6 +977,7 @@ export interface AccessGrantRecord {
   expiresAt: string | null
   grantedAt: string
   revokedAt: string | null
+  usernameAccount: boolean
 }
 
 export interface Sponsor {
@@ -1026,6 +1034,7 @@ export interface AccessImportResult {
   message?: string
   username?: string
   temporaryPassword?: string
+  oneTimePasswordExpiresAt?: string
   setPasswordPath?: string
 }
 
@@ -1060,6 +1069,12 @@ export const getAccessGrants = async (): Promise<AccessGrantRecord[]> => {
 export const revokeAccessGrant = async (enrollmentId: number): Promise<void> => {
   const response = await requestApi(`/api/admin/access-grants/${enrollmentId}/revoke`, jsonRequest('POST'))
   if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
+export const resetStudentOneTimePassword = async (userId: number): Promise<OneTimePasswordReset> => {
+  const response = await requestApi(`/api/admin/access-students/${userId}/one-time-password`, jsonRequest('POST'))
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
 }
 
 export const getSponsors = async (): Promise<Sponsor[]> => {

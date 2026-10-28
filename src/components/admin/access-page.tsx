@@ -33,6 +33,7 @@ import {
   getSponsors,
   grantAccess,
   previewAccessImport,
+  resetStudentOneTimePassword,
   revokeAccessGrant,
   saveSponsor,
   type AccessGrantOptions,
@@ -42,10 +43,12 @@ import {
   type AccessImportPreview,
   type AccessImportResult,
   type AccessTarget,
+  type OneTimePasswordReset,
   type Sponsor,
   type SponsorInput,
   type SponsorReport,
 } from '@/services/api'
+import { buildAccessCredentialsCsv, type AccessCredentialRow } from './access-credentials'
 
 const reasons: AccessGrantReason[] = ['Scholarship', 'Staff', 'Promotion', 'Sponsored', 'Other']
 const maxCsvBytes = 1024 * 1024
@@ -202,19 +205,21 @@ const AccessOptionsCard: FC<{
   )
 }
 
-const CredentialNotice: FC<{ username?: string; temporaryPassword?: string; setPasswordPath?: string }> = ({ username, temporaryPassword, setPasswordPath }) => {
+const formatExpiry = (iso?: string) => iso ? new Date(iso).toLocaleString() : ''
+
+const CredentialNotice: FC<{ username?: string; temporaryPassword?: string; oneTimePasswordExpiresAt?: string; setPasswordPath?: string }> = ({ username, temporaryPassword, oneTimePasswordExpiresAt, setPasswordPath }) => {
   if (!username && !setPasswordPath) return null
   const fullLink = setPasswordPath ? `${window.location.origin}${setPasswordPath}` : ''
   return (
     <Alert severity="warning" sx={{ mt: 2 }}>
       {username && (
         <Typography variant="body2" sx={{ mb: 1 }}>
-          Username <strong>{username}</strong> and temporary password <strong>{temporaryPassword}</strong>. This password is shown only once. The student must change it at first sign-in.
+          Username <strong>{username}</strong> and one-time password <strong>{temporaryPassword}</strong>. This password is shown only once and expires {formatExpiry(oneTimePasswordExpiresAt)}. The student must set a new password at first sign-in.
         </Typography>
       )}
       {fullLink && (
         <Typography variant="body2">
-          Send this single-use link to the student within 72 hours: <strong style={{ wordBreak: 'break-all' }}>{fullLink}</strong>
+          No email service is connected to this app, so this set-password link was not emailed. Share it with the student yourself. It is single-use and expires in 72 hours: <strong style={{ wordBreak: 'break-all' }}>{fullLink}</strong>
         </Typography>
       )}
     </Alert>
@@ -286,7 +291,7 @@ const SingleGrantCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = (
             Access granted.{result.classStatus === 'waitlisted' ? ' The class is full, so the student is waitlisted and has no meeting link yet.' : ''}
           </Alert>
         )}
-        {result?.status === 'granted' && <CredentialNotice username={result.username} temporaryPassword={result.temporaryPassword} setPasswordPath={result.setPasswordPath} />}
+        {result?.status === 'granted' && <CredentialNotice username={result.username} temporaryPassword={result.temporaryPassword} oneTimePasswordExpiresAt={result.oneTimePasswordExpiresAt} setPasswordPath={result.setPasswordPath} />}
       </CardContent>
     </Card>
   )
@@ -299,6 +304,20 @@ const BulkImportCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = ({
   const [warnings, setWarnings] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
+  const [credentialRows, setCredentialRows] = useState<AccessCredentialRow[]>([])
+  const [credentialsDownloaded, setCredentialsDownloaded] = useState(false)
+
+  const downloadCredentials = () => {
+    const blob = new Blob(['\uFEFF', buildAccessCredentialsCsv(credentialRows)], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'access-credentials.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+    setCredentialRows([])
+    setCredentialsDownloaded(true)
+  }
 
   const chooseFile = (selected: File | null) => {
     setError(null)
@@ -335,6 +354,13 @@ const BulkImportCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = ({
     setError(null)
     try {
       const outcome = await confirmAccessImport(preview.batchId, override)
+      const newCredentials = outcome.results.flatMap((result): AccessCredentialRow[] => result.username && result.temporaryPassword
+        ? [{ name: result.name, username: result.username, temporaryPassword: result.temporaryPassword, expiresAt: result.oneTimePasswordExpiresAt ?? '' }]
+        : [])
+      if (newCredentials.length > 0) {
+        setCredentialRows((previous) => [...previous, ...newCredentials])
+        setCredentialsDownloaded(false)
+      }
       setResults(outcome.results)
       setPreview(null)
       setWarnings([])
@@ -427,13 +453,21 @@ const BulkImportCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = ({
                     <TableCell>{result.name}</TableCell>
                     <TableCell>{result.outcome}</TableCell>
                     <TableCell>
-                      {result.message ?? (result.username ? `Username ${result.username}, temporary password ${result.temporaryPassword} (shown once)` : result.setPasswordPath ? `${window.location.origin}${result.setPasswordPath}` : '')}
+                      {result.message ?? (result.username ? `Username ${result.username}. The one-time password is in the credentials file.` : result.setPasswordPath ? `Set-password link, not emailed (no email service is connected): ${window.location.origin}${result.setPasswordPath}` : '')}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </Box>
+        )}
+        {credentialRows.length > 0 && (
+          <Alert severity="warning" sx={{ mt: 3 }} action={<Button color="inherit" size="small" onClick={downloadCredentials}>Download</Button>}>
+            {credentialRows.length} username {credentialRows.length === 1 ? 'account needs' : 'accounts need'} a one-time password. Passwords are stored only as hashes, so this file is the only copy and can be downloaded once.
+          </Alert>
+        )}
+        {credentialRows.length === 0 && credentialsDownloaded && (
+          <Alert severity="info" sx={{ mt: 3 }}>The credentials file was downloaded. Use New password in Granted access to issue a new one if needed.</Alert>
         )}
       </CardContent>
     </Card>
@@ -443,6 +477,8 @@ const BulkImportCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = ({
 const GrantsCard: FC = () => {
   const [grants, setGrants] = useState<AccessGrantRecord[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [resettingUserId, setResettingUserId] = useState<number | null>(null)
+  const [issuedPassword, setIssuedPassword] = useState<OneTimePasswordReset | null>(null)
 
   const load = () => getAccessGrants().then(setGrants).catch((loadError) => setError(errorText(loadError)))
   useEffect(() => {
@@ -456,6 +492,19 @@ const GrantsCard: FC = () => {
       await load()
     } catch (revokeError) {
       setError(errorText(revokeError))
+    }
+  }
+
+  const issueNewPassword = async (grant: AccessGrantRecord) => {
+    if (!window.confirm(`Issue a new one-time password for ${grant.studentName}? Their current password and active sessions stop working.`)) return
+    setResettingUserId(grant.userId)
+    setError(null)
+    try {
+      setIssuedPassword(await resetStudentOneTimePassword(grant.userId))
+    } catch (resetError) {
+      setError(errorText(resetError))
+    } finally {
+      setResettingUserId(null)
     }
   }
 
@@ -490,6 +539,7 @@ const GrantsCard: FC = () => {
                   <TableCell>{grant.expiresAt ?? 'No expiry'}</TableCell>
                   <TableCell>{grant.accessStatus}</TableCell>
                   <TableCell align="right">
+                    {grant.usernameAccount && <Button size="small" disabled={resettingUserId === grant.userId} onClick={() => void issueNewPassword(grant)}>New password</Button>}
                     {grant.accessStatus === 'active' && <Button color="error" size="small" onClick={() => void revoke(grant)}>Revoke</Button>}
                   </TableCell>
                 </TableRow>
@@ -498,6 +548,17 @@ const GrantsCard: FC = () => {
           </Table>
         </Box>
       </CardContent>
+      <Dialog open={issuedPassword !== null} onClose={() => setIssuedPassword(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>New one-time password</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>Username <strong>{issuedPassword?.username}</strong></Typography>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>One-time password <strong>{issuedPassword?.temporaryPassword}</strong></Typography>
+          <Typography variant="body2" color="text.secondary">Shown only once. Expires {formatExpiry(issuedPassword?.oneTimePasswordExpiresAt)}. The student must set a new password at first sign-in.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setIssuedPassword(null)}>Done</Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   )
 }

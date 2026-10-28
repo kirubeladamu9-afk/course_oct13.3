@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomInt, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -641,7 +641,7 @@ const initializeDatabase = async () => {
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS payments_manual_pending_course_idx ON payments(user_id, course_id) WHERE payment_method = 'manual' AND verification_status = 'pending' AND course_id IS NOT NULL`
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS payments_manual_pending_class_idx ON payments(user_id, class_id) WHERE payment_method = 'manual' AND verification_status = 'pending' AND class_id IS NOT NULL`
 
-  await ensureColumns('users', { username: 'TEXT' })
+  await ensureColumns('users', { username: 'TEXT', one_time_password_expires_at: 'TIMESTAMPTZ' })
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_username_idx ON users(username) WHERE username IS NOT NULL`
 
   await sql`
@@ -4816,17 +4816,22 @@ const issueSetPasswordLink = async (transaction, userId) => {
   return `/set-password?token=${rawToken}`
 }
 
+const oneTimePasswordLifetimeMs = 7 * 24 * 60 * 60 * 1000
+const oneTimePasswordAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+const generateOneTimePassword = () => Array.from({ length: 12 }, () => oneTimePasswordAlphabet[randomInt(oneTimePasswordAlphabet.length)]).join('')
+
 const createUsernameAccount = async (transaction, name, phone) => {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'student'
+  const expiresAt = new Date(Date.now() + oneTimePasswordLifetimeMs)
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const username = `${base}${randomBytes(3).toString('hex')}`
-    const temporaryPassword = randomBytes(9).toString('base64url')
+    const temporaryPassword = generateOneTimePassword()
     const [created] = await transaction`
-      INSERT INTO users ${transaction({ name, phone, email: `${username}@no-email.invalid`, username, password_hash: await hashPassword(temporaryPassword), role: 'student', must_reset_password: true })}
+      INSERT INTO users ${transaction({ name, phone, email: `${username}@no-email.invalid`, username, password_hash: await hashPassword(temporaryPassword), role: 'student', must_reset_password: true, one_time_password_expires_at: expiresAt })}
       ON CONFLICT DO NOTHING
       RETURNING id::INTEGER AS id
     `
-    if (created) return { userId: created.id, username, temporaryPassword }
+    if (created) return { userId: created.id, username, temporaryPassword, oneTimePasswordExpiresAt: expiresAt.toISOString() }
   }
   throw new Error('Unable to create a unique username.')
 }
@@ -4844,13 +4849,13 @@ const resolveGrantAccount = async (transaction, { userId, email, name, phone }) 
   if (userId !== null) throw new EnrollmentRefusal(404, { message: 'Student account not found.' })
   if (email !== null) {
     const [created] = await transaction`
-      INSERT INTO users ${transaction({ name, phone, email, password_hash: await hashPassword(randomBytes(24).toString('base64url')), role: 'student' })}
+      INSERT INTO users ${transaction({ name, phone, email, password_hash: await hashPassword(randomBytes(24).toString('base64url')), role: 'student', must_reset_password: true })}
       RETURNING id::INTEGER AS id
     `
     return { userId: created.id, name, created: { setPasswordPath: await issueSetPasswordLink(transaction, created.id) } }
   }
   const account = await createUsernameAccount(transaction, name, phone)
-  return { userId: account.userId, name, created: { username: account.username, temporaryPassword: account.temporaryPassword } }
+  return { userId: account.userId, name, created: { username: account.username, temporaryPassword: account.temporaryPassword, oneTimePasswordExpiresAt: account.oneTimePasswordExpiresAt } }
 }
 
 const parseCsvText = (text) => {
@@ -5116,7 +5121,8 @@ app.get('/api/admin/access-grants', requireAdmin, async (_request, response) => 
            sponsors.name AS "sponsorName",
            to_char(enrollments.expires_at, 'YYYY-MM-DD') AS "expiresAt",
            enrollments.created_at AS "grantedAt",
-           enrollments.revoked_at AS "revokedAt"
+           enrollments.revoked_at AS "revokedAt",
+           users.username IS NOT NULL AS "usernameAccount"
     FROM enrollments
     INNER JOIN users ON users.id = enrollments.user_id
     LEFT JOIN courses ON courses.id = enrollments.course_id
@@ -5156,6 +5162,25 @@ app.post('/api/admin/access-grants/:enrollmentId/revoke', requireAdmin, async (r
   if (result.status !== 200) return response.status(result.status).json({ message: result.message })
   await writeAdminAudit(request, 'access_revoked', result.enrollment.userId, { accessStatus: result.enrollment.accessStatus, enrollmentId }, { accessStatus: 'revoked', enrollmentId })
   return response.json({ id: enrollmentId, accessStatus: 'revoked' })
+})
+
+app.post('/api/admin/access-students/:userId/one-time-password', requireAdmin, async (request, response) => {
+  const userId = parseEnrollmentId(request.params.userId)
+  if (userId === null) return response.status(400).json({ message: 'Invalid student.' })
+  const [user] = await sql`SELECT id::INTEGER AS id, username, role FROM users WHERE id = ${userId}`
+  if (!user) return response.status(404).json({ message: 'Student account not found.' })
+  if (user.role !== 'student' || !user.username) return response.status(400).json({ message: 'Only username accounts use one-time passwords.' })
+  const temporaryPassword = generateOneTimePassword()
+  const expiresAt = new Date(Date.now() + oneTimePasswordLifetimeMs)
+  const passwordHash = await hashPassword(temporaryPassword)
+  await sql.begin(async (transaction) => {
+    await transaction`UPDATE users SET password_hash = ${passwordHash}, must_reset_password = true, one_time_password_expires_at = ${expiresAt} WHERE id = ${userId}`
+    await transaction`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'admin_one_time_password_reset' WHERE user_id = ${userId} AND ended_at IS NULL`
+  })
+  await writeAdminAudit(request, 'one_time_password_reset', userId, null, { expiresAt: expiresAt.toISOString() })
+  await createSecurityAlert(userId, 'password_reset_required', 'An administrator issued you a new one-time password. Sign in and set a new password.')
+  response.set('Cache-Control', 'no-store')
+  return response.json({ username: user.username, temporaryPassword, oneTimePasswordExpiresAt: expiresAt.toISOString() })
 })
 
 app.get('/api/admin/sponsors', requireAdmin, async (_request, response) => {
@@ -6611,10 +6636,12 @@ app.post('/api/auth/sign-up', async (request, response) => {
   }
 })
 
+const signInFailureMessage = 'Invalid email, username, or password.'
+
 app.post('/api/auth/sign-in', async (request, response) => {
   const { email, password, captchaToken } = request.body ?? {}
   if (typeof email !== 'string' || typeof password !== 'string' || email.length > 254 || password.length > 128) {
-    return response.status(400).json({ message: 'Invalid email or password.' })
+    return response.status(400).json({ message: signInFailureMessage })
   }
 
   const normalizedEmail = email.trim().toLowerCase()
@@ -6626,10 +6653,10 @@ app.post('/api/auth/sign-in', async (request, response) => {
   `
   if (ipFailures.count >= 30) {
     await recordAuthenticationAttempt({ user: null, email: normalizedEmail, succeeded: false, reason: 'ip_rate_limited', request })
-    return response.status(429).json({ message: 'Invalid email or password.', captchaRequired: true })
+    return response.status(429).json({ message: signInFailureMessage, captchaRequired: true })
   }
   const [user] = await sql`
-    SELECT id, name, email, phone, password_hash, role, status, locked_until, account_locked AS "accountLocked", must_reset_password AS "mustResetPassword", created_at AS "createdAt"
+    SELECT id, name, email, phone, password_hash, role, status, locked_until, account_locked AS "accountLocked", must_reset_password AS "mustResetPassword", one_time_password_expires_at AS "oneTimePasswordExpiresAt", created_at AS "createdAt"
     FROM users
     WHERE email = ${normalizedEmail} OR username = ${normalizedEmail}
   `
@@ -6639,25 +6666,26 @@ app.post('/api/auth/sign-in', async (request, response) => {
   `
   if (accountFailures.count >= 3 && getTurnstileSecret() && (!captchaToken || !await verifyTurnstile(captchaToken, metadata.ip))) {
     await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: false, reason: 'captcha_failed', request })
-    return response.status(401).json({ message: 'Invalid email or password.', captchaRequired: true })
+    return response.status(401).json({ message: signInFailureMessage, captchaRequired: true })
   }
   const isLocked = user?.accountLocked || user?.locked_until && new Date(user.locked_until).getTime() > Date.now()
-  const passwordMatches = user && await verifyPassword(password, user.password_hash)
+  const oneTimePasswordExpired = Boolean(user?.mustResetPassword && user.oneTimePasswordExpiresAt && new Date(user.oneTimePasswordExpiresAt).getTime() <= Date.now())
+  const passwordMatches = user && !oneTimePasswordExpired && await verifyPassword(password, user.password_hash)
   if (!user || user.status !== 'Active' || isLocked || !passwordMatches) {
-    const reason = isLocked ? 'account_locked' : !user ? 'unknown_account' : user.status !== 'Active' ? 'inactive_account' : 'incorrect_password'
+    const reason = isLocked ? 'account_locked' : !user ? 'unknown_account' : user.status !== 'Active' ? 'inactive_account' : oneTimePasswordExpired ? 'one_time_password_expired' : 'incorrect_password'
     const failedAttempt = await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: false, reason, request })
     const captchaRequired = failedAttempt.accountFailureCount >= 3
-    return response.status(failedAttempt.ipLimited ? 429 : 401).json({ message: 'Invalid email or password.', ...(captchaRequired ? { captchaRequired: true } : {}) })
+    return response.status(failedAttempt.ipLimited ? 429 : 401).json({ message: signInFailureMessage, ...(captchaRequired ? { captchaRequired: true } : {}) })
   }
 
   const [twoFactor] = await sql`SELECT user_id FROM two_factor_secrets WHERE user_id = ${user.id} AND enabled_at IS NOT NULL`
   if (twoFactor && (typeof request.body?.twoFactorCode !== 'string' || !await verifySecondFactor(user.id, request.body.twoFactorCode))) {
     await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: false, reason: 'second_factor_failed', request })
-    return response.status(401).json({ message: 'Invalid email or password.', twoFactorRequired: true })
+    return response.status(401).json({ message: signInFailureMessage, twoFactorRequired: true })
   }
 
   await sql`UPDATE users SET locked_until = NULL WHERE id = ${user.id}`
-  const { password_hash: _passwordHash, locked_until: _lockedUntil, accountLocked: _accountLocked, ...account } = user
+  const { password_hash: _passwordHash, locked_until: _lockedUntil, accountLocked: _accountLocked, oneTimePasswordExpiresAt: _oneTimePasswordExpiresAt, ...account } = user
   await recordAuthenticationAttempt({ user, email: normalizedEmail, succeeded: true, reason: 'success', request })
   const session = await createAuthSession(user.id, user.role, request, sanitizeClientHints(request.body?.clientHints))
   setSecurityCookies(response, session.rawToken, session.deviceId, user.role)
@@ -6671,18 +6699,19 @@ app.post('/api/auth/change-password', requireAuthenticated, async (request, resp
   }
 
   const [user] = await sql`
-    SELECT password_hash
+    SELECT password_hash, one_time_password_expires_at AS "oneTimePasswordExpiresAt"
     FROM users
     WHERE id = ${request.userId}
   `
-  if (!user || !(await verifyPassword(currentPassword, user.password_hash))) {
+  const oneTimePasswordExpired = Boolean(user?.oneTimePasswordExpiresAt && new Date(user.oneTimePasswordExpiresAt).getTime() <= Date.now())
+  if (!user || oneTimePasswordExpired || !(await verifyPassword(currentPassword, user.password_hash))) {
     return response.status(401).json({ message: 'Your current password is incorrect.' })
   }
 
   const passwordHash = await hashPassword(newPassword)
   await sql`
     UPDATE users
-    SET password_hash = ${passwordHash}, must_reset_password = false
+    SET password_hash = ${passwordHash}, must_reset_password = false, one_time_password_expires_at = NULL
     WHERE id = ${request.userId}
   `
   await sql`
@@ -6710,7 +6739,7 @@ app.post('/api/auth/set-password', async (request, response) => {
     `
     if (!record) return null
     await transaction`UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = ${record.userId} AND used_at IS NULL`
-    await transaction`UPDATE users SET password_hash = ${passwordHash}, must_reset_password = false WHERE id = ${record.userId}`
+    await transaction`UPDATE users SET password_hash = ${passwordHash}, must_reset_password = false, one_time_password_expires_at = NULL WHERE id = ${record.userId}`
     await transaction`UPDATE auth_sessions SET ended_at = NOW(), ended_reason = 'password_set' WHERE user_id = ${record.userId} AND ended_at IS NULL`
     return record.userId
   })
