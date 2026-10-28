@@ -328,6 +328,8 @@ const SingleGrantCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = (
   )
 }
 
+const accessImportTemplateCsv = 'name,email,guardian_email,phone,grade\r\n'
+
 const BulkImportCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = ({ buildOptions }) => {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<AccessImportPreview | null>(null)
@@ -337,6 +339,16 @@ const BulkImportCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = ({
   const [isBusy, setIsBusy] = useState(false)
   const [credentialRows, setCredentialRows] = useState<AccessCredentialRow[]>([])
   const [credentialsDownloaded, setCredentialsDownloaded] = useState(false)
+
+  const downloadTemplate = () => {
+    const blob = new Blob(['\uFEFF', accessImportTemplateCsv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'access-import-template.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
 
   const downloadCredentials = () => {
     const blob = new Blob(['\uFEFF', buildAccessCredentialsCsv(credentialRows)], { type: 'text/csv;charset=utf-8' })
@@ -419,6 +431,7 @@ const BulkImportCard: FC<{ buildOptions: () => AccessGrantOptions | null }> = ({
           Columns: name, email or guardian email, phone, grade. Files up to 1 MB. Nothing is created until you confirm the preview.
         </Typography>
         <Stack spacing={2} direction={{ xs: 'column', md: 'row' }} useFlexGap sx={{ alignItems: { md: 'center' }, flexWrap: 'wrap' }}>
+          <Button variant="outlined" onClick={downloadTemplate}>Download template</Button>
           <Button component="label" variant="outlined">
             {file ? file.name : 'Choose CSV file'}
             <input hidden type="file" accept=".csv,text/csv" onChange={(event) => chooseFile(event.target.files?.[0] ?? null)} />
