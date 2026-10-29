@@ -1280,12 +1280,10 @@ const RegistrationsPage: FC = () => {
     { key: 'date', label: 'Date' },
     { key: 'status', label: 'Status', render: (value) => <StatusChip status={String(value)} /> },
   ]
-  const updateStatus = (id: number, status: AdminRegistration['status']) => setRows((current) => current.map((row) => row.id === id ? { ...row, status } : row))
-
   return (
     <>
-      <PageHeading title="Registrations" description="Review and manage incoming course registrations from the database." />
-      {isLoading ? <AdminLoadingState label="Loading registrations" /> : loadError ? <Paper elevation={0} sx={{ p: 4, border: 1, borderColor: 'divider' }}><Typography color="error" sx={{ mb: 2 }}>{loadError}</Typography><Button label="Retry" onClick={() => { setIsLoading(true); void loadRegistrations() }} /></Paper> : <AdminDataTable rows={rows} columns={columns} searchPlaceholder="Search registrations" actions={(row) => <Stack direction="row" spacing={0.5}><Button label="Approve" size="small" onClick={() => updateStatus(row.id, 'Approved')} /><Button label="Waitlist" size="small" variant="outlined" onClick={() => updateStatus(row.id, 'Waitlisted')} /><Button label="Reject" size="small" variant="text" onClick={() => updateStatus(row.id, 'Rejected')} /></Stack>} />}
+      <PageHeading title="Registrations" description="Read-only list of course registrations. Approve or decline manual payments on Payments & verification." />
+      {isLoading ? <AdminLoadingState label="Loading registrations" /> : loadError ? <Paper elevation={0} sx={{ p: 4, border: 1, borderColor: 'divider' }}><Typography color="error" sx={{ mb: 2 }}>{loadError}</Typography><Button label="Retry" onClick={() => { setIsLoading(true); void loadRegistrations() }} /></Paper> : <AdminDataTable rows={rows} columns={columns} searchPlaceholder="Search registrations" actions={() => <MuiButton size="small" variant="text" onClick={() => navigateTo('/admin/payments')} endIcon={<ArrowForwardRoundedIcon />}>Review payment</MuiButton>} />}
     </>
   )
 }
