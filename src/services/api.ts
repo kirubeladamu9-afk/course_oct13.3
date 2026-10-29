@@ -679,6 +679,8 @@ export interface MyPayment {
   reviewNote?: string | null
   date: string
   txRef: string
+  courseId: number | null
+  classId: number | null
 }
 
 export interface BookstoreItem {

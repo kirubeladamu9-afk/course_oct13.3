@@ -159,8 +159,7 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
     setIsSubmittingPayment(true)
     try {
       const result = await submitManualPayment(course.id, classId, proofData, proofFile.name, contact, signupPassword)
-      saveAuthenticatedUser(result.user)
-      setIsAuthenticated(true)
+      if (isAuthenticated) saveAuthenticatedUser(result.user)
       setSubmitted(true)
       onSubmitted?.()
     } catch (error) {
@@ -189,8 +188,8 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
 
   const renderConfirmation = () => <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, py: 4, textAlign: 'center' }} aria-live="polite">
     <Typography variant="h4">Payment Pending Verification</Typography>
-    <Typography color="text.secondary">Your payment screenshot for {paymentInfo?.title ?? course.title} has been received and is under review. Check Payment History in your dashboard for updates. Course access will be available after approval.</Typography>
-    <Button variant="contained" size="large" onClick={() => navigateTo('/dashboard')}>Go to Dashboard</Button>
+    <Typography color="text.secondary">Your payment screenshot for {paymentInfo?.title ?? course.title} has been received and is under review. {isAuthenticated ? 'Check Payment History in your dashboard for updates.' : 'Sign in with your email and password to check Payment History.'} Course access will be available after approval.</Typography>
+    <Button variant="contained" size="large" onClick={() => navigateTo(isAuthenticated ? '/dashboard' : '/sign-in')}>{isAuthenticated ? 'Go to Dashboard' : 'Sign in'}</Button>
   </Box>
 
   const renderPaymentInfo = () => <Stack spacing={{ xs: 2, sm: 2.5 }}>

@@ -3595,7 +3595,7 @@ app.post('/api/enrollment/manual-payment', async (request, response) => {
         })}
         RETURNING id::INTEGER AS id
       `
-      return { id: payment.id, item: item.title, user, createdAccount: !authenticated }
+      return { id: payment.id, item: item.title, user }
     })
   } catch (error) {
     if (error.code === '23505') {
@@ -3608,12 +3608,6 @@ app.post('/api/enrollment/manual-payment', async (request, response) => {
   }
 
   if (result.error) return response.status(result.status).json({ message: result.error })
-  if (result.createdAccount) {
-    request.securityDeviceId = getDeviceId(request)
-    await recordAuthenticationAttempt({ user: result.user, email: result.user.email, succeeded: true, reason: 'sign_up', request })
-    const session = await createAuthSession(result.user.id, result.user.role, request)
-    setSecurityCookies(response, session.rawToken, session.deviceId, result.user.role)
-  }
   return response.status(201).json({ id: result.id, item: result.item, user: result.user, status: 'pending_verification' })
 })
 
@@ -3902,7 +3896,9 @@ app.get('/api/payments', requireAuthenticated, async (request, response) => {
            END AS status,
            payments.review_note AS "reviewNote",
            to_char(payments.created_at, 'Mon DD, YYYY') AS date,
-           payments.reference AS "txRef"
+           payments.reference AS "txRef",
+           payments.course_id::INTEGER AS "courseId",
+           payments.class_id::INTEGER AS "classId"
     FROM payments
     LEFT JOIN courses ON courses.id = payments.course_id
     LEFT JOIN classes ON classes.id = payments.class_id

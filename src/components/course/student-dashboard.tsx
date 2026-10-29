@@ -1312,7 +1312,7 @@ const PurchasesView: FC = () => {
 }
 
 const catalogPageSize = 6
-const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; isLoading: boolean; error: string | null; onOpenCourse: (courseId: number) => void }> = ({ courses, enrolledCourseIds, isLoading, error, onOpenCourse }) => {
+const OtherCoursesView: FC<{ courses: Course[]; unavailableCourseIds: Set<string>; isLoading: boolean; error: string | null; onOpenCourse: (courseId: number) => void }> = ({ courses, unavailableCourseIds, isLoading, error, onOpenCourse }) => {
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -1321,7 +1321,7 @@ const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; 
   const [sortBy, setSortBy] = useState('popular')
   const [layout, setLayout] = useState<'grid' | 'list'>('grid')
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const availableCourses = courses.filter((course) => !enrolledCourseIds.has(String(course.id)))
+  const availableCourses = courses.filter((course) => !unavailableCourseIds.has(String(course.id)))
   const categoryOptions = Array.from(new Set(availableCourses.map((course) => course.category)))
 
   const normalizedQuery = searchQuery.trim().toLowerCase()
@@ -1336,7 +1336,7 @@ const OtherCoursesView: FC<{ courses: Course[]; enrolledCourseIds: Set<string>; 
   const pageCount = Math.ceil(sortedCourses.length / catalogPageSize)
   const visibleCourses = sortedCourses.slice((page - 1) * catalogPageSize, page * catalogPageSize)
 
-  useEffect(() => setPage(1), [courses.length, enrolledCourseIds.size, normalizedQuery, categoryFilter, ratingFilter, priceFilter, sortBy])
+  useEffect(() => setPage(1), [courses.length, unavailableCourseIds.size, normalizedQuery, categoryFilter, ratingFilter, priceFilter, sortBy])
 
   const filterPanel = <Paper elevation={0} sx={{ p: 2.25, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper' }}>
     <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 800 }}>Filter courses</Typography>
@@ -1440,7 +1440,7 @@ const OtherClassCard: FC<{ classRecord: PublicClass; cover?: string; category?: 
   </Card>
 }
 
-const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolledClassIds: Set<number>; isLoading: boolean; error: string | null; onEnroll: (classRecord: PublicClass) => void; onOpenClass: (classId: number) => void }> = ({ classes, courses, enrolledClassIds, isLoading, error, onEnroll, onOpenClass }) => {
+const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; unavailableClassIds: Set<number>; isLoading: boolean; error: string | null; onEnroll: (classRecord: PublicClass) => void; onOpenClass: (classId: number) => void }> = ({ classes, courses, unavailableClassIds, isLoading, error, onEnroll, onOpenClass }) => {
   const [page, setPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')
   const [scheduleFilter, setScheduleFilter] = useState('all')
@@ -1453,7 +1453,7 @@ const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolled
 
   const courseById = new Map(courses.map((course) => [String(course.id), course]))
   const getClassCourse = (classRecord: PublicClass) => classRecord.courseId === null ? undefined : courseById.get(String(classRecord.courseId))
-  const availableClasses = classes.filter((classRecord) => !enrolledClassIds.has(classRecord.id))
+  const availableClasses = classes.filter((classRecord) => !unavailableClassIds.has(classRecord.id))
   const dayOptions = Array.from(new Set(availableClasses.flatMap((classRecord) => classRecord.schedule.days)))
   const hasFlexibleClasses = availableClasses.some((classRecord) => classRecord.schedule.flexible)
   const categoryOptions = Array.from(new Set(availableClasses.map((classRecord) => getClassCourse(classRecord)?.category).filter((category): category is string => Boolean(category))))
@@ -1472,7 +1472,7 @@ const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; enrolled
   const pageCount = Math.ceil(sortedClasses.length / catalogPageSize)
   const visibleClasses = sortedClasses.slice((page - 1) * catalogPageSize, page * catalogPageSize)
 
-  useEffect(() => setPage(1), [classes.length, enrolledClassIds.size, normalizedQuery, scheduleFilter, categoryFilter, gradeFilter, ratingFilter, sortBy])
+  useEffect(() => setPage(1), [classes.length, unavailableClassIds.size, normalizedQuery, scheduleFilter, categoryFilter, gradeFilter, ratingFilter, sortBy])
 
   const filterPanel = <Paper elevation={0} sx={{ p: 2.25, border: 1, borderColor: 'divider', borderRadius: 3, backgroundColor: 'background.paper' }}>
     <Typography variant="subtitle1" sx={{ mb: 1.5, fontWeight: 800 }}>Filter classes</Typography>
@@ -2450,8 +2450,14 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
   const selectedCourseEnrollment = selectedCourseId === null ? undefined : findCourseEnrollment(enrollments, selectedCourseId)
   const selectedCourse = selectedCourseEnrollment ? getEnrollmentCourse(selectedCourseEnrollment) : undefined
   const selectedCourseProgress = selectedCourse ? getCourseProgress(selectedCourse, completedLessons[selectedCourse.id] ?? []) : 0
-  const enrolledCourseIds = new Set(enrollments.filter((enrollment) => enrollment.type === 'course').map((enrollment) => String(enrollment.item_id)))
-  const enrolledClassIds = new Set(enrollments.filter((enrollment) => enrollment.type === 'class').map((enrollment) => enrollment.item_id))
+  const unavailableCourseIds = new Set([
+    ...enrollments.filter((enrollment) => enrollment.type === 'course').map((enrollment) => String(enrollment.item_id)),
+    ...payments.flatMap((payment) => payment.status === 'Pending Verification' && payment.courseId !== null ? [String(payment.courseId)] : []),
+  ])
+  const unavailableClassIds = new Set([
+    ...enrollments.filter((enrollment) => enrollment.type === 'class').map((enrollment) => enrollment.item_id),
+    ...payments.flatMap((payment) => payment.status === 'Pending Verification' && payment.classId !== null ? [payment.classId] : []),
+  ])
   const selectedCatalogClass = selectedCatalogClassId === null ? undefined : otherClasses.find((classRecord) => classRecord.id === selectedCatalogClassId)
   const selectedCatalogCourse = selectedCatalogCourseId === null ? undefined : otherCourses.find((course) => Number(course.id) === selectedCatalogCourseId)
   const pageTitle = activeView === 'course-view' ? selectedCourse?.title ?? 'Course view' : activeView === 'course-detail' ? selectedCatalogCourse?.title ?? 'Course details' : activeView === 'class-detail' ? selectedCatalogClass?.title ?? 'Class details' : activeView === 'overview' ? 'Dashboard' : activeView === 'calendar' ? 'Calendar' : activeView === 'courses' ? 'My Courses' : activeView === 'classes' ? 'My Classes' : activeView === 'explore-courses' ? 'Explore Courses' : activeView === 'explore-classes' ? 'Explore Classes' : activeView === 'study-planner' ? 'Study Planner' : activeView === 'quizzes' ? 'Quizzes & Results' : activeView === 'purchases' ? 'My Purchases' : activeView === 'profile' ? 'Profile' : 'Payment History'
@@ -2618,8 +2624,8 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
           {activeView === 'calendar' && <StudentCalendarView enrollments={enrollments} now={now} onJoin={(session) => { if (session.lessonId && session.meetingUrl) void joinLiveSession(session.lessonId, session.meetingUrl, session.enrollmentId) }} />}
           {activeView === 'courses' && <Box sx={{ mx: { xs: -2, md: -3.5 }, mt: { xs: -2, md: -3.5 }, px: { xs: 2, md: 3.5 }, pt: { xs: 2, md: 3.5 }, minHeight: 'calc(100vh - 82px)', bgcolor: (theme) => theme.palette.mode === 'dark' ? theme.palette.background.default : '#fff', backgroundImage: 'none' }}><CoursesView enrollments={enrollments} completedLessons={completedLessons} onOpenCourse={openCourse} /></Box>}
           {activeView === 'classes' && <ClassesView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} gamificationData={gamificationData} />}
-          {activeView === 'explore-courses' && <OtherCoursesView courses={otherCourses} enrolledCourseIds={enrolledCourseIds} isLoading={isLoadingOtherCourses} error={otherCoursesError} onOpenCourse={openCatalogCourse} />}
-          {activeView === 'explore-classes' && <OtherClassesView classes={otherClasses} courses={otherCourses} enrolledClassIds={enrolledClassIds} isLoading={isLoadingOtherClasses} error={otherClassesError} onEnroll={setClassToEnroll} onOpenClass={openCatalogClass} />}
+          {activeView === 'explore-courses' && <OtherCoursesView courses={otherCourses} unavailableCourseIds={unavailableCourseIds} isLoading={isLoadingOtherCourses} error={otherCoursesError} onOpenCourse={openCatalogCourse} />}
+          {activeView === 'explore-classes' && <OtherClassesView classes={otherClasses} courses={otherCourses} unavailableClassIds={unavailableClassIds} isLoading={isLoadingOtherClasses} error={otherClassesError} onEnroll={setClassToEnroll} onOpenClass={openCatalogClass} />}
           {activeView === 'course-detail' && <CatalogCourseDetailView courseId={selectedCatalogCourseId} onBack={() => selectView('explore-courses')} onEnroll={(course) => setCourseToEnroll({ id: course.id, title: course.title, price: course.price })} />}
           {activeView === 'class-detail' && <CatalogClassDetailView classRecord={selectedCatalogClass} course={selectedCatalogClass?.courseId === null || selectedCatalogClass?.courseId === undefined ? undefined : otherCourses.find((course) => String(course.id) === String(selectedCatalogClass.courseId))} isLoading={isLoadingOtherClasses} onBack={() => selectView('explore-classes')} onEnroll={setClassToEnroll} />}
           {activeView === 'study-planner' && <StudyPlannerView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} onStudyPlanSaved={(enrollmentId, lessonOrder) => setEnrollments((current) => current.map((enrollment) => enrollment.id === enrollmentId ? { ...enrollment, studyPlanOrder: lessonOrder } : enrollment))} />}
