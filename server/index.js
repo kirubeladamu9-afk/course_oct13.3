@@ -2198,6 +2198,22 @@ const updatePaymentStatus = async (reference, status, verification = {}) => sql.
     }
   }
 
+  if (status === 'paid' && payment.practiceExamId === null && payment.bookstoreItemId === null) {
+    const [activeAccess] = await transaction`SELECT 1 FROM enrollments WHERE user_id = ${payment.userId} AND ${targetAccessCondition(payment.courseId, payment.classId)} AND ${enrollmentAccessCondition()} LIMIT 1`
+    if (activeAccess) {
+      await transaction`
+        UPDATE payments
+        SET status = 'failed', paid_at = NULL,
+            verification_status = CASE WHEN payment_method = 'manual' THEN 'declined' ELSE verification_status END,
+            review_note = CASE WHEN payment_method = 'manual' THEN 'You already have active access to this item.' ELSE review_note END,
+            reviewed_by = CASE WHEN payment_method = 'manual' THEN ${verification.adminUserId ?? null} ELSE reviewed_by END,
+            reviewed_at = CASE WHEN payment_method = 'manual' THEN NOW() ELSE reviewed_at END
+        WHERE id = ${payment.id}
+      `
+      return 'failed'
+    }
+  }
+
   await transaction`
     UPDATE payments
     SET status = ${status},
