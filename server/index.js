@@ -12,6 +12,7 @@ import { buildClientMetadata, displayClientIp, parseNickname, sanitizeClientHint
 import { getLatestSubmittedQuizAttempts } from './quiz-performance.js'
 import { areSolverFollowUpsComplete, areSolverProblemsComplete, getStepByStepSolverSessionView, isValidStepByStepSolverConfig, normalizeSolverAnswer } from './step-by-step-solver-engine.js'
 import { expireQuizAnswers, getQuizDeadline, getQuizTimeLimitSeconds, hasScheduledClassQuizzes, isQuizExpired } from './quiz-timing.js'
+import { generateVerificationCode, hashVerificationCode, isValidEmailAddress, sendEnrollmentVerificationEmail, verificationCodeLifetimeMinutes, verificationMaxIncorrectAttempts, verificationResendCooldownSeconds, verifiedEnrollmentWindowMinutes } from './enrollment-verification.js'
 
 const databaseUrl = process.env.DATABASE_URL
 
@@ -640,6 +641,19 @@ const initializeDatabase = async () => {
   await ensureNullable('payments', 'course_id')
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS payments_manual_pending_course_idx ON payments(user_id, course_id) WHERE payment_method = 'manual' AND verification_status = 'pending' AND course_id IS NOT NULL`
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS payments_manual_pending_class_idx ON payments(user_id, class_id) WHERE payment_method = 'manual' AND verification_status = 'pending' AND class_id IS NOT NULL`
+  await sql`
+    CREATE TABLE IF NOT EXISTS enrollment_email_verifications (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      email TEXT NOT NULL,
+      target_key TEXT NOT NULL,
+      code_hash TEXT,
+      code_expires_at TIMESTAMPTZ NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_sent_at TIMESTAMPTZ NOT NULL,
+      verified_until TIMESTAMPTZ,
+      UNIQUE (email, target_key)
+    )
+  `
 
   await ensureColumns('users', { username: 'TEXT', one_time_password_expires_at: 'TIMESTAMPTZ' })
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_username_idx ON users(username) WHERE username IS NOT NULL`
@@ -3502,16 +3516,118 @@ app.get('/api/enrollment/payment-info', async (request, response) => {
   })
 })
 
-app.post('/api/enrollment/manual-payment', async (request, response) => {
+const isCrossSiteRequest = (request) => {
+  if (request.get('sec-fetch-site') === 'cross-site') return true
   const origin = request.get('origin')
-  if (origin) {
-    try {
-      if (new URL(origin).host !== request.get('host')) return response.status(403).json({ message: 'Request origin is not allowed.' })
-    } catch {
-      return response.status(403).json({ message: 'Request origin is not allowed.' })
-    }
+  if (!origin) return false
+  try {
+    return new URL(origin).host !== request.get('host')
+  } catch {
+    return true
   }
-  if (request.get('sec-fetch-site') === 'cross-site') return response.status(403).json({ message: 'Request origin is not allowed.' })
+}
+
+const enrollmentTargetKey = (courseId, classId) => classId === null ? `course:${courseId}` : `class:${classId}`
+
+class EmailDeliveryFailure extends Error {}
+
+app.post('/api/enrollment/verification-code', async (request, response) => {
+  if (isCrossSiteRequest(request)) return response.status(403).json({ message: 'Request origin is not allowed.' })
+  await loadAuthenticatedUser(request, response)
+
+  const courseId = parseCourseId(String(request.body?.courseId ?? ''))
+  const classId = parseCourseId(String(request.body?.classId ?? ''))
+  if ((courseId === null) === (classId === null)) return response.status(400).json({ message: 'Choose a course or class.' })
+  const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : ''
+  if (!isValidEmailAddress(email)) return response.status(400).json({ message: 'Enter a valid email address.' })
+
+  const [takenEmail] = await sql`SELECT id FROM users WHERE email = ${email} AND id IS DISTINCT FROM ${request.userId ?? null}`
+  if (takenEmail) return response.status(409).json({ message: 'An account with this email already exists. Sign in to continue.' })
+
+  const targetKey = enrollmentTargetKey(courseId, classId)
+  const code = generateVerificationCode()
+  const codeHash = hashVerificationCode(email, targetKey, code)
+  try {
+    const cooldown = await sql.begin(async (transaction) => {
+      const [claimed] = await transaction`
+        INSERT INTO enrollment_email_verifications (email, target_key, code_hash, code_expires_at, attempts, last_sent_at, verified_until)
+        VALUES (${email}, ${targetKey}, ${codeHash}, NOW() + ${verificationCodeLifetimeMinutes} * INTERVAL '1 minute', 0, NOW(), NULL)
+        ON CONFLICT (email, target_key) DO UPDATE SET
+          code_hash = EXCLUDED.code_hash,
+          code_expires_at = EXCLUDED.code_expires_at,
+          attempts = 0,
+          last_sent_at = EXCLUDED.last_sent_at,
+          verified_until = NULL
+        WHERE enrollment_email_verifications.last_sent_at <= NOW() - ${verificationResendCooldownSeconds} * INTERVAL '1 second'
+        RETURNING id
+      `
+      if (!claimed) {
+        const [record] = await transaction`
+          SELECT CEIL(EXTRACT(EPOCH FROM (last_sent_at + ${verificationResendCooldownSeconds} * INTERVAL '1 second' - NOW())))::INTEGER AS "retryAfterSeconds"
+          FROM enrollment_email_verifications
+          WHERE email = ${email} AND target_key = ${targetKey}
+        `
+        return { retryAfterSeconds: Math.max(1, record?.retryAfterSeconds ?? 1) }
+      }
+      try {
+        await sendEnrollmentVerificationEmail({ to: email, code })
+      } catch (error) {
+        console.error('Enrollment verification email failed', error?.code ?? error?.message ?? 'unknown')
+        throw new EmailDeliveryFailure()
+      }
+      return null
+    })
+    if (cooldown) return response.status(429).json({ message: `Please wait ${cooldown.retryAfterSeconds} seconds before requesting another code.`, retryAfterSeconds: cooldown.retryAfterSeconds })
+    return response.json({ resendAfterSeconds: verificationResendCooldownSeconds })
+  } catch (error) {
+    if (error instanceof EmailDeliveryFailure) return response.status(503).json({ message: 'We could not send the verification code. Please try again shortly.' })
+    throw error
+  }
+})
+
+app.post('/api/enrollment/verify-code', async (request, response) => {
+  if (isCrossSiteRequest(request)) return response.status(403).json({ message: 'Request origin is not allowed.' })
+
+  const courseId = parseCourseId(String(request.body?.courseId ?? ''))
+  const classId = parseCourseId(String(request.body?.classId ?? ''))
+  if ((courseId === null) === (classId === null)) return response.status(400).json({ message: 'Choose a course or class.' })
+  const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : ''
+  if (!isValidEmailAddress(email)) return response.status(400).json({ message: 'Enter a valid email address.' })
+  const code = typeof request.body?.code === 'string' ? request.body.code.trim() : ''
+  if (!/^\d{6}$/.test(code)) return response.status(400).json({ message: 'Enter the 6-digit code from your email.' })
+
+  const targetKey = enrollmentTargetKey(courseId, classId)
+  const outcome = await sql.begin(async (transaction) => {
+    const [record] = await transaction`
+      SELECT id, code_hash AS "codeHash", attempts, code_expires_at <= NOW() AS expired
+      FROM enrollment_email_verifications
+      WHERE email = ${email} AND target_key = ${targetKey}
+      FOR UPDATE
+    `
+    const tooManyAttempts = { status: 429, message: 'Too many incorrect codes. Request a new code to continue.' }
+    if (!record?.codeHash) return { status: 400, message: 'Request a new verification code to continue.' }
+    if (record.expired) return { status: 400, message: 'This code has expired. Request a new code to continue.' }
+    if (record.attempts >= verificationMaxIncorrectAttempts) return tooManyAttempts
+    if (record.codeHash !== hashVerificationCode(email, targetKey, code)) {
+      const [updated] = await transaction`
+        UPDATE enrollment_email_verifications SET attempts = attempts + 1 WHERE id = ${record.id} RETURNING attempts
+      `
+      if (updated.attempts >= verificationMaxIncorrectAttempts) return tooManyAttempts
+      return { status: 400, message: 'That code is incorrect. Check your email and try again.' }
+    }
+    await transaction`
+      UPDATE enrollment_email_verifications
+      SET code_hash = NULL, verified_until = NOW() + ${verifiedEnrollmentWindowMinutes} * INTERVAL '1 minute'
+      WHERE id = ${record.id}
+    `
+    return { status: 200 }
+  })
+  if (outcome.status !== 200) return response.status(outcome.status).json({ message: outcome.message })
+  return response.json({ verified: true })
+})
+
+app.post('/api/enrollment/manual-payment', async (request, response) => {
+  if (isCrossSiteRequest(request)) return response.status(403).json({ message: 'Request origin is not allowed.' })
 
   const authenticated = await loadAuthenticatedUser(request, response)
   if (authenticated && request.mustResetPassword) return response.status(403).json({ message: 'A password change is required before using this account.' })
@@ -3526,6 +3642,7 @@ app.post('/api/enrollment/manual-payment', async (request, response) => {
   if (!authenticated && !isValidCredentials(profile.email, request.body?.password)) return response.status(400).json({ message: 'Enter a valid email and a password between 8 and 128 characters.' })
 
   const passwordHash = authenticated ? null : await hashPassword(request.body.password)
+  const targetKey = enrollmentTargetKey(courseId, classId)
 
   let result
   try {
@@ -3543,6 +3660,13 @@ app.post('/api/enrollment/manual-payment', async (request, response) => {
       `
       if (!item) return { error: 'This enrollment is not available.', status: 404 }
       if (classId !== null && isClassEnrollmentClosed(deserializeJson(item.schedule))) return { error: 'This batch has already started. Enrollment is closed.', status: 409 }
+
+      const [verification] = await transaction`
+        SELECT id FROM enrollment_email_verifications
+        WHERE email = ${profile.email} AND target_key = ${targetKey} AND verified_until > NOW()
+        FOR UPDATE
+      `
+      if (!verification) return { error: 'Verify your email before submitting your payment.', status: 403 }
 
       if (authenticated) {
         const [activeEnrollment] = await transaction`
@@ -3595,6 +3719,7 @@ app.post('/api/enrollment/manual-payment', async (request, response) => {
         })}
         RETURNING id::INTEGER AS id
       `
+      await transaction`DELETE FROM enrollment_email_verifications WHERE id = ${verification.id}`
       return { id: payment.id, item: item.title, user }
     })
   } catch (error) {

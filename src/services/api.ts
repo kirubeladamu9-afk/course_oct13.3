@@ -1508,6 +1508,25 @@ export const getManualPaymentInfo = async (courseId: number, classId?: number | 
   return response.json()
 }
 
+export const sendEnrollmentVerificationCode = async (email: string, courseId: number, classId: number | null): Promise<{ resendAfterSeconds: number }> => {
+  const response = await requestApi('/api/enrollment/verification-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, ...(classId === null ? { courseId } : { classId }) }),
+  })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const verifyEnrollmentEmail = async (email: string, courseId: number, classId: number | null, code: string): Promise<void> => {
+  const response = await requestApi('/api/enrollment/verify-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, code, ...(classId === null ? { courseId } : { classId }) }),
+  })
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+}
+
 export const submitManualPayment = async (courseId: number, classId: number | null, proofData: string, proofFileName: string, contact: { name: string; email: string; phone: string }, password: string) => {
   const response = await requestApi('/api/enrollment/manual-payment', {
     method: 'POST',

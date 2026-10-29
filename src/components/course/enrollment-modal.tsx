@@ -25,7 +25,7 @@ import { type FC, type FormEvent, useEffect, useState } from 'react'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { useTheme } from '@mui/material/styles'
 import { type AdminCourse } from '@/components/admin/admin-data'
-import { getAuthenticatedUser, getManualPaymentInfo, saveAuthenticatedUser, submitManualPayment, type ManualPaymentInfo } from '@/services/api'
+import { getAuthenticatedUser, getManualPaymentInfo, saveAuthenticatedUser, sendEnrollmentVerificationCode, submitManualPayment, verifyEnrollmentEmail, type ManualPaymentInfo } from '@/services/api'
 import { navigateTo } from '@/lib/navigation'
 
 interface EnrollmentModalProps {
@@ -36,7 +36,7 @@ interface EnrollmentModalProps {
   onSubmitted?: () => void
 }
 
-const steps = ['Personal Info', 'Payment Info']
+const steps = ['Account', 'Verify Email', 'Payment']
 const maximumProofSize = 6 * 1024 * 1024
 
 const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
@@ -61,8 +61,27 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
   const [contact, setContact] = useState({ name: '', email: '', phone: '' })
   const [isAuthenticated, setIsAuthenticated] = useState(Boolean(getAuthenticatedUser()))
   const [submitted, setSubmitted] = useState(false)
+  const [verificationCode, setVerificationCode] = useState('')
+  const [verificationError, setVerificationError] = useState<string | null>(null)
+  const [verificationNotice, setVerificationNotice] = useState<string | null>(null)
+  const [isSendingCode, setIsSendingCode] = useState(false)
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false)
+  const [resendAvailableAt, setResendAvailableAt] = useState(0)
+  const [, setClock] = useState(0)
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
+  useEffect(() => {
+    if (resendAvailableAt <= Date.now()) return
+    const timer = window.setInterval(() => {
+      const now = Date.now()
+      setClock(now)
+      if (now >= resendAvailableAt) window.clearInterval(timer)
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [resendAvailableAt])
+
+  const resendSecondsRemaining = Math.max(0, Math.ceil((resendAvailableAt - Date.now()) / 1000))
 
   useEffect(() => {
     if (!open) return
@@ -81,11 +100,28 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
     setSignupPassword('')
     setConfirmSignupPassword('')
     setSubmitted(false)
+    setVerificationCode('')
+    setVerificationError(null)
+    setVerificationNotice(null)
+    setResendAvailableAt(0)
     getManualPaymentInfo(course.id, classId)
       .then((info) => { if (current) setPaymentInfo(info) })
       .catch((error) => { if (current) setPaymentInfoError(error instanceof Error ? error.message : 'Payment instructions are unavailable.') })
     return () => { current = false }
   }, [classId, course.id, open])
+
+  const requestVerificationCode = async (email: string) => {
+    setIsSendingCode(true)
+    try {
+      const { resendAfterSeconds } = await sendEnrollmentVerificationCode(email, course.id, classId)
+      setResendAvailableAt(Date.now() + resendAfterSeconds * 1000)
+      return null
+    } catch (error) {
+      return error instanceof Error ? error.message : 'We could not send the verification code.'
+    } finally {
+      setIsSendingCode(false)
+    }
+  }
 
   const handlePersonalSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -110,7 +146,39 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
       setSignupPassword(password)
       setConfirmSignupPassword(String(formData.get('confirmPassword') ?? ''))
     }
+    const sendError = await requestVerificationCode(email)
+    if (sendError) {
+      setAccountError(sendError)
+      return
+    }
+    setVerificationCode('')
+    setVerificationError(null)
+    setVerificationNotice(null)
     setActiveStep(1)
+  }
+
+  const handleResendCode = async () => {
+    setVerificationError(null)
+    setVerificationNotice(null)
+    const sendError = await requestVerificationCode(contact.email)
+    if (sendError) setVerificationError(sendError)
+    else setVerificationNotice('A new code was sent to your email.')
+  }
+
+  const handleVerifySubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setVerificationError(null)
+    setVerificationNotice(null)
+    setIsVerifyingCode(true)
+    try {
+      await verifyEnrollmentEmail(contact.email, course.id, classId, verificationCode)
+      setVerificationCode('')
+      setActiveStep(2)
+    } catch (error) {
+      setVerificationError(error instanceof Error ? error.message : 'We could not verify this code.')
+    } finally {
+      setIsVerifyingCode(false)
+    }
   }
 
   const handleCopyAccount = async (provider: string, accountNumber: string) => {
@@ -180,9 +248,28 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
         <Typography variant="caption" color="text.secondary">Your account will be created after you submit your payment proof.</Typography>
       </>}
       {accountError && <Alert severity="error">{accountError}</Alert>}
-      <Button type="submit" variant="contained" size="large">
-        Continue to payment
+      <Button type="submit" variant="contained" size="large" disabled={isSendingCode}>
+        {isSendingCode ? 'Sending code...' : 'Continue'}
       </Button>
+    </Stack>
+  </Box>
+
+  const renderVerifyEmail = () => <Box component="form" onSubmit={(event) => void handleVerifySubmit(event)}>
+    <Stack spacing={1.5}>
+      <Typography variant="body1">We sent a 6-digit code to <strong>{contact.email}</strong>.</Typography>
+      <Typography variant="body2" color="text.secondary">Enter the code below to continue. It expires in 10 minutes.</Typography>
+      <TextField required fullWidth size="small" label="Verification code" name="verificationCode" autoComplete="one-time-code" value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))} inputProps={{ inputMode: 'numeric', maxLength: 6 }} />
+      {verificationError && <Alert severity="error">{verificationError}</Alert>}
+      {verificationNotice && <Alert severity="success">{verificationNotice}</Alert>}
+      <Button type="submit" variant="contained" size="large" disabled={isVerifyingCode || verificationCode.length !== 6}>
+        {isVerifyingCode ? 'Verifying...' : 'Verify'}
+      </Button>
+      <Stack direction="row" spacing={1.5} justifyContent="space-between" alignItems="center">
+        <Button variant="text" onClick={() => setActiveStep(0)} disabled={isVerifyingCode || isSendingCode}>Back</Button>
+        <Button variant="text" onClick={() => void handleResendCode()} disabled={isSendingCode || isVerifyingCode || resendSecondsRemaining > 0}>
+          {isSendingCode ? 'Sending...' : resendSecondsRemaining > 0 ? `Resend code in ${resendSecondsRemaining}s` : 'Resend code'}
+        </Button>
+      </Stack>
     </Stack>
   </Box>
 
@@ -294,7 +381,7 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
       {!submitted && <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: { xs: 2, sm: 2.5 }, '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#0f8f78' }, '& .MuiStepLabel-label.Mui-active': { color: '#0f766e', fontWeight: 700 }, '& .MuiStepConnector-line': { borderColor: 'rgba(15, 143, 120, 0.35)' } }}>
         {steps.map((label, index) => <Step key={label} completed={index < activeStep}><StepLabel>{label}</StepLabel></Step>)}
       </Stepper>}
-      {submitted ? renderConfirmation() : activeStep === 0 ? renderPersonalInfo() : renderPaymentInfo()}
+      {submitted ? renderConfirmation() : activeStep === 0 ? renderPersonalInfo() : activeStep === 1 ? renderVerifyEmail() : renderPaymentInfo()}
     </DialogContent>
   </Dialog>
 }
