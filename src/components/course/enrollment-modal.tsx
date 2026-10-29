@@ -358,7 +358,7 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
           {paymentError && <Alert severity="error">{paymentError}</Alert>}
           <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1.5} sx={{ pt: 1, borderTop: 1, borderColor: 'divider' }}>
             <Button fullWidth variant="outlined" size="large" onClick={() => setActiveStep(0)} disabled={isSubmittingPayment} sx={{ minHeight: 48, borderRadius: 2, color: 'text.secondary', borderColor: 'divider' }}>Back</Button>
-            <Button fullWidth type="submit" variant="contained" size="large" disabled={!paymentInfo.configured || isSubmittingPayment} sx={{ minHeight: 48, borderRadius: 2, fontWeight: 700, bgcolor: '#0f8f78', boxShadow: '0 8px 18px rgba(15, 143, 120, 0.2)', '&:hover': { bgcolor: '#0f766e', boxShadow: '0 10px 22px rgba(15, 143, 120, 0.26)' } }}>
+            <Button fullWidth type="submit" variant="contained" size="large" disabled={!paymentInfo.configured || !proofFile || isSubmittingPayment} sx={{ minHeight: 48, borderRadius: 2, fontWeight: 700, bgcolor: '#0f8f78', boxShadow: '0 8px 18px rgba(15, 143, 120, 0.2)', '&:hover': { bgcolor: '#0f766e', boxShadow: '0 10px 22px rgba(15, 143, 120, 0.26)' } }}>
               {isSubmittingPayment ? 'Submitting...' : 'Submit for Verification'}
             </Button>
           </Stack>
