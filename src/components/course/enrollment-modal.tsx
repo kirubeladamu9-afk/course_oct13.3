@@ -170,13 +170,13 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
   }
 
   const renderPersonalInfo = () => <Box component="form" onSubmit={(event) => void handlePersonalSubmit(event)}>
-    <Stack spacing={2}>
-      <TextField required fullWidth label="Full Name" name="fullName" autoComplete="name" value={contact.name} onChange={(event) => setContact({ ...contact, name: event.target.value })} />
-      <TextField required fullWidth label="Email" name="email" type="email" autoComplete="email" value={contact.email} onChange={(event) => setContact({ ...contact, email: event.target.value })} />
-      <TextField required fullWidth label="Phone" name="phone" type="tel" autoComplete="tel" value={contact.phone} onChange={(event) => setContact({ ...contact, phone: event.target.value })} />
+    <Stack spacing={1.5}>
+      <TextField required fullWidth size="small" label="Full Name" name="fullName" autoComplete="name" value={contact.name} onChange={(event) => setContact({ ...contact, name: event.target.value })} />
+      <TextField required fullWidth size="small" label="Email" name="email" type="email" autoComplete="email" value={contact.email} onChange={(event) => setContact({ ...contact, email: event.target.value })} />
+      <TextField required fullWidth size="small" label="Phone" name="phone" type="tel" autoComplete="tel" value={contact.phone} onChange={(event) => setContact({ ...contact, phone: event.target.value })} />
       {!isAuthenticated && <>
-        <TextField required fullWidth label="Password" name="password" type="password" autoComplete="new-password" inputProps={{ minLength: 8 }} value={signupPassword} onChange={(event) => setSignupPassword(event.target.value)} />
-        <TextField required fullWidth label="Confirm Password" name="confirmPassword" type="password" autoComplete="new-password" inputProps={{ minLength: 8 }} value={confirmSignupPassword} onChange={(event) => setConfirmSignupPassword(event.target.value)} />
+        <TextField required fullWidth size="small" label="Password" name="password" type="password" autoComplete="new-password" inputProps={{ minLength: 8 }} value={signupPassword} onChange={(event) => setSignupPassword(event.target.value)} />
+        <TextField required fullWidth size="small" label="Confirm Password" name="confirmPassword" type="password" autoComplete="new-password" inputProps={{ minLength: 8 }} value={confirmSignupPassword} onChange={(event) => setConfirmSignupPassword(event.target.value)} />
         <Typography variant="caption" color="text.secondary">Your account will be created after you submit your payment proof.</Typography>
       </>}
       {accountError && <Alert severity="error">{accountError}</Alert>}
@@ -290,8 +290,8 @@ const EnrollmentModal: FC<EnrollmentModalProps> = ({ course, classId = null, ope
       </Box>
       <IconButton aria-label="Close enrollment" onClick={onClose} sx={{ alignSelf: 'flex-start', mt: -0.25 }}><CloseIcon /></IconButton>
     </DialogTitle>
-    <DialogContent dividers sx={{ p: { xs: 2, sm: 3, md: 4 }, overflowY: 'auto' }}>
-      {!submitted && <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: { xs: 2.5, sm: 3.5 }, '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#0f8f78' }, '& .MuiStepLabel-label.Mui-active': { color: '#0f766e', fontWeight: 700 }, '& .MuiStepConnector-line': { borderColor: 'rgba(15, 143, 120, 0.35)' } }}>
+    <DialogContent dividers sx={{ p: { xs: 2, sm: 2.5, md: 3 }, overflowY: 'auto' }}>
+      {!submitted && <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: { xs: 2, sm: 2.5 }, '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#0f8f78' }, '& .MuiStepLabel-label.Mui-active': { color: '#0f766e', fontWeight: 700 }, '& .MuiStepConnector-line': { borderColor: 'rgba(15, 143, 120, 0.35)' } }}>
         {steps.map((label, index) => <Step key={label} completed={index < activeStep}><StepLabel>{label}</StepLabel></Step>)}
       </Stepper>}
       {submitted ? renderConfirmation() : activeStep === 0 ? renderPersonalInfo() : renderPaymentInfo()}
