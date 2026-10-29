@@ -5,6 +5,8 @@ export const verificationCodeLifetimeMinutes = 10
 export const verificationResendCooldownSeconds = 30
 export const verificationMaxIncorrectAttempts = 5
 export const verifiedEnrollmentWindowMinutes = 30
+export const verificationIpMaxRequests = 5
+export const verificationIpWindowMinutes = 10
 
 export const isValidEmailAddress = (email) => email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 

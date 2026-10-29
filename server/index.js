@@ -12,7 +12,7 @@ import { buildClientMetadata, displayClientIp, parseNickname, sanitizeClientHint
 import { getLatestSubmittedQuizAttempts } from './quiz-performance.js'
 import { areSolverFollowUpsComplete, areSolverProblemsComplete, getStepByStepSolverSessionView, isValidStepByStepSolverConfig, normalizeSolverAnswer } from './step-by-step-solver-engine.js'
 import { expireQuizAnswers, getQuizDeadline, getQuizTimeLimitSeconds, hasScheduledClassQuizzes, isQuizExpired } from './quiz-timing.js'
-import { generateVerificationCode, hashVerificationCode, isValidEmailAddress, sendEnrollmentVerificationEmail, verificationCodeLifetimeMinutes, verificationMaxIncorrectAttempts, verificationResendCooldownSeconds, verifiedEnrollmentWindowMinutes } from './enrollment-verification.js'
+import { generateVerificationCode, hashVerificationCode, isValidEmailAddress, sendEnrollmentVerificationEmail, verificationCodeLifetimeMinutes, verificationIpMaxRequests, verificationIpWindowMinutes, verificationMaxIncorrectAttempts, verificationResendCooldownSeconds, verifiedEnrollmentWindowMinutes } from './enrollment-verification.js'
 
 const databaseUrl = process.env.DATABASE_URL
 
@@ -654,6 +654,14 @@ const initializeDatabase = async () => {
       UNIQUE (email, target_key)
     )
   `
+  await sql`
+    CREATE TABLE IF NOT EXISTS enrollment_code_send_requests (
+      id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      ip TEXT NOT NULL,
+      requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `
+  await sql`CREATE INDEX IF NOT EXISTS enrollment_code_send_requests_ip_idx ON enrollment_code_send_requests(ip, requested_at)`
 
   await ensureColumns('users', { username: 'TEXT', one_time_password_expires_at: 'TIMESTAMPTZ' })
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS users_username_idx ON users(username) WHERE username IS NOT NULL`
@@ -3540,6 +3548,17 @@ app.post('/api/enrollment/verification-code', async (request, response) => {
   if ((courseId === null) === (classId === null)) return response.status(400).json({ message: 'Choose a course or class.' })
   const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : ''
   if (!isValidEmailAddress(email)) return response.status(400).json({ message: 'Enter a valid email address.' })
+
+  const ipAddress = request.ip ?? request.socket.remoteAddress ?? 'unknown'
+  const ipLimited = await sql.begin(async (transaction) => {
+    await transaction`SELECT pg_advisory_xact_lock(hashtext(${`enrollment-code-ip:${ipAddress}`}))`
+    await transaction`DELETE FROM enrollment_code_send_requests WHERE requested_at <= NOW() - ${verificationIpWindowMinutes} * INTERVAL '1 minute'`
+    const [{ count }] = await transaction`SELECT COUNT(*)::INTEGER AS count FROM enrollment_code_send_requests WHERE ip = ${ipAddress}`
+    if (count >= verificationIpMaxRequests) return true
+    await transaction`INSERT INTO enrollment_code_send_requests (ip) VALUES (${ipAddress})`
+    return false
+  })
+  if (ipLimited) return response.status(429).json({ message: `Too many verification code requests from this network. Try again in ${verificationIpWindowMinutes} minutes.` })
 
   const [takenEmail] = await sql`SELECT id FROM users WHERE email = ${email} AND id IS DISTINCT FROM ${request.userId ?? null}`
   if (takenEmail) return response.status(409).json({ message: 'An account with this email already exists. Sign in to continue.' })
