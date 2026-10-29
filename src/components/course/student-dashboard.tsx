@@ -1545,7 +1545,7 @@ const OtherClassesView: FC<{ classes: PublicClass[]; courses: Course[]; unavaila
   </>
 }
 
-const CatalogCourseDetailView: FC<{ courseId: number | null; onBack: () => void; onEnroll: (course: AdminCourse) => void }> = ({ courseId, onBack, onEnroll }) => {
+const CatalogCourseDetailView: FC<{ courseId: number | null; isPaymentPending: boolean; onBack: () => void; onEnroll: (course: AdminCourse) => void }> = ({ courseId, isPaymentPending, onBack, onEnroll }) => {
   const [course, setCourse] = useState<AdminCourse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -1583,8 +1583,8 @@ const CatalogCourseDetailView: FC<{ courseId: number | null; onBack: () => void;
       </Stack>
       <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', position: { lg: 'sticky' }, top: { lg: 20 } }}>
         <Typography variant="h4" sx={{ mb: 2 }}>${course.price}</Typography>
-        <Button fullWidth variant="contained" size="large" onClick={() => onEnroll(course)}>Enroll in course</Button>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>{course.level} · {course.tutor}</Typography>
+        <Button fullWidth variant="contained" size="large" disabled={isPaymentPending} onClick={() => onEnroll(course)}>{isPaymentPending ? 'Payment pending verification' : 'Enroll in course'}</Button>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>{isPaymentPending ? 'Your payment is under review. You can enroll again only if it is declined.' : `${course.level} · ${course.tutor}`}</Typography>
         <Divider sx={{ my: 2 }} />
         <Typography variant="body2">{course.certificate ? 'Certificate of completion included' : 'Self-paced learning access'}</Typography>
       </Paper>
@@ -1593,7 +1593,7 @@ const CatalogCourseDetailView: FC<{ courseId: number | null; onBack: () => void;
   </>
 }
 
-const CatalogClassDetailView: FC<{ classRecord?: PublicClass; course?: Course; isLoading: boolean; onBack: () => void; onEnroll: (classRecord: PublicClass) => void }> = ({ classRecord, course, isLoading, onBack, onEnroll }) => {
+const CatalogClassDetailView: FC<{ classRecord?: PublicClass; course?: Course; isLoading: boolean; isPaymentPending: boolean; onBack: () => void; onEnroll: (classRecord: PublicClass) => void }> = ({ classRecord, course, isLoading, isPaymentPending, onBack, onEnroll }) => {
   if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }} aria-live="polite"><CircularProgress aria-label="Loading class details" /></Box>
   if (!classRecord) return <EmptyState title="Class unavailable" description="This class could not be loaded." actionLabel="Back to Explore Classes" onAction={onBack} />
 
@@ -1617,8 +1617,8 @@ const CatalogClassDetailView: FC<{ classRecord?: PublicClass; course?: Course; i
       </Stack>
       <Paper elevation={0} sx={{ p: 2.5, border: 1, borderColor: 'divider', position: { lg: 'sticky' }, top: { lg: 20 } }}>
         <Typography variant="h4" sx={{ mb: 2 }}>${classRecord.price}</Typography>
-        <Button fullWidth variant="contained" size="large" disabled={!isAvailable} onClick={() => onEnroll(classRecord)}>{classRecord.status === 'full' ? 'Join waitlist' : 'Enroll in class'}</Button>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>{classRecord.status === 'pending_schedule' ? 'Schedule pending' : classRecord.enrollmentClosed ? 'Enrollment closed' : classScheduleLabel(schedule)}</Typography>
+        <Button fullWidth variant="contained" size="large" disabled={!isAvailable || isPaymentPending} onClick={() => onEnroll(classRecord)}>{isPaymentPending ? 'Payment pending verification' : classRecord.status === 'full' ? 'Join waitlist' : 'Enroll in class'}</Button>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>{isPaymentPending ? 'Your payment is under review. You can enroll again only if it is declined.' : classRecord.status === 'pending_schedule' ? 'Schedule pending' : classRecord.enrollmentClosed ? 'Enrollment closed' : classScheduleLabel(schedule)}</Typography>
       </Paper>
     </Box>
     <Box sx={{ mt: 4 }}><StudentReviews targetType="class" targetId={classRecord.id} instructorName={classRecord.tutorName} /></Box>
@@ -2626,8 +2626,8 @@ const StudentDashboard: FC<StudentDashboardProps> = ({ darkMode, onToggleDarkMod
           {activeView === 'classes' && <ClassesView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} gamificationData={gamificationData} />}
           {activeView === 'explore-courses' && <OtherCoursesView courses={otherCourses} unavailableCourseIds={unavailableCourseIds} isLoading={isLoadingOtherCourses} error={otherCoursesError} onOpenCourse={openCatalogCourse} />}
           {activeView === 'explore-classes' && <OtherClassesView classes={otherClasses} courses={otherCourses} unavailableClassIds={unavailableClassIds} isLoading={isLoadingOtherClasses} error={otherClassesError} onEnroll={setClassToEnroll} onOpenClass={openCatalogClass} />}
-          {activeView === 'course-detail' && <CatalogCourseDetailView courseId={selectedCatalogCourseId} onBack={() => selectView('explore-courses')} onEnroll={(course) => setCourseToEnroll({ id: course.id, title: course.title, price: course.price })} />}
-          {activeView === 'class-detail' && <CatalogClassDetailView classRecord={selectedCatalogClass} course={selectedCatalogClass?.courseId === null || selectedCatalogClass?.courseId === undefined ? undefined : otherCourses.find((course) => String(course.id) === String(selectedCatalogClass.courseId))} isLoading={isLoadingOtherClasses} onBack={() => selectView('explore-classes')} onEnroll={setClassToEnroll} />}
+          {activeView === 'course-detail' && <CatalogCourseDetailView courseId={selectedCatalogCourseId} isPaymentPending={payments.some((payment) => payment.status === 'Pending Verification' && payment.courseId !== null && payment.courseId === selectedCatalogCourseId)} onBack={() => selectView('explore-courses')} onEnroll={(course) => setCourseToEnroll({ id: course.id, title: course.title, price: course.price })} />}
+          {activeView === 'class-detail' && <CatalogClassDetailView classRecord={selectedCatalogClass} course={selectedCatalogClass?.courseId === null || selectedCatalogClass?.courseId === undefined ? undefined : otherCourses.find((course) => String(course.id) === String(selectedCatalogClass.courseId))} isLoading={isLoadingOtherClasses} isPaymentPending={payments.some((payment) => payment.status === 'Pending Verification' && payment.classId !== null && payment.classId === selectedCatalogClass?.id)} onBack={() => selectView('explore-classes')} onEnroll={setClassToEnroll} />}
           {activeView === 'study-planner' && <StudyPlannerView enrollments={enrollments} completedLessons={completedLessons} now={now} onOpenCourse={openCourse} onStudyPlanSaved={(enrollmentId, lessonOrder) => setEnrollments((current) => current.map((enrollment) => enrollment.id === enrollmentId ? { ...enrollment, studyPlanOrder: lessonOrder } : enrollment))} />}
           {activeView === 'quizzes' && <QuizzesView enrollments={enrollments} completedLessons={completedLessons} quizResults={quizResults} now={now} onOpenCourse={openCourse} />}
           {activeView === 'purchases' && <PurchasesView />}
