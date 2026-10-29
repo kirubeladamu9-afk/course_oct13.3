@@ -620,12 +620,22 @@ export interface AdminPayment {
   id: number
   student: string
   course: string
-  type: 'Course' | 'Class' | 'Book' | 'Practice exam'
+  type: 'Course' | 'Class' | 'Book' | 'Practice exam' | 'Sponsor'
   amount: number
   currency: string
   date: string
   status: 'Paid' | 'Pending' | 'Pending Verification' | 'Declined' | 'Failed'
   reviewNote?: string | null
+}
+
+export interface AdminSponsorPayment {
+  id: number
+  sponsor: string
+  course: string
+  amount: number
+  currency: string
+  date: string
+  status: 'Paid' | 'Pending'
 }
 
 export interface ManualPaymentInfo {
@@ -915,6 +925,12 @@ export const approveAdminQuizRetake = async (attemptId: number) => {
 
 export const getAdminPayments = async (): Promise<AdminPayment[]> => {
   const response = await requestApi('/api/admin/payments')
+  if (!response.ok) throw new Error(await getErrorMessage(response))
+  return response.json()
+}
+
+export const getAdminSponsorPayments = async (): Promise<AdminSponsorPayment[]> => {
+  const response = await requestApi('/api/admin/sponsor-payments')
   if (!response.ok) throw new Error(await getErrorMessage(response))
   return response.json()
 }

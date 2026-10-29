@@ -5525,6 +5525,25 @@ app.get('/api/admin/payments', requireAdmin, async (_request, response) => {
   return response.json(payments)
 })
 
+app.get('/api/admin/sponsor-payments', requireAdmin, async (_request, response) => {
+  const currency = process.env.MANUAL_PAYMENT_CURRENCY ?? process.env.CHAPA_CURRENCY ?? 'ETB'
+  const payments = await sql`
+    SELECT sponsor_payments.id::INTEGER AS id,
+           sponsors.name AS sponsor,
+           COALESCE(courses.title, classes.title, 'Sponsor payment') AS course,
+           (sponsor_payments.amount_cents / 100.0)::FLOAT AS amount,
+           ${currency}::TEXT AS currency,
+           to_char(sponsor_payments.created_at, 'Mon DD, YYYY') AS date,
+           CASE WHEN sponsor_payments.status = 'paid' THEN 'Paid' ELSE 'Pending' END AS status
+    FROM sponsor_payments
+    INNER JOIN sponsors ON sponsors.id = sponsor_payments.sponsor_id
+    LEFT JOIN courses ON courses.id = sponsor_payments.course_id
+    LEFT JOIN classes ON classes.id = sponsor_payments.class_id
+    ORDER BY sponsor_payments.created_at DESC, sponsor_payments.id DESC
+  `
+  return response.json(payments)
+})
+
 app.get('/api/admin/csp-reports', requireAdmin, async (_request, response) => {
   const reports = await sql`
     SELECT id::INTEGER AS id,

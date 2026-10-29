@@ -19,7 +19,7 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { type FC, useEffect, useMemo, useState } from 'react'
 import AdminDataTable, { type DataColumn } from './admin-data-table'
-import { getAdminPayments, getPendingManualPayments, reviewManualPayment, type AdminPayment, type PendingManualPayment } from '@/services/api'
+import { getAdminPayments, getAdminSponsorPayments, getPendingManualPayments, reviewManualPayment, type AdminPayment, type PendingManualPayment } from '@/services/api'
 
 const statusColor = (status: string): 'success' | 'warning' | 'error' | 'info' | 'default' => {
   if (['Published', 'Approved', 'Active', 'Paid'].includes(status)) return 'success'
@@ -30,7 +30,8 @@ const statusColor = (status: string): 'success' | 'warning' | 'error' | 'info' |
 
 const StatusChip: FC<{ status: string }> = ({ status }) => <Chip label={status} color={statusColor(status)} size="small" />
 
-type PaymentTypeFilter = 'All' | 'Course' | 'Class' | 'Book'
+type PaymentTypeFilter = 'All' | 'Course' | 'Class' | 'Book' | 'Sponsor'
+type HistoryRow = Omit<AdminPayment, 'id'> & { id: string }
 
 const PageHeading: FC<{ title: string; description: string }> = ({ title, description }) => (
   <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', gap: 2, mb: 4, flexDirection: { xs: 'column', sm: 'row' } }}>
@@ -42,7 +43,7 @@ const PageHeading: FC<{ title: string; description: string }> = ({ title, descri
 )
 
 const PaymentsPage: FC = () => {
-  const [payments, setPayments] = useState<AdminPayment[]>([])
+  const [payments, setPayments] = useState<HistoryRow[]>([])
   const [pendingPayments, setPendingPayments] = useState<PendingManualPayment[]>([])
   const [paymentType, setPaymentType] = useState<PaymentTypeFilter>('All')
   const [isLoading, setIsLoading] = useState(true)
@@ -57,7 +58,21 @@ const PaymentsPage: FC = () => {
 
   const loadPayments = async () => {
     try {
-      setPayments(await getAdminPayments())
+      const [paymentRecords, sponsorRecords] = await Promise.all([getAdminPayments(), getAdminSponsorPayments()])
+      setPayments([
+        ...paymentRecords.map((payment): HistoryRow => ({ ...payment, id: `payment-${payment.id}` })),
+        ...sponsorRecords.map((payment): HistoryRow => ({
+          id: `sponsor-${payment.id}`,
+          student: payment.sponsor,
+          course: payment.course,
+          type: 'Sponsor',
+          amount: payment.amount,
+          currency: payment.currency,
+          date: payment.date,
+          status: payment.status,
+          reviewNote: null,
+        })),
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
       setLoadError(null)
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Unable to load payments.')
@@ -84,8 +99,8 @@ const PaymentsPage: FC = () => {
 
   const filteredPayments = useMemo(() => paymentType === 'All' ? payments : payments.filter((payment) => payment.type === paymentType), [paymentType, payments])
 
-  const columns: DataColumn<AdminPayment>[] = [
-    { key: 'student', label: 'Student' },
+  const columns: DataColumn<HistoryRow>[] = [
+    { key: 'student', label: 'Student / sponsor' },
     { key: 'course', label: 'Item' },
     { key: 'amount', label: 'Amount', render: (value, row) => `${row.currency} ${Number(value).toFixed(2)}` },
     { key: 'date', label: 'Date' },
@@ -136,7 +151,7 @@ const PaymentsPage: FC = () => {
 
     <Typography variant="h5" sx={{ mb: 2 }}>Payment history</Typography>
     {isLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress aria-label="Loading payments" /></Box> : loadError ? <Paper elevation={0} sx={{ p: 4, border: 1, borderColor: 'divider' }}><Typography color="error">{loadError}</Typography></Paper> : <>
-      <FormControl size="small" sx={{ minWidth: 170, mb: 2 }}><InputLabel>Payment type</InputLabel><Select label="Payment type" value={paymentType} onChange={(event) => setPaymentType(event.target.value as PaymentTypeFilter)}><MenuItem value="All">All payment types</MenuItem><MenuItem value="Course">Course</MenuItem><MenuItem value="Class">Class</MenuItem><MenuItem value="Book">Book</MenuItem></Select></FormControl>
+      <FormControl size="small" sx={{ minWidth: 170, mb: 2 }}><InputLabel>Payment type</InputLabel><Select label="Payment type" value={paymentType} onChange={(event) => setPaymentType(event.target.value as PaymentTypeFilter)}><MenuItem value="All">All payment types</MenuItem><MenuItem value="Course">Course</MenuItem><MenuItem value="Class">Class</MenuItem><MenuItem value="Book">Book</MenuItem><MenuItem value="Sponsor">Sponsor</MenuItem></Select></FormControl>
       <AdminDataTable key={paymentType} rows={filteredPayments} columns={columns} searchPlaceholder="Search payments" />
     </>}
 
