@@ -11,13 +11,11 @@ import { socialLinks } from '@/components/footer/footer-social-links'
 import { toast } from '@/components/toast'
 import { getAuthenticatedUser, signOut } from '@/services/api'
 import { navigateTo } from '@/lib/navigation'
-import { alpha, type Theme, useTheme } from '@mui/material/styles'
+import { useTheme } from '@mui/material/styles'
 import { Close, DarkModeOutlined, LightModeOutlined, Menu } from '@mui/icons-material'
 
 const iconButtonSx = {
   color: 'primary.main',
-  backgroundColor: (theme: Theme) => alpha(theme.palette.primary.main, 0.1),
-  '&:hover': { backgroundColor: (theme: Theme) => alpha(theme.palette.primary.main, 0.18) },
 }
 
 interface Props {
